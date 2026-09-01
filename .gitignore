@@ -2,6 +2,10 @@
 dist/
 # generated types
 .astro/
+# eingelesene Quellen: abgeleitet und wiederherstellbar — der SHA im
+# jeweiligen manifest.json sagt, aus welchem Stand. Ins Git gehoert das
+# Destillat, nicht das Rohmaterial.
+quellen/
 
 # dependencies
 node_modules/
