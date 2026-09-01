@@ -1,0 +1,59 @@
+quelle: awesome-llm-apps
+stand: a13701eae315a81e1011a4304a6b5e741ea0a984
+geprueftVon: "Daniel Nobs"
+geprueftAm: "2026-09-01"
+prinzipien:
+  - id: kein-boden-ist-ein-boden
+    satz: "Wer keine Relevanzschwelle setzt, hat sie auf minus unendlich gesetzt — und wer eine setzt, wirft den Wert danach meist weg."
+    warumNichtOffensichtlich: "Ohne Schwelle bekommt man mehr Kandidaten, und das Modell soll ja selbst urteilen. Genau dieses Urteil findet aber nie statt: Entschieden wird über einen Leertest auf einer Liste, die immer gefüllt ist."
+    belege:
+      - agentic_rag_gpt5
+      - llama3.1_local_rag
+      - rag_chain
+      - hybrid_search_rag
+      - rag_agent_cohere
+    widget: Pipeline
+
+  - id: kontrollfluss-folgt-modellstaerke
+    satz: "Je schwächer das Modell, desto weiter wandert der Kontrollfluss aus dem Prompt in den Code."
+    warumNichtOffensichtlich: "Man erwartet, dass ein Modellwechsel nur der Endpunkt ist und die Architektur trägt. Tatsächlich verschiebt sich, wer entscheidet — dieselbe Frage ist einmal ein Instruktionssatz und einmal eine Verzweigung mit Schwelle und Schalter."
+    belege:
+      - autonomous_rag
+      - deepseek_local_rag_agent
+      - qwen_local_rag
+      - local_rag_agent
+    widget: Pipeline
+
+  - id: vertrauen-ist-herkunft
+    satz: "Wie sehr ein System einem Textstück traut, hängt an seiner Herkunft, nicht an seiner Ähnlichkeit."
+    warumNichtOffensichtlich: "Der Ähnlichkeitswert wirkt wie das objektive Maß. In der Praxis behandeln Systeme denselben Text gegensätzlich, je nachdem aus welcher Quelle er kam — und begründen das nirgends."
+    belege:
+      - agentic_rag_math_agent
+      - hybrid_search_rag
+      - rag_chain
+    widget: Pipeline
+
+  - id: belegbarkeit-steckt-in-der-struktur
+    satz: "Ob eine Antwort belegbar ist, entscheidet die Datenstruktur des Abrufs, nicht die Anweisung an das Modell."
+    warumNichtOffensichtlich: "Man kann ein Modell anweisen zu zitieren, und es tut es. Ob die Zitate stimmen, kann nur prüfen, wer den Weg zum Treffer noch hat — ein Vektorindex hat ihn nicht."
+    belege:
+      - knowledge_graph_rag_citations
+      - agentic_typed_rag_pydanticai
+      - contextualai_rag_agent
+    widget: Pipeline
+
+  - id: auslagern-nimmt-die-grundlage
+    satz: "Ein verwalteter Dienst nimmt dir nicht die Abruf-Entscheidungen ab, sondern die Grundlage, sie zu treffen."
+    warumNichtOffensichtlich: "Die Zusage lautet, dass jemand anderes das besser macht. Was verschwindet, ist aber nicht die Entscheidung, sondern die Zahl — und danach lässt sich weder eine Schwelle ziehen noch eine Verweigerung begründen."
+    belege:
+      - rag-as-a-service
+      - contextualai_rag_agent
+    widget: Pipeline
+
+  - id: abruf-und-erzeugung-sind-zwei-rechnungen
+    satz: "Was der Abruf findet und was der Generator sieht, sind zwei getrennte Entscheidungen — bei anderen Medien als Text fallen sie auseinander."
+    warumNichtOffensichtlich: "Wenn ein Bild eingebettet und gefunden wurde, scheint es beim Modell angekommen zu sein. Meist reicht der Abruf aber nur einen Verweis weiter, und der Generator bekommt eine Bildunterschrift statt der Pixel."
+    belege:
+      - vision_rag
+      - multimodal_agentic_rag
+    widget: Pipeline

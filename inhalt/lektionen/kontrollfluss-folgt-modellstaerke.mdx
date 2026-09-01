@@ -1,0 +1,129 @@
+---
+titel: "Der Kontrollfluss folgt der Modellstärke"
+prinzip: "Je schwächer das Modell, desto weiter wandert der Kontrollfluss aus dem Prompt in den Code."
+reihenfolge: 3
+gesperrt: false
+fragen:
+  - id: kfm-1
+    frage: "Ein System routet zwischen Korpus und Websuche mit dem Satz „Durchsuche zuerst deine Wissensbasis. Findest du nichts, suche im Netz.“ Es läuft gut mit einem großen gehosteten Modell. Nach der Umstellung auf ein lokales 1,5-Milliarden-Modell antwortet es oft ohne Abruf. Was ist die naheliegendste Erklärung?"
+    antworten:
+      - text: "Der Satz ist eine Anweisung, kein Kontrollfluss — und ihre Befolgung ist eine Modellfähigkeit"
+        richtig: true
+        begruendung: "Was wie Architektur aussieht, ist Text im Prompt. Ob er wirkt, hängt daran, wie zuverlässig das Modell mehrstufige Anweisungen befolgt — und genau das bricht bei kleinen Modellen zuerst weg."
+      - text: "Das lokale Modell hat ein zu kleines Kontextfenster für die Wissensbasis"
+        richtig: false
+        begruendung: "Das Fenster begrenzt, wie viel Kontext hineinpasst, nicht ob überhaupt abgerufen wird. Hier unterbleibt der Abruf, es kommt also gar kein Kontext zustande, der zu groß sein könnte."
+      - text: "Die Einbettungen passen nicht mehr, seit das Modell gewechselt wurde"
+        richtig: false
+        begruendung: "Ein plausibler Fehler, aber ein anderer. Er führte zu schlechten Treffern, nicht zu ausbleibendem Abruf — die Suche liefe und lieferte Unpassendes."
+      - text: "Lokale Modelle haben keinen Werkzeugzugriff"
+        richtig: false
+        begruendung: "Viele haben ihn, wenn auch unzuverlässiger. Und selbst mit Zugriff bleibt die Frage offen, ob das Modell die Anweisung befolgt, ihn zu benutzen."
+  - id: kfm-2
+    frage: "Warum ist es kein Widerspruch, dass dasselbe Vorhaben einmal als dreizeilige Anweisung und einmal als Verzweigung mit Schwellwert und Schalter umgesetzt ist?"
+    antworten:
+      - text: "Beide setzen dieselbe Entscheidung um, nur an verschiedenen Orten — die Wahl des Ortes hängt daran, wem man sie zutraut"
+        richtig: true
+        begruendung: "Die Entscheidung verschwindet nie. Sie liegt entweder beim Modell, das man anweist, oder beim Code, der sie erzwingt. Was sich ändert, ist die Zuverlässigkeit und wer sie prüfen kann."
+      - text: "Die Anweisung ist eine Vorstufe, die Verzweigung die ausgereifte Fassung"
+        richtig: false
+        begruendung: "Das unterstellt eine Rangfolge, die es nicht gibt. Bei einem starken Modell ist die Verzweigung überflüssiges Gerüst, das Fälle festschreibt, die das Modell besser abwägen könnte."
+      - text: "Die Anweisung ist billiger, weil sie keine zusätzlichen Aufrufe kostet"
+        richtig: false
+        begruendung: "Stimmt als Nebenrechnung, erklärt aber die Wahl nicht. Der Grund ist Zuverlässigkeit, nicht Preis — bei einem schwachen Modell wäre die billigere Variante auch die, die nicht funktioniert."
+      - text: "Die Verzweigung ist nötig, weil lokale Modelle keine Zustände halten können"
+        richtig: false
+        begruendung: "Zustand halten beide nicht; das übernimmt in jedem Fall die Anwendung. Der Unterschied liegt in der Befolgung von Anweisungen, nicht im Gedächtnis."
+  - id: kfm-3
+    frage: "Was folgt aus diesem Prinzip für die Auswahl eines Modells?"
+    antworten:
+      - text: "Der Modellwechsel ist eine Architekturentscheidung, keine Konfigurationsänderung"
+        richtig: true
+        begruendung: "Wer das Modell tauscht, verschiebt damit, wie viel Kontrollfluss im Prompt liegen darf. Bleibt der Code gleich, verlagert sich die Last stillschweigend — und bricht an einer Stelle, die niemand angefasst hat."
+      - text: "Man sollte grundsätzlich alles im Code entscheiden, dann ist der Wechsel folgenlos"
+        richtig: false
+        begruendung: "Das macht den Wechsel sicher und die Anwendung starr. Jede Verzweigung im Code ist ein Fall, den jemand vorhergesehen haben muss; ein starkes Modell könnte auch die ungesehenen abwägen."
+      - text: "Man sollte das stärkste verfügbare Modell nehmen, dann erübrigt sich die Frage"
+        richtig: false
+        begruendung: "Sie erübrigt sich nicht, sie verschiebt sich nur. Auch dann muss jemand entscheiden, welche Entscheidungen man dem Modell überlässt — und diese Wahl wird unsichtbar, wenn sie nie schiefgeht."
+      - text: "Man sollte den Kontrollfluss von der Modellwahl entkoppeln"
+        richtig: false
+        begruendung: "Klingt richtig und ist nicht erreichbar. Ob eine Anweisung befolgt wird, ist eine Eigenschaft des Modells — die Kopplung besteht, ob man sie benennt oder nicht."
+transfer:
+  id: kfm-transfer
+  frage: "Eine Baufirma gibt einem erfahrenen Polier die Anweisung: „Prüfe die Bewehrung, und wenn etwas nicht stimmt, halte den Betoniertermin an.“ Bei einem neuen, unerfahrenen Polier ersetzt die Bauleitung dieselbe Anweisung durch eine Checkliste mit Freigabeunterschrift. Was beschreibt den Unterschied?"
+  antworten:
+    - text: "Dieselbe Entscheidung, verlagert von der Person in das Verfahren"
+      richtig: true
+      begruendung: "Die Entscheidung selbst — anhalten oder nicht — bleibt identisch. Verschoben hat sich, wer sie trifft und woran sie hängt: an Urteilsvermögen oder an einem Formular, das keines voraussetzt."
+    - text: "Die Checkliste ist die gründlichere Prüfung"
+      richtig: false
+      begruendung: "Sie ist die besser nachvollziehbare, nicht die gründlichere. Ein erfahrener Polier sieht Dinge, die auf keiner Liste stehen; die Liste fängt dafür ab, was er noch nicht sieht."
+    - text: "Der erfahrene Polier braucht keine Prüfung"
+      richtig: false
+      begruendung: "Er braucht sie sehr wohl — sie ist nur nicht als Formular ausgeführt. Die Anweisung ist die Prüfung, nur ohne Papier."
+    - text: "Die Checkliste macht die Anweisung überflüssig"
+      richtig: false
+      begruendung: "Sie ersetzt sie an dieser Stelle, aber die Anweisung steckt jetzt in den Listenpunkten. Wer sie schreibt, muss vorher wissen, worauf zu achten ist."
+quellen:
+  - pfad: "rag_tutorials/autonomous_rag"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/autonomous_rag"
+  - pfad: "rag_tutorials/deepseek_local_rag_agent"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/deepseek_local_rag_agent"
+  - pfad: "rag_tutorials/qwen_local_rag"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/qwen_local_rag"
+  - pfad: "rag_tutorials/local_rag_agent"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/local_rag_agent"
+---
+
+Zwei Anwendungen im selben Bestand lösen dieselbe Aufgabe: Erst im eigenen Korpus suchen, und nur wenn dort nichts steht, ins Netz ausweichen. Die eine erledigt das mit drei Sätzen im Systemprompt. Die andere braucht dafür eine Verzweigung, einen Schwellwert, einen Schieberegler und einen Schalter, mit dem der Nutzer die Entscheidung überstimmen kann. Man liest das als Reifegradunterschied — die eine sei sauber, die andere überbaut. Der eigentliche Unterschied steht in einer anderen Zeile: Die erste ruft ein großes gehostetes Modell, die zweite ein lokales mit anderthalb Milliarden Parametern.
+
+<Pipeline
+  einheit="Dokument"
+  einheitPlural="Dokumenten"
+  schritte={[
+    { id: 'anfrage', titel: 'Anfrage', wirkung: 'Was steht im Protokoll vom 14. Jour fixe zum Verzug im Rohbau?' },
+    { id: 'entscheidung', titel: 'Erst Korpus, dann Netz', wirkung: 'Die Entscheidung, die getroffen werden muss. Sie verschwindet nie — sie hat nur verschiedene Wohnorte.' },
+    { id: 'im-code', titel: '+ Entscheidung im Code', wirkung: 'Als Verzweigung mit Schwellwert, statt als Satz im Prompt. Erzwingt den Abruf, unabhängig vom Modell.', optional: true, standardAn: false },
+    { id: 'starkes-modell', titel: '+ Starkes Modell', wirkung: 'Befolgt mehrstufige Anweisungen zuverlässig. Ein kleines lokales Modell tut das nicht.', optional: true, standardAn: false },
+    { id: 'antwort', titel: 'Was im Kontext landet', wirkung: 'Die Abschnitte, auf denen die Antwort steht — oder keine.' }
+  ]}
+  ergebnisse={[
+    {
+      wenn: [],
+      ausgabe: [
+        { text: 'kein Abruf ausgeführt — Anweisung nicht befolgt', treffer: false },
+        { text: 'Antwort aus dem Modellwissen, flüssig formuliert', treffer: false },
+        { text: 'kein Hinweis darauf, dass nichts nachgesehen wurde', treffer: false }
+      ],
+      hinweis: 'Schwaches Modell, Entscheidung im Prompt. Der Satz steht da, das Modell überliest ihn. Der Fehler ist stumm: Es kommt eine Antwort, sie klingt gut, und niemand sieht ihr an, dass der Korpus nie befragt wurde.'
+    },
+    {
+      wenn: ['starkes-modell'],
+      ausgabe: [
+        { text: 'Protokoll JF 14 — Verzug Rohbau, Beschluss', treffer: true },
+        { text: 'Protokoll JF 14 — Anlage: Terminplan Fortschreibung', treffer: true },
+        { text: 'Protokoll JF 9 — Vorgeschichte des Verzugs', treffer: true }
+      ],
+      hinweis: 'Dasselbe Programm, stärkeres Modell. Jetzt trägt der Prompt. Drei Zeilen Text ersetzen eine Verzweigung — solange das Modell sie befolgt.'
+    },
+    {
+      wenn: ['im-code'],
+      ausgabe: [
+        { text: 'Protokoll JF 14 — Verzug Rohbau, Beschluss', treffer: true },
+        { text: 'Protokoll JF 14 — Anlage: Terminplan Fortschreibung', treffer: true },
+        { text: 'Protokoll JF 9 — Vorgeschichte des Verzugs', treffer: true }
+      ],
+      hinweis: 'Schwaches Modell, Entscheidung im Code. Dasselbe Ergebnis wie mit dem starken Modell — der Abruf findet statt, weil ihn niemand mehr überlesen kann. Der Preis: Jeder Fall, der eintreten kann, muss vorher gedacht worden sein.'
+    },
+    {
+      wenn: ['im-code', 'starkes-modell'],
+      ausgabe: [
+        { text: 'Protokoll JF 14 — Verzug Rohbau, Beschluss', treffer: true },
+        { text: 'Protokoll JF 14 — Anlage: Terminplan Fortschreibung', treffer: true },
+        { text: 'Protokoll JF 9 — Vorgeschichte des Verzugs', treffer: true }
+      ],
+      hinweis: 'Beides. Funktioniert, aber die Verzweigung leistet nichts mehr — sie schreibt Fälle fest, die das Modell auch abwägen könnte. Gerüst, das nach dem Bau stehen bleibt.'
+    }
+  ]}
+/>

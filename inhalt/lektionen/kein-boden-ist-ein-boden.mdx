@@ -1,0 +1,135 @@
+---
+titel: "Kein Boden ist auch ein Boden"
+prinzip: "Wer keine Relevanzschwelle setzt, hat sie auf minus unendlich gesetzt — und wer eine setzt, wirft den Wert danach meist weg."
+reihenfolge: 2
+gesperrt: false
+fragen:
+  - id: kbib-1
+    frage: "Ein System holt immer die fünf ähnlichsten Dokumente und prüft dann `if dokumente:`, um zu entscheiden, ob es auf die Websuche ausweicht. Wann greift dieser Ausweichweg?"
+    antworten:
+      - text: "Praktisch nie — die Liste ist immer gefüllt"
+        richtig: true
+        begruendung: "Eine Ähnlichkeitssuche mit festem k liefert immer k Treffer, solange der Index nicht leer ist. Der Leertest kann nur bei einem leeren Index oder einem Fehler anschlagen, nicht bei schlechten Treffern."
+      - text: "Wenn die Treffer schlecht sind"
+        richtig: false
+        begruendung: "Das wäre die Absicht, aber der Leertest sieht keine Qualität. Er sieht nur, ob Einträge da sind — und fünf schlechte Einträge sind fünf Einträge."
+      - text: "Wenn der beste Treffer unter dem Median liegt"
+        richtig: false
+        begruendung: "Ein Median käme nur zustande, wenn jemand die Werte läse. Genau das passiert an dieser Stelle nicht; verglichen wird gegen null Einträge, nicht gegen eine Zahl."
+      - text: "Wenn das Modell die Dokumente als unpassend einstuft"
+        richtig: false
+        begruendung: "Das wäre eine Relevanzprüfung, also ein zusätzlicher Schritt. Der Leertest steht davor und ersetzt sie nicht — er läuft ohne jede Bewertung."
+  - id: kbib-2
+    frage: "Warum lässt sich eine Relevanzschwelle nicht von einem Projekt ins nächste übernehmen?"
+    antworten:
+      - text: "Weil der Wert eine Eigenschaft des Embedding-Raums ist, nicht der Aufgabe"
+        richtig: true
+        begruendung: "Verschiedene Einbettungsverfahren erzeugen völlig verschiedene Wertverteilungen. In einem Bestand liegt die brauchbare Grenze bei 0,80, im nächsten bei 0,20 — bei gleicher Aufgabe und gleicher Absicht."
+      - text: "Weil jede Fachdomäne andere Ansprüche an Genauigkeit hat"
+        richtig: false
+        begruendung: "Das spielt mit hinein, erklärt aber nicht den Sprung um den Faktor vier. Selbst bei identischer Domäne verschiebt ein Wechsel des Einbettungsmodells die ganze Verteilung."
+      - text: "Weil die Schwelle von der Größe des Korpus abhängt"
+        richtig: false
+        begruendung: "Mehr Dokumente erhöhen die Chance auf einen guten Treffer, verschieben aber nicht die Skala, auf der Ähnlichkeit gemessen wird. Die Zahl bleibt vergleichbar, der Bestand wächst nur."
+      - text: "Weil sie mit der Chunk-Größe zusammenhängt"
+        richtig: false
+        begruendung: "Ein Zusammenhang besteht, aber er ist zweitrangig. Der Sprung entsteht durch das Verfahren selbst: dichte Einbettungen und eine Hash-Näherung liegen in ganz verschiedenen Wertebereichen."
+  - id: kbib-3
+    frage: "Ein Team will die Verweigerung einbauen: Findet der Abruf nichts Passendes, soll das System sagen, dass es die Antwort nicht hat. Was muss zuerst da sein?"
+    antworten:
+      - text: "Eine Schwelle, ab der ein Treffer als unpassend gilt"
+        richtig: true
+        begruendung: "Ohne Boden wird die Kandidatenliste nie leer, und der Verweigerungszweig ist unerreichbar. Er steht dann im Code, sieht nach Sorgfalt aus und läuft nie."
+      - text: "Ein Prompt, der dem Modell das Verweigern erlaubt"
+        richtig: false
+        begruendung: "Nötig, aber nicht hinreichend. Wenn dem Modell fünf schwache Dokumente als Kontext vorgelegt werden, hat es Material und wird es benutzen — die Erlaubnis allein löst nichts aus."
+      - text: "Ein zweites Modell, das die Antwort auf Belegtheit prüft"
+        richtig: false
+        begruendung: "Das prüft hinterher, was vorher hätte verhindert werden können, und kostet einen zweiten Aufruf. Es ersetzt den fehlenden Boden nicht, sondern verschiebt das Problem nach hinten."
+      - text: "Eine Websuche als Ersatzquelle"
+        richtig: false
+        begruendung: "Ein Ersatzweg ist keine Verweigerung, sondern ihr Gegenteil: Er beschafft Material, statt Materialmangel einzugestehen. Und er wird über denselben Test ausgelöst, der ohne Boden nie anschlägt."
+transfer:
+  id: kbib-transfer
+  frage: "Ein Rauchmelder soll Alarm geben, wenn die Partikeldichte einen Grenzwert übersteigt. Bei der Abnahme stellt sich heraus: Der Grenzwert wurde nie gesetzt, das Feld steht auf dem Wert, mit dem der Sensor ausgeliefert wurde. Was ist die zutreffende Beschreibung?"
+  antworten:
+    - text: "Der Melder hat einen Grenzwert, nur hat ihn niemand gewählt"
+      richtig: true
+      begruendung: "Ein Vergleich braucht immer einen Wert. Fehlt die bewusste Wahl, entscheidet der Auslieferungszustand — und niemand kann sagen, ob er zur Situation passt, weil niemand ihn geprüft hat."
+    - text: "Der Melder hat keinen Grenzwert und löst deshalb bei jedem Rauch aus"
+      richtig: false
+      begruendung: "Das verwechselt „nicht gesetzt“ mit „nicht vorhanden“. Der Vergleich findet statt; er benutzt nur einen Wert, den niemand verantwortet."
+    - text: "Der Melder ist unbrauchbar, bis der Grenzwert gesetzt ist"
+      richtig: false
+      begruendung: "Möglich, aber nicht feststellbar. Der Auslieferungswert kann zufällig passen oder weit danebenliegen — der Mangel ist die fehlende Kenntnis, nicht die sichere Fehlfunktion."
+    - text: "Der Grenzwert ist unerheblich, solange der Sensor kalibriert ist"
+      richtig: false
+      begruendung: "Kalibrierung sorgt dafür, dass die Messung stimmt. Was mit dem Messwert geschieht, entscheidet allein die Schwelle — eine genaue Messung an einer falschen Grenze hilft nicht."
+quellen:
+  - pfad: "rag_tutorials/hybrid_search_rag"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/hybrid_search_rag"
+  - pfad: "rag_tutorials/rag_agent_cohere"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/rag_agent_cohere"
+  - pfad: "rag_tutorials/llama3.1_local_rag"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/llama3.1_local_rag"
+  - pfad: "rag_tutorials/agentic_rag_math_agent"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/agentic_rag_math_agent"
+---
+
+Du baust einen Ersatzweg ein: Findet der Abruf nichts Passendes, soll das System auf eine andere Quelle ausweichen oder ehrlich sagen, dass es die Antwort nicht hat. Der Code dafür ist eine Zeile — `if dokumente:` — und sieht nach Sorgfalt aus. Zwei Monate später fällt auf, dass dieser Zweig noch nie gelaufen ist. Nicht, weil der Abruf immer trug, sondern weil eine Ähnlichkeitssuche mit festem `k` immer genau `k` Treffer liefert. Die Liste wird nie leer. Der Wert, der etwas über die Güte gesagt hätte, wurde eine Zeile vorher weggeworfen.
+
+<Pipeline
+  einheit="Dokument"
+  einheitPlural="Dokumenten"
+  schritte={[
+    { id: 'anfrage', titel: 'Anfrage', wirkung: 'Wie lange läuft die Gewährleistung für die Dachabdichtung?' },
+    { id: 'suche', titel: 'Ähnlichkeitssuche', wirkung: 'Holt die fünf ähnlichsten Abschnitte — samt Ähnlichkeitswert. Der Korpus enthält zu dieser Frage nichts.' },
+    { id: 'schwelle', titel: '+ Schwelle 0,45', wirkung: 'Verwirft alles darunter. Ohne diesen Schritt wird der Wert nicht gelesen, sondern verworfen.', optional: true, standardAn: false },
+    { id: 'leertest', titel: 'if dokumente:', wirkung: 'Ist die Liste leer, greift der Ersatzweg. Nur dann.' },
+    { id: 'verweigern', titel: '+ Verweigern statt raten', wirkung: 'Bei leerer Liste keine Antwort erzeugen, sondern die Lücke benennen.', optional: true, standardAn: false },
+    { id: 'antwort', titel: 'Antwort', wirkung: 'Was beim Fragenden ankommt.' }
+  ]}
+  ergebnisse={[
+    {
+      wenn: [],
+      ausgabe: [
+        { text: 'Baustellenordnung, Abschnitt Zutritt — 0,38', treffer: false },
+        { text: 'Protokoll JF 14, allgemeiner Terminstand — 0,36', treffer: false },
+        { text: 'Nachtrag 3, Kostenübernahme Erdarbeiten — 0,34', treffer: false },
+        { text: 'Sicherheitsunterweisung Kranbetrieb — 0,33', treffer: false },
+        { text: 'Protokoll JF 9, Verzug Rohbau — 0,31', treffer: false }
+      ],
+      hinweis: 'Fünf Abschnitte im Kontext, keiner zum Thema. Die Liste ist gefüllt, also greift der Ersatzweg nicht — das System antwortet flüssig und aus dem Modellwissen. Wer die Antwort liest, sieht ihr nicht an, dass sie auf nichts steht.'
+    },
+    {
+      wenn: ['verweigern'],
+      ausgabe: [
+        { text: 'Baustellenordnung, Abschnitt Zutritt — 0,38', treffer: false },
+        { text: 'Protokoll JF 14, allgemeiner Terminstand — 0,36', treffer: false },
+        { text: 'Nachtrag 3, Kostenübernahme Erdarbeiten — 0,34', treffer: false },
+        { text: 'Sicherheitsunterweisung Kranbetrieb — 0,33', treffer: false },
+        { text: 'Protokoll JF 9, Verzug Rohbau — 0,31', treffer: false }
+      ],
+      hinweis: 'Die Verweigerung ist eingebaut und läuft trotzdem nicht. Sie hängt am Leertest, und der schlägt nie an. Ein Zweig, der im Code steht, geprüft aussieht und unerreichbar ist.'
+    },
+    {
+      wenn: ['schwelle'],
+      ausgabe: [
+        { text: 'verworfen: Baustellenordnung — 0,38 < 0,45', treffer: false },
+        { text: 'verworfen: Protokoll JF 14 — 0,36 < 0,45', treffer: false },
+        { text: 'verworfen: Nachtrag 3 — 0,34 < 0,45', treffer: false },
+        { text: 'verworfen: Sicherheitsunterweisung — 0,33 < 0,45', treffer: false },
+        { text: 'verworfen: Protokoll JF 9 — 0,31 < 0,45', treffer: false }
+      ],
+      hinweis: 'Jetzt wird der Wert gelesen, und die Liste läuft leer. Der Ersatzweg greift zum ersten Mal — aber ohne Verweigerung endet er wieder beim Modellwissen, nur diesmal ohne Kontext davor.'
+    },
+    {
+      wenn: ['schwelle', 'verweigern'],
+      ausgabe: [
+        { text: 'Kein Abschnitt über 0,45 — kein Kontext', treffer: false },
+        { text: 'Ausgabe: „Dazu finde ich in diesem Bestand nichts.“', treffer: true }
+      ],
+      hinweis: 'Erst beide zusammen tragen. Die Schwelle macht die Lücke sichtbar, die Verweigerung spricht sie aus. Beachte, dass sich der Abruf in allen vier Fällen gleich verhalten hat — geändert hat sich nur, was das System daraus macht.'
+    }
+  ]}
+/>

@@ -1,0 +1,131 @@
+---
+titel: "Auslagern nimmt die Grundlage, nicht die Entscheidung"
+prinzip: "Ein verwalteter Dienst nimmt dir nicht die Abruf-Entscheidungen ab, sondern die Grundlage, sie zu treffen."
+reihenfolge: 4
+gesperrt: false
+fragen:
+  - id: ang-1
+    frage: "Eine Anwendung ruft einen verwalteten RAG-Dienst auf. Die Antwort enthält je Abschnitt einen Ähnlichkeitswert. Der Code macht daraus `[abschnitt.text for abschnitt in antwort.treffer]`. Was ist damit unmöglich geworden?"
+    antworten:
+      - text: "Jede Entscheidung, die von der Güte des Treffers abhängt"
+        richtig: true
+        begruendung: "Ohne den Wert lässt sich weder eine Schwelle ziehen noch begründet verweigern noch die Reihenfolge beurteilen. Der Dienst hatte die Zahl geliefert; eine Zeile hat sie verworfen."
+      - text: "Die Antwort zu belegen"
+        richtig: false
+        begruendung: "Der Text ist ja noch da, man kann ihn neben die Behauptung stellen. Verloren ist die Einschätzung, wie gut er passt — nicht der Beleg selbst."
+      - text: "Den Dienst zu wechseln"
+        richtig: false
+        begruendung: "Der Wechsel wird sogar leichter, weil die Anwendung weniger vom Anbieter kennt. Der Preis dafür ist genau das, worum es hier geht."
+      - text: "Nachträglich zu reranken"
+        richtig: false
+        begruendung: "Reranking arbeitet auf dem Text und braucht die Werte des ersten Laufs nicht. Es bleibt möglich — und ist einer der wenigen Handgriffe, die man sich zurückholen kann."
+  - id: ang-2
+    frage: "Ein anderer Dienst liefert als Beleg zu jeder Antwort ein Bild der Quellseite. Warum ist das schwächer, als es aussieht?"
+    antworten:
+      - text: "Ein Bild lässt sich ansehen, aber nicht mit der Behauptung abgleichen"
+        richtig: true
+        begruendung: "Prüfen hieße, den zitierten Wortlaut im Quelltext wiederzufinden. Ein Bild gibt dem Menschen einen Eindruck und der Anwendung nichts — kein Abgleich, keine Teilprüfung, keine Zurückweisung."
+      - text: "Bilder sind zu groß für die Übertragung"
+        richtig: false
+        begruendung: "Ein Kostenargument, kein grundsätzliches. Auch bei beliebiger Bandbreite bliebe der Beleg für die Anwendung undurchdringlich."
+      - text: "Die Seite kann Text enthalten, der nicht zur Antwort gehört"
+        richtig: false
+        begruendung: "Das stimmt und gilt für Textausschnitte genauso. Der eigentliche Unterschied ist, dass sich beim Ausschnitt wenigstens maschinell nachsehen lässt."
+      - text: "Das Bild zeigt nicht, welches Modell geantwortet hat"
+        richtig: false
+        begruendung: "Das tut ein Textausschnitt auch nicht. Die Frage ist, ob sich die Behauptung an der Quelle prüfen lässt, nicht wer sie erzeugt hat."
+  - id: ang-3
+    frage: "Wohin wandern die Kompensationen, wenn die Abruf-Grundlage fehlt?"
+    antworten:
+      - text: "In den Prompt und in die Bewertung — die zwei Dinge, die im Haus bleiben"
+        richtig: true
+        begruendung: "Man kann nicht mehr filtern, also weist man das Modell an, vorsichtig zu sein, und lässt die Antwort hinterher bewerten. Beides wirkt später und schwächer als eine Schwelle, die vorher greift."
+      - text: "In die Auswahl des Dienstes"
+        richtig: false
+        begruendung: "Der Anbieterwechsel ist eine einmalige Entscheidung und ersetzt keine je Anfrage. Die Lücke tut sich bei jeder einzelnen Abfrage auf."
+      - text: "In eine zweite Abrufschicht im Haus"
+        richtig: false
+        begruendung: "Das wäre die gründliche Lösung und hebt das Auslagern teilweise wieder auf. Beobachtet wird meist das Gegenteil: Man behilft sich mit dem, was ohne Umbau geht."
+      - text: "In die Aufbereitung der Dokumente vor dem Hochladen"
+        richtig: false
+        begruendung: "Bessere Dokumente helfen immer, ändern aber nichts daran, dass man den Treffer zur Laufzeit nicht mehr beurteilen kann."
+transfer:
+  id: ang-transfer
+  frage: "Ein Bauherr vergibt die Rechnungsprüfung an ein externes Büro. Er bekommt monatlich eine Freigabeliste, aber weder die Prüfvermerke noch die Massenermittlungen. Was hat er abgegeben?"
+  antworten:
+    - text: "Nicht die Verantwortung für die Freigabe, sondern die Möglichkeit, sie zu beurteilen"
+      richtig: true
+      begruendung: "Er zahlt weiterhin und haftet weiterhin — die Entscheidung bleibt seine. Nur die Unterlagen, an denen sie zu überprüfen wäre, sind nicht mehr bei ihm."
+    - text: "Die Verantwortung für die Rechnungsprüfung"
+      richtig: false
+      begruendung: "Die Prüfung kann man vergeben, die Verantwortung für die Zahlung nicht. Sie bleibt beim Bauherrn, nur ohne Einsicht in die Grundlage."
+    - text: "Nichts Wesentliches, solange das Büro fachkundig ist"
+      richtig: false
+      begruendung: "Fachkunde vorausgesetzt bleibt die Frage, wie er einen Fehler bemerken würde. Ohne Vermerke fällt eine falsche Freigabe erst auf, wenn sie Folgen hat."
+    - text: "Die Möglichkeit, das Büro zu wechseln"
+      richtig: false
+      begruendung: "Wechseln kann er jederzeit. Was fehlt, ist der Anhaltspunkt, wann ein Wechsel nötig wäre."
+quellen:
+  - pfad: "rag_tutorials/rag-as-a-service"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/rag-as-a-service"
+  - pfad: "rag_tutorials/contextualai_rag_agent"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/contextualai_rag_agent"
+  - pfad: "rag_tutorials/ai_blog_search"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/ai_blog_search"
+---
+
+Ein verwalteter Dienst übernimmt Zerlegen, Einbetten, Indizieren und Sortieren. Übrig bleiben zwei Dinge: der Systemprompt und das antwortende Modell. Das klingt nach einem guten Tausch — jemand anderes macht die schwierige Hälfte, und zwar besser. Sieh genauer hin, was in der Antwort des Dienstes steht und was davon im Code ankommt. In einer der beiden untersuchten Anwendungen liefert der Dienst zu jedem Abschnitt einen Ähnlichkeitswert, und eine einzige Zeile wirft ihn weg. In der anderen kommt gar kein Wert und kein Abschnittstext an — der Beleg ist ein Bild der Quellseite.
+
+<Pipeline
+  einheit="Abschnitt"
+  einheitPlural="Abschnitten"
+  schritte={[
+    { id: 'anfrage', titel: 'Anfrage', wirkung: 'Welche Fristen nennt der Nachtrag zur Bauzeitverlängerung?' },
+    { id: 'dienst', titel: 'Verwalteter Dienst', wirkung: 'Zerlegt, bettet ein, indiziert, sortiert. Liefert fünf Abschnitte zurück — mit Werten.' },
+    { id: 'werte-behalten', titel: '+ Werte behalten', wirkung: 'Die gelieferten Ähnlichkeitswerte nicht wegwerfen, sondern bis zur Entscheidung mitführen.', optional: true, standardAn: false },
+    { id: 'selbst-abrufen', titel: '+ Selbst abrufen', wirkung: 'Den Abruf im Haus betreiben. Text, Werte und die Möglichkeit zu reranken bleiben verfügbar.', optional: true, standardAn: false },
+    { id: 'kontext', titel: 'Was ins Kontextfenster geht', wirkung: 'Und wie viel davon tatsächlich zur Frage gehört.' }
+  ]}
+  ergebnisse={[
+    {
+      wenn: [],
+      ausgabe: [
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Fristen', treffer: true },
+        { text: 'Nachtrag 7 — Anlage 2, Kostenaufstellung', treffer: true },
+        { text: 'Baustellenordnung, Abschnitt Zutritt', treffer: false },
+        { text: 'Sicherheitsunterweisung Kranbetrieb', treffer: false },
+        { text: 'Protokoll JF 14, allgemeiner Terminstand', treffer: false }
+      ],
+      hinweis: 'Zwei von fünf gehören zur Frage — aber diese Markierung siehst nur du hier im Bild. Die Anwendung sieht sie nicht: Der Dienst hat Werte geliefert, der Code hat sie in derselben Zeile verworfen, in der er den Text herausgezogen hat. Alle fünf gehen ins Kontextfenster.'
+    },
+    {
+      wenn: ['werte-behalten'],
+      ausgabe: [
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Fristen — 0,71', treffer: true },
+        { text: 'Nachtrag 7 — Anlage 2, Kostenaufstellung — 0,64', treffer: true },
+        { text: 'verworfen: Baustellenordnung — 0,29', treffer: false }
+      ],
+      hinweis: 'Dieselbe Antwort des Dienstes, nur nicht beschnitten. Jetzt lässt sich eine Schwelle ziehen, und drei Abschnitte fallen heraus. Der Dienst hat nichts anders gemacht — die Anwendung hört nur auf, wegzuwerfen, was sie bekommt.'
+    },
+    {
+      wenn: ['selbst-abrufen'],
+      ausgabe: [
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Fristen', treffer: true },
+        { text: 'Nachtrag 7 — Anlage 2, Kostenaufstellung', treffer: true },
+        { text: 'Schriftverkehr AG — Anerkennung der Verlängerung', treffer: true },
+        { text: 'Protokoll JF 12 — Beschluss zum Nachtrag', treffer: true }
+      ],
+      hinweis: 'Im Haus abgerufen. Jetzt sind Text und Werte da, und ein eigener Reranker holt zwei Abschnitte nach vorn, die der Dienst hinten hatte. Das ist der Handgriff, den kein verwalteter Dienst zurückgibt.'
+    },
+    {
+      wenn: ['selbst-abrufen', 'werte-behalten'],
+      ausgabe: [
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Fristen — 0,82', treffer: true },
+        { text: 'Nachtrag 7 — Anlage 2, Kostenaufstellung — 0,77', treffer: true },
+        { text: 'Schriftverkehr AG — Anerkennung der Verlängerung — 0,69', treffer: true },
+        { text: 'Protokoll JF 12 — Beschluss zum Nachtrag — 0,61', treffer: true }
+      ],
+      hinweis: 'Der zweite Schalter tut hier nichts mehr: Wer selbst abruft, hat die Werte ohnehin. Das ist der Punkt der Lektion — die Entscheidungen waren nie weg, nur die Grundlage. Wer sie zurückholt, holt beides.'
+    }
+  ]}
+/>
