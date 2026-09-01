@@ -12,7 +12,7 @@ fragen:
         begruendung: "Der Reranker sortiert nur, was die Suche bereits geholt hat. Ein Dokument, das nicht unter den Kandidaten war, kann er nicht nach oben schieben."
       - text: "Die Precision der obersten fünf Treffer"
         richtig: false
-        begruendung: "Genau dafür ist er da. Im Bild oben steigt sie von einem auf drei Treffer, ohne dass ein einziges Dokument neu gefunden wurde."
+        begruendung: "Genau dafür ist er da. Im Bild oben steigt sie von einem auf drei Treffer, ohne dass die Suche ein einziges Dokument zusätzlich geholt hätte."
       - text: "Die Qualität der Antwort des Modells"
         richtig: false
         begruendung: "Sie steigt mit, weil das Modell besseren Kontext bekommt. Das ist eine Folge, kein Widerspruch."
@@ -106,7 +106,7 @@ Deine Suche liefert schlechte Treffer. Die naheliegende Reaktion ist ein bessere
         { text: 'Protokoll JF 9 — Verzug Rohbau', treffer: false },
         { text: 'Nachtrag 3 — Kostenübernahme Erdarbeiten', treffer: false }
       ],
-      hinweis: 'Drei Treffer statt einem, ohne dass ein einziges Dokument neu gefunden wurde. Der Reranker hat nur sortiert.'
+      hinweis: 'Drei Treffer statt einem — und die Suche hat kein einziges Dokument zusätzlich geholt. Die neu erschienenen Zeilen standen längst unter den 50 Kandidaten, nur zu weit hinten für die Top 5.'
     },
     {
       wenn: ['bm25'],
