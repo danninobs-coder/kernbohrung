@@ -20,9 +20,12 @@
 ```
 260901_Kernbohrung/
 ├─ inhalt/lektionen/
+│  ├─ .gitkeep
 │  └─ recall-vor-precision.mdx      Der Inhalt. Später vom Compiler erzeugt.
 ├─ src/
-│  ├─ content.config.ts             Collection + Frontmatter-Schema (die Qualitätsschranke)
+│  ├─ content.config.ts             Collection-Definition, dünn — importiert aus content/schema.ts
+│  ├─ content/
+│  │  └─ schema.ts                  Frontmatter-Schema (die Qualitätsschranke), bewusst ohne astro:content-Import
 │  ├─ lib/mischen.ts                Deterministisches Mischen, seed-basiert
 │  ├─ widgets/
 │  │  ├─ schema.ts                  Zod-Schemas + Hilfsfunktionen aller Widget-Typen
@@ -40,9 +43,11 @@
 │  │  └─ lektion/[...slug].astro    Eine Lektion
 │  └─ styles/global.css             Minimal, nur Lesbarkeit
 ├─ tests/
-│  ├─ schema.test.ts
+│  ├─ aufbau.test.ts                Rauchtest aus Aufgabe 1
+│  ├─ schema.test.tsx               Widget-Schema und Pipeline-Komponente
 │  ├─ mischen.test.ts
-│  └─ frage.test.tsx
+│  ├─ frage.test.tsx
+│  └─ content-schema.test.ts        Lektions-Schema, unabhängig von astro:content ladbar
 ├─ docs/superpowers/plans/2026-09-01-abschnitt-1-skelett.md   (dieser Plan)
 ├─ astro.config.mjs
 ├─ vitest.config.ts
@@ -50,7 +55,7 @@
 └─ package.json
 ```
 
-**Verantwortlichkeiten, kurz:** `schema.ts` kennt Widget-Parameter und sonst nichts — es wird in Abschnitt 2 unverändert vom Compiler importiert. `mischen.ts` ist reine Mathematik ohne UI-Bezug. `Frage.tsx` weiß nichts über Lektionen, nur über eine Frage. `Lektion.astro` ist der einzige Ort, der die Taktfolge kennt.
+**Verantwortlichkeiten, kurz:** `widgets/schema.ts` kennt Widget-Parameter und sonst nichts — es wird in Abschnitt 2 unverändert vom Compiler importiert. `content/schema.ts` kennt das Lektions-Frontmatter und bleibt frei von `astro:content`, damit Tests und Compiler es importieren können. `mischen.ts` ist reine Mathematik ohne UI-Bezug. `Frage.tsx` weiß nichts über Lektionen, nur über eine Frage. `Lektion.astro` ist der einzige Ort, der die Taktfolge kennt.
 
 ---
 
@@ -111,13 +116,17 @@ import { getViteConfig } from 'astro/config';
 export default getViteConfig({
   test: {
     environment: 'jsdom',
+    // Nicht aus Bequemlichkeit gesetzt: @testing-library/react registriert sein
+    // afterEach(cleanup) nur, wenn afterEach global existiert. Ohne globals: true
+    // bleibt das Aufraeumen zwischen Tests lautlos aus, und Komponententests
+    // finden Elemente aus vorherigen Tests wieder.
     globals: true,
     include: ['tests/**/*.test.{ts,tsx}'],
   },
 });
 ```
 
-`globals: true` ist nötig, damit die automatische Aufräumroutine von @testing-library/react zwischen den Tests greift. In den Testdateien wird trotzdem explizit aus `vitest` importiert — das ist erlaubt und macht die Dateien für sich lesbar.
+In den Testdateien wird trotzdem explizit aus `vitest` importiert — das ist erlaubt und macht die Dateien für sich lesbar.
 
 - [ ] **Schritt 7: Skripte in `package.json` eintragen**
 
@@ -332,6 +341,51 @@ describe('PipelineProps als Schranke', () => {
     }
   });
 
+  it('lehnt Ids in wenn ab, die den Schluessel zerlegen wuerden', () => {
+    // Dieselbe Gefahr wie bei SchrittSchema.id: ein `+` im Eintrag macht
+    // ['a+b'] und ['a', 'b'] zum selben Schluessel.
+    const kaputt = {
+      ...gueltig,
+      ergebnisse: [
+        { wenn: ['a+b'], ausgabe: [{ text: 'A', treffer: false }], hinweis: 'x' },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('lehnt zwei Ausgabezeilen mit demselben Text ab', () => {
+    const kaputt = {
+      ...gueltig,
+      ergebnisse: [
+        {
+          wenn: [],
+          ausgabe: [
+            { text: 'Nachtrag 7', treffer: true },
+            { text: 'Nachtrag 7', treffer: false },
+          ],
+          hinweis: 'x',
+        },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('lehnt einen unbekannten Zusatzschluessel ab, statt ihn still zu verwerfen', () => {
+    const kaputt = { ...gueltig, erfundenesFeld: 'aus einer Halluzination' };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('nimmt einheitPlural an, verlangt es aber nicht', () => {
+    expect(PipelineProps.parse(gueltig).einheitPlural).toBeUndefined();
+
+    const mitPlural = PipelineProps.parse({
+      ...gueltig,
+      einheit: 'Passage',
+      einheitPlural: 'Passagen',
+    });
+    expect(mitPlural.einheitPlural).toBe('Passagen');
+  });
+
   it('lehnt reinen Leerraum als Titel ab', () => {
     const kaputt = {
       ...gueltig,
@@ -346,17 +400,30 @@ describe('PipelineProps als Schranke', () => {
 ```
 
 Der zweite Block ist nicht Kür. Das Schema ist die Qualitätsschranke, die der
-Compiler aus Abschnitt 2 unverändert importiert; die drei Löcher, die er
-schließt, erzeugen jeweils **strukturell gültige** Daten und damit keinen
-Fehler, sondern nur ein falsches Ergebnis:
+Compiler aus Abschnitt 2 unverändert importiert; jedes der folgenden Löcher
+erzeugt **strukturell gültige** Daten und damit keinen Fehler, sondern nur ein
+falsches Ergebnis oder ein lautlos verworfenes Signal:
 
 - Ein `+` in einer Id bricht den kanonischen Schlüssel: `schluessel(['a+b','c'])`
-  und `schluessel(['a','b+c'])` liefern beide `'a+b+c'`.
+  und `schluessel(['a','b+c'])` liefern beide `'a+b+c'`. Dieselbe Gefahr gilt
+  für `wenn`-Einträge, deshalb prüft dasselbe Zeichensatz-Muster beide Stellen.
 - Zwei Schritte mit derselben Id lassen `fehlendeKombinationen` dieselbe Lücke
   doppelt melden und erfinden eine Phantom-Kombination `a+a`; in der Komponente
   gäbe es zusätzlich doppelte React-Keys.
 - Zwei `ergebnisse`-Einträge mit demselben Schlüssel: `findeErgebnis` nimmt still
   den ersten, und die Abdeckungsprüfung zählt die Dopplung als „vorhanden".
+- Zwei `ausgabe`-Zeilen mit demselben Text ergäben in der Pipeline-Komponente
+  denselben React-Key — derselbe Grund wie bei den Schritt-Ids, nur auf der
+  Ausgabeseite.
+- Ein unbekannter Zusatzschlüssel wäre bei `z.object` harmloser Beifang gewesen.
+  Er ist stattdessen das wahrscheinlichste Symptom eines halluzinierenden
+  Generators, deshalb lehnt `z.strictObject` ihn ab, statt ihn lautlos zu
+  verwerfen.
+
+`einheitPlural` ist kein Loch, sondern eine Ergänzung: deutsche Plurale sind
+unregelmäßig, „Dokument" plus „en" trägt, „Passage" plus „en" nicht — wo die
+Anhängeregel scheitert, kann der Plural ausgeschrieben werden. Das Feld bleibt
+optional, der Test dazu prüft nur, dass beide Fälle durchgehen.
 
 - [ ] **Schritt 2: Test laufen lassen, Fehlschlag bestätigen**
 
@@ -374,44 +441,76 @@ Datei `src/widgets/schema.ts`:
 import { z } from 'astro/zod';
 
 /**
+ * Erlaubter Zeichensatz für Schritt-Ids — Kleinbuchstaben, Ziffern, einzelne
+ * Bindestriche als Trenner.
+ *
+ * Existiert, damit `schluessel()` eindeutig bleibt: dort werden Ids mit `+`
+ * verkettet. Enthielte eine Id selbst ein `+`, wären `['a+b', 'c']` und
+ * `['a', 'b+c']` derselbe Schlüssel. Die Regel muss deshalb an *beiden*
+ * Stellen gelten, an denen Schritt-Ids auftreten: bei ihrer Definition
+ * (`SchrittSchema.id`) und bei ihrer Verwendung (`ErgebnisSchema.wenn`).
+ */
+const ID_MUSTER = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const ID_MELDUNG =
+  'nur Kleinbuchstaben, Ziffern und Bindestrich - keine Leerzeichen oder Sonderzeichen.';
+
+/**
  * Kanonischer Schlüssel einer Menge aktiver Schritt-Ids.
  *
  * Steht bewusst vor den Schema-Definitionen: PipelineProps prüft damit, ob
  * zwei Einträge in `ergebnisse` für dieselbe Kombination gelten.
  *
  * Das Trennzeichen `+` ist nur eindeutig, solange keine Id selbst ein `+`
- * enthält — sonst wären `['a+b', 'c']` und `['a', 'b+c']` derselbe Schlüssel.
- * Dafür sorgt die Zeichensatz-Regel auf `SchrittSchema.id`.
+ * enthält. Dafür sorgt ID_MUSTER.
  */
 export function schluessel(ids: readonly string[]): string {
   return [...ids].sort().join('+');
 }
 
-export const SchrittSchema = z.object({
-  id: z.string().regex(
-    /^[a-z0-9]+(-[a-z0-9]+)*$/,
-    'nur Kleinbuchstaben, Ziffern und Bindestrich - keine Leerzeichen oder Sonderzeichen.',
-  ),
+// strictObject statt object: ein Zusatzfeld ist hier kein harmloser Beifang,
+// sondern das wahrscheinlichste Symptom eines halluzinierenden Generators.
+// Lautlos verwerfen hiesse, den Fehler zu verstecken. Gemessen: Astro reicht
+// exakt die Schluessel des Aufrufers weiter, Slot-Inhalt geht getrennt nach
+// Astro.slots - die Verschaerfung trifft also keinen legitimen Fall.
+export const SchrittSchema = z.strictObject({
+  id: z.string().regex(ID_MUSTER, ID_MELDUNG),
   titel: z.string().trim().min(1),
   wirkung: z.string().trim().min(1),
   optional: z.boolean().default(false),
   standardAn: z.boolean().default(true),
 });
 
-export const AusgabeZeileSchema = z.object({
+export const AusgabeZeileSchema = z.strictObject({
   text: z.string().trim().min(1),
   treffer: z.boolean(),
 });
 
-export const ErgebnisSchema = z.object({
-  wenn: z.array(z.string()),
-  ausgabe: z.array(AusgabeZeileSchema).min(1),
-  hinweis: z.string().trim().min(1),
-});
+export const ErgebnisSchema = z
+  .strictObject({
+    // Dasselbe Muster wie SchrittSchema.id: ein `+` zerlegt den Schluessel
+    // hier genauso wie dort.
+    wenn: z.array(z.string().regex(ID_MUSTER, ID_MELDUNG)),
+    ausgabe: z.array(AusgabeZeileSchema).min(1),
+    hinweis: z.string().trim().min(1),
+  })
+  .refine(
+    (e) => new Set(e.ausgabe.map((zeile) => zeile.text)).size === e.ausgabe.length,
+    {
+      // Die Komponente nutzt den Text als React-key. Doppelte Texte ergaeben
+      // doppelte keys - eine Warnung zur Laufzeit statt eines Befunds hier.
+      // Verglichen wird der bereits getrimmte Wert, genau der wird key.
+      message: 'Zwei Zeilen in ausgabe haben denselben Text.',
+      path: ['ausgabe'],
+    },
+  );
 
 export const PipelineProps = z
-  .object({
+  .strictObject({
     einheit: z.string().trim().min(1).default('Dokument'),
+    // Deutsche Plurale sind unregelmaessig: "Dokument" + "en" traegt,
+    // "Passage" + "en" und "Chunk" + "en" nicht. Wo die Anhaengeregel
+    // scheitert, wird der Plural ausgeschrieben.
+    einheitPlural: z.string().trim().min(1).optional(),
     // Das Maximum deckelt die 2^n-Laufzeit von fehlendeKombinationen und ist
     // zugleich didaktisch sinnvoll: mehr als acht Stufen liest niemand mehr.
     schritte: z.array(SchrittSchema).min(2).max(8),
@@ -468,17 +567,20 @@ export function fehlendeKombinationen(daten: PipelineDaten): string[] {
 npx vitest run tests/schema.test.ts
 ```
 
-Erwartet: 14 Tests grün.
+Erwartet: 18 Tests grün.
 
 Zwei Punkte, die beim Nacharbeiten leicht danebengehen:
 
 - `schluessel` steht **vor** den Schema-Definitionen. Die zweite `.refine()`-Klausel
   ruft die Funktion auf; stünde sie wie sonst üblich unten bei den Hilfsfunktionen,
   griffe die Referenz ins Leere.
-- `z.object` bleibt `z.object` und wird **nicht** zu `z.strictObject`. Das wurde
-  erwogen und bewusst verworfen: Die `.astro`-Hülle aus Aufgabe 5, Schritt 5 reicht
-  `Astro.props` per Spread an die React-Insel weiter. Legt Astro dabei etwas bei,
-  würde ein striktes Schema zur Laufzeit fehlschlagen. Das wird separat geprüft.
+- Alle Objekte nutzen `z.strictObject`, nicht `z.object`. Gemessen, nicht vermutet:
+  Die `.astro`-Hülle aus Aufgabe 5, Schritt 5 reicht `Astro.props` per Spread an die
+  React-Insel weiter, und Astro legt dabei nichts an zusätzlichen Schlüsseln bei —
+  ein Zusatzfeld ist also so gut wie immer das Symptom eines halluzinierenden
+  Generators, nicht harmloser Beifang. Die eine Ausnahme ist `children`: React
+  reicht es bei der Hydration mit, Astro serverseitig nicht. Dafür gibt es in
+  Aufgabe 5, Schritt 3 eine eigene Zeile im Widget, keine Lockerung des Schemas.
 
 - [ ] **Schritt 5: Committen**
 
@@ -709,6 +811,24 @@ describe('Frage', () => {
     const zweite = screen.getAllByRole('button').map((b) => b.textContent);
     expect(zweite).toEqual(erste);
   });
+
+  it('behaelt die Zuordnung, wenn das Elternteil die Antworten umsortiert', async () => {
+    const nutzer = userEvent.setup();
+    const { rerender } = render(<Frage {...daten} />);
+    await nutzer.click(knopf('Den Index'));
+    expect(knopf('Den Index').dataset.zustand).toBe('falsch');
+
+    // Gleiche Objekte, rotierte Reihenfolge - so wie ein Elternteil sie
+    // nach einem Re-Render liefern koennte. Bewusst Rotation und kein
+    // reverse(): bei drei Elementen bleibt beim Umdrehen das mittlere
+    // stehen, und ein Index-Fehler an dieser Stelle bliebe verdeckt.
+    const rotiert = [daten.antworten[1], daten.antworten[2], daten.antworten[0]];
+    rerender(<Frage {...daten} antworten={rotiert} />);
+
+    expect(knopf('Den Index').dataset.zustand).toBe('falsch');
+    expect(knopf('Die Anfrage').dataset.zustand).toBe('neutral');
+    expect(knopf('Die Kandidaten').dataset.zustand).toBe('richtig');
+  });
 });
 ```
 
@@ -744,13 +864,19 @@ type Zustand = 'offen' | 'richtig' | 'falsch' | 'neutral';
 
 export default function Frage({ id, frage, antworten }: FrageProps) {
   const gemischt = useMemo(() => mischen(antworten, id), [antworten, id]);
-  const [gewaehlt, setGewaehlt] = useState<number | null>(null);
+  // Gemerkt wird die Antwort selbst, nicht ihre Position. Eine Position gilt
+  // nur fuer genau die Reihenfolge, in der sie entstanden ist: liefert das
+  // Elternteil dieselben Antworten spaeter umsortiert, zeigt der Index auf
+  // eine andere Antwort, und die Ansicht behauptet eine Wahl, die der Nutzer
+  // nie getroffen hat - lautlos, ohne Fehler oder Warnung. Die Objektidentitaet
+  // ueberlebt jede Umsortierung.
+  const [gewaehlt, setGewaehlt] = useState<Antwort | null>(null);
   const beantwortet = gewaehlt !== null;
 
-  function zustandVon(antwort: Antwort, index: number): Zustand {
+  function zustandVon(antwort: Antwort): Zustand {
     if (!beantwortet) return 'offen';
     if (antwort.richtig) return 'richtig';
-    if (index === gewaehlt) return 'falsch';
+    if (antwort === gewaehlt) return 'falsch';
     return 'neutral';
   }
 
@@ -758,14 +884,17 @@ export default function Frage({ id, frage, antworten }: FrageProps) {
     <div className="frage" data-beantwortet={beantwortet}>
       <p className="frage-text">{frage}</p>
       <ul className="antworten">
-        {gemischt.map((antwort, index) => (
+        {gemischt.map((antwort) => (
+          // Der Text taugt als key, weil das Lektions-Schema doppelte
+          // Antworttexte innerhalb einer Frage zurueckweist (normalisiert
+          // verglichen). Faellt diese Regel, faellt auch dieser key.
           <li key={antwort.text}>
             <button
               type="button"
               className="antwort"
-              data-zustand={zustandVon(antwort, index)}
+              data-zustand={zustandVon(antwort)}
               disabled={beantwortet}
-              onClick={() => setGewaehlt(index)}
+              onClick={() => setGewaehlt(antwort)}
             >
               {antwort.text}
             </button>
@@ -778,13 +907,21 @@ export default function Frage({ id, frage, antworten }: FrageProps) {
 }
 ```
 
+Die Komponente merkt sich die gewählte Antwort selbst, nicht ihren Index — ein
+Index gilt nur für die Reihenfolge, in der er entstand, und `gemischt` wird bei
+jedem Re-Render neu aus `antworten` berechnet. Reicht ein Elternteil dieselben
+Antworten später umsortiert weiter, zeigte ein gemerkter Index auf die falsche
+Antwort. Der Regressionstest oben (`behaelt die Zuordnung …`) rotiert die Liste
+absichtlich statt sie umzudrehen: Bei drei Elementen bleibt ein `reverse()` beim
+mittleren Element stehen und ein Index-Fehler bliebe unbemerkt.
+
 - [ ] **Schritt 4: Test laufen lassen, Erfolg bestätigen**
 
 ```bash
 npx vitest run tests/frage.test.tsx
 ```
 
-Erwartet: 6 Tests grün.
+Erwartet: 7 Tests grün.
 
 - [ ] **Schritt 5: Committen**
 
@@ -818,6 +955,26 @@ describe('Pipeline-Komponente', () => {
     render(<Pipeline schritte={[]} ergebnisse={[]} />);
     expect(screen.getByText(/ungültige Parameter/i)).toBeTruthy();
   });
+
+  it('stolpert nicht über das children-Prop aus der Hydration', async () => {
+    // Astro reicht children serverseitig nicht mit, React bei der Hydration
+    // schon. Ohne das Verwerfen in Pipeline.tsx weist strictObject es ab und
+    // das Widget kippt im Browser in den Fehlerkasten - waehrend Tests, Build
+    // und das server-gerenderte HTML unauffaellig bleiben.
+    const { render } = await import('@testing-library/react');
+    const { default: Pipeline } = await import('../src/widgets/Pipeline');
+
+    // Bewusst gegen `container` gepruft statt gegen `screen`: Weil
+    // @testing-library/react hier erst waehrend der Testausfuehrung geladen
+    // wird, registriert sich sein afterEach(cleanup) zu spaet - die Hooks der
+    // Suite sind da schon eingesammelt. Reste des vorigen Tests bleiben also
+    // im document. `container` sieht nur den eigenen Renderbaum.
+    const { container } = render(<Pipeline {...gueltig} children={undefined} />);
+
+    expect(container.querySelector('.widget-fehler')).toBeNull();
+    expect(container.querySelector('.widget-pipeline')).toBeTruthy();
+    expect(container.textContent).toContain('ohne');
+  });
 });
 ```
 
@@ -833,7 +990,7 @@ git mv tests/schema.test.ts tests/schema.test.tsx
 npx vitest run tests/schema.test.tsx
 ```
 
-Erwartet: 14 Tests grün, 1 FAIL — Modul `../src/widgets/Pipeline` nicht auflösbar.
+Erwartet: 18 Tests grün, 2 FAIL — Modul `../src/widgets/Pipeline` nicht auflösbar.
 
 - [ ] **Schritt 3: Widget implementieren**
 
@@ -843,7 +1000,23 @@ Datei `src/widgets/Pipeline.tsx`:
 import { useState } from 'react';
 import { PipelineProps, findeErgebnis, type PipelineDaten } from './schema';
 
-export default function Pipeline(props: unknown) {
+/**
+ * Nimmt bewusst einen ungeprueften Schluessel-Wert-Beutel entgegen statt
+ * PipelineDaten: die Parameter kommen aus generiertem MDX, nicht aus
+ * handgeschriebenem TSX. Die Schranke ist die Laufzeitpruefung unten, nicht
+ * der Typ. `unknown` waere hier falsch - TypeScript leitet daraus fuer JSX
+ * `IntrinsicAttributes` ab, womit `<Pipeline schritte={...} />` nicht mehr
+ * typpruefbar ist (ts2322).
+ */
+export default function Pipeline({
+  children: _children,
+  ...props
+}: Record<string, unknown>) {
+  // `children` wird verworfen, bevor geprueft wird. Astro reicht es
+  // serverseitig nicht mit, React bei der Hydration schon - ohne diese Zeile
+  // faellt das Widget im Browser in den Fehlerkasten, waehrend Tests, Build
+  // und das server-gerenderte HTML unauffaellig bleiben. Framework-Rauschen,
+  // kein Inhalt; die strictObject-Schranke gilt weiter fuer alles andere.
   const geprueft = PipelineProps.safeParse(props);
 
   if (!geprueft.success) {
@@ -909,7 +1082,7 @@ function Ansicht({ daten }: { daten: PipelineDaten }) {
             <p className="hinweis">{ergebnis.hinweis}</p>
             <p className="zaehler">
               {ergebnis.ausgabe.filter((z) => z.treffer).length} von {ergebnis.ausgabe.length}{' '}
-              {daten.einheit}en relevant
+              {daten.einheitPlural ?? `${daten.einheit}en`} relevant
             </p>
           </>
         ) : (
@@ -921,13 +1094,22 @@ function Ansicht({ daten }: { daten: PipelineDaten }) {
 }
 ```
 
+> **Hinweiskasten — betrifft jedes künftige Widget:** Astro reicht `children`
+> serverseitig nicht mit, React bei der Hydration schon. Mit `z.strictObject`
+> weist das Schema den Schlüssel sonst ab, und das Widget kippt im Browser in
+> den Fehlerkasten — während Tests, `astro check`, `npm run build` und das
+> server-gerenderte HTML unauffällig bleiben, weil dort keine Hydration
+> stattfindet, die `children` anhängen könnte. Wer Widget Nummer zwei baut,
+> braucht dieselbe Zeile: `children` aus den Props herauslösen und verwerfen,
+> bevor der Rest gegen das strikte Schema geprüft wird.
+
 - [ ] **Schritt 4: Test laufen lassen, Erfolg bestätigen**
 
 ```bash
 npx vitest run tests/schema.test.tsx
 ```
 
-Erwartet: 9 Tests grün.
+Erwartet: 20 Tests grün.
 
 - [ ] **Schritt 5: Hydrations-Hülle anlegen**
 
@@ -968,30 +1150,241 @@ git add src/widgets tests/schema.test.tsx && git commit -m "feat: Pipeline-Widge
 
 ## Aufgabe 6: Content-Collection und Frontmatter-Schema
 
-Hier steht die eigentliche Qualitätsschranke. Das Schema erzwingt, was das Konzept fordert: mindestens zwei und höchstens vier Proben-Fragen, drei bis fünf Antworten je Frage, **genau eine richtige**, und **zu jeder Antwort eine Begründung mit Substanz**. Was das nicht erfüllt, wird nicht gebaut.
+Hier steht die eigentliche Qualitätsschranke. Das Schema erzwingt, was das Konzept fordert: mindestens zwei und höchstens vier Proben-Fragen, drei bis fünf Antworten je Frage, **genau eine richtige**, und **zu jeder Antwort eine Begründung mit Substanz** — dazu eindeutige Antworttexte und Begründungen innerhalb einer Frage, eindeutige Frage-Ids innerhalb der Lektion, und ein `prinzip`, das ein Satz bleibt, kein Absatz. Was das nicht erfüllt, wird nicht gebaut.
+
+Das Schema steht in einer eigenen Datei, getrennt von der Collection-Definition:
+`astro:content` ist nur serverseitig auflösbar, ein Import scheitert unter Vitest
+mit „The 'astro:content' module is only available server-side." Stünden die
+Zod-Regeln in `content.config.ts`, ließe sich die wichtigste Qualitätsschranke
+des Projekts nicht per Unit-Test prüfen und der Lektions-Compiler aus Abschnitt 2
+könnte generierten Inhalt nicht vor dem Schreiben validieren.
 
 **Dateien:**
+- Erstellen: `src/content/schema.ts`
 - Erstellen: `src/content.config.ts`
 - Erstellen: `inhalt/lektionen/.gitkeep`
+- Test: `tests/content-schema.test.ts`
 
-- [ ] **Schritt 1: Content-Konfiguration schreiben**
+- [ ] **Schritt 1: Den fehlschlagenden Test schreiben**
 
-Datei `src/content.config.ts`:
+Datei `tests/content-schema.test.ts`:
 
 ```typescript
-import { defineCollection } from 'astro:content';
-import { glob } from 'astro/loaders';
-import { z } from 'astro/zod';
+import { describe, it, expect } from 'vitest';
+import { LektionSchema } from '../src/content/schema';
 
-const AntwortSchema = z.object({
-  text: z.string().min(1),
-  richtig: z.boolean(),
-  begruendung: z.string().min(20, 'Jede Antwort braucht eine Begründung mit Substanz.'),
+/**
+ * Diese Datei ist der Zweck des Herausloesens: solange die Schemata in
+ * src/content.config.ts standen, war ein Import von aussen unmoeglich —
+ * `astro:content` scheitert auch unter Vitest mit „The 'astro:content'
+ * module is only available server-side.". Der Import oben ist der Nachweis,
+ * dass der Schnitt sitzt.
+ */
+
+function antwort(text: string, richtig = false, begruendung?: string) {
+  return {
+    text,
+    richtig,
+    begruendung: begruendung ?? `Begruendung zu ${text} mit genug Woertern darin.`,
+  };
+}
+
+function frage(id: string) {
+  return {
+    id,
+    frage: 'Was sortiert ein Reranker?',
+    antworten: [antwort('Die Kandidaten', true), antwort('Den Index'), antwort('Die Anfrage')],
+  };
+}
+
+function lektion(aenderung: Record<string, unknown> = {}) {
+  return {
+    titel: 'Eine Lektion',
+    prinzip: 'Recall entsteht beim Holen, Precision beim Sortieren.',
+    reihenfolge: 1,
+    fragen: [frage('f-1'), frage('f-2')],
+    transfer: frage('f-transfer'),
+    quellen: [{ pfad: 'rag_tutorials/hybrid_search_rag' }],
+    ...aenderung,
+  };
+}
+
+describe('LektionSchema - Positivfaelle', () => {
+  it('nimmt eine gueltige Minimallektion an', () => {
+    const ergebnis = LektionSchema.safeParse(lektion());
+    expect(ergebnis.success).toBe(true);
+  });
+
+  it('setzt gesperrt auf false, auch nach dem objektweiten refine', () => {
+    // Ein .refine() auf dem Objekt darf den Standardwert nicht verschlucken.
+    const d = LektionSchema.parse(lektion());
+    expect(d.gesperrt).toBe(false);
+  });
 });
 
-const FrageSchema = z.object({
-  id: z.string().min(1),
-  frage: z.string().min(1),
+describe('LektionSchema - die sechs Loecher', () => {
+  it('1. zaehlt die Laenge erst nach dem Trimmen', () => {
+    function mitBegruendung(begruendung: string) {
+      return lektion({
+        fragen: [
+          {
+            ...frage('f-1'),
+            antworten: [
+              antwort('Die Kandidaten', true),
+              { text: 'Den Index', richtig: false, begruendung },
+              antwort('Die Anfrage'),
+            ],
+          },
+          frage('f-2'),
+        ],
+      });
+    }
+
+    // 20 Leerzeichen bestehen ein min(20) ohne vorheriges trim().
+    expect(LektionSchema.safeParse(mitBegruendung(' '.repeat(20))).success).toBe(false);
+
+    // Der schaerfere Fall: fuenf Woerter, mit Leerraum auf ueber 20 Zeichen
+    // aufgeblaeht. Die Wortpruefung greift hier nicht - nur die Reihenfolge
+    // trim() vor min(20) faengt das ab.
+    const aufgeblaeht = 'a b c d e' + ' '.repeat(30);
+    expect(aufgeblaeht.length).toBeGreaterThan(20);
+    expect(aufgeblaeht.trim().length).toBeLessThan(20);
+    expect(aufgeblaeht.trim().split(/\s+/).filter(Boolean).length).toBe(5);
+    expect(LektionSchema.safeParse(mitBegruendung(aufgeblaeht)).success).toBe(false);
+  });
+
+  it('2. lehnt doppelte Antworttexte ab, auch nur durch Leerraum getrennt', () => {
+    const kaputt = lektion({
+      fragen: [
+        {
+          ...frage('f-1'),
+          antworten: [antwort('Die Kandidaten', true), antwort('Den Index'), antwort('Den Index ')],
+        },
+        frage('f-2'),
+      ],
+    });
+    const ergebnis = LektionSchema.safeParse(kaputt);
+    expect(ergebnis.success).toBe(false);
+    expect(JSON.stringify(ergebnis.error?.issues)).toContain('unterscheiden');
+  });
+
+  it('3. lehnt dieselbe Begruendung unter zwei Antworten ab', () => {
+    const geteilt = 'Dieselbe Begruendung unter zwei Antworten kopiert.';
+    const kaputt = lektion({
+      fragen: [
+        {
+          ...frage('f-1'),
+          antworten: [
+            antwort('Die Kandidaten', true, geteilt),
+            antwort('Den Index', false, geteilt.toUpperCase()),
+            antwort('Die Anfrage'),
+          ],
+        },
+        frage('f-2'),
+      ],
+    });
+    const ergebnis = LektionSchema.safeParse(kaputt);
+    expect(ergebnis.success).toBe(false);
+    expect(JSON.stringify(ergebnis.error?.issues)).toContain('eigene Begründung');
+  });
+
+  it('4. lehnt eine Begruendung ohne Substanz ab, obwohl sie lang genug ist', () => {
+    const fuellung = 'aaaaaaaaaaaaaaaaaaaa';
+    expect(fuellung.length).toBeGreaterThanOrEqual(20);
+    const kaputt = lektion({
+      fragen: [
+        {
+          ...frage('f-1'),
+          antworten: [
+            antwort('Die Kandidaten', true),
+            antwort('Den Index', false, fuellung),
+            antwort('Die Anfrage'),
+          ],
+        },
+        frage('f-2'),
+      ],
+    });
+    expect(LektionSchema.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('5. lehnt eine Kollision zwischen fragen[].id und transfer.id ab', () => {
+    const kaputt = lektion({ transfer: frage('f-1') });
+    const ergebnis = LektionSchema.safeParse(kaputt);
+    expect(ergebnis.success).toBe(false);
+    expect(JSON.stringify(ergebnis.error?.issues)).toContain('eindeutig');
+
+    // und ebenso zwei gleiche Ids unter den Fragen selbst
+    expect(LektionSchema.safeParse(lektion({ fragen: [frage('f-1'), frage('f-1')] })).success).toBe(
+      false,
+    );
+  });
+
+  it('6. lehnt ein prinzip ab, das ein Absatz statt eines Satzes ist', () => {
+    const absatz = 'Wort '.repeat(60).trim();
+    expect(absatz.length).toBeGreaterThan(200);
+    expect(LektionSchema.safeParse(lektion({ prinzip: absatz })).success).toBe(false);
+  });
+});
+```
+
+Die Beschriftung „die sechs Löcher" ist wörtlich gemeint: jeder der sechs Tests
+zielt auf eine Lücke, die eine naive erste Fassung des Schemas hätte — lange
+genug statt inhaltsvoll, wortgleich statt eindeutig, kopiert statt eigen,
+kollidierend statt eindeutig, Absatz statt Satz. Jede Lücke erzeugt **strukturell
+gültige** Daten und damit keinen Fehler, sondern nur eine Lektion, die durchrutscht.
+
+- [ ] **Schritt 2: Test laufen lassen, Fehlschlag bestätigen**
+
+```bash
+npx vitest run tests/content-schema.test.ts
+```
+
+Erwartet: FAIL — Modul `../src/content/schema` nicht auflösbar.
+
+- [ ] **Schritt 3: Content-Schema schreiben**
+
+Datei `src/content/schema.ts`:
+
+```typescript
+import { z } from 'astro/zod';
+
+/**
+ * Das Lektions-Schema — bewusst frei von `astro:content`.
+ *
+ * Der Schnitt ist der Zweck dieser Datei: `src/content.config.ts` importiert
+ * `astro:content` und ist damit von aussen nicht ladbar. Ein Import scheitert
+ * auch unter Vitest mit „The 'astro:content' module is only available
+ * server-side." — die wichtigste Qualitaetsschranke des Projekts liesse sich
+ * also nicht im Unit-Test pruefen, und der Lektions-Compiler koennte
+ * generierten Inhalt nicht vor dem Schreiben validieren.
+ *
+ * Hier steht deshalb nur Zod. `defineCollection` bleibt in content.config.ts.
+ */
+
+/**
+ * Begruendungen sind der Ort, an dem ein Generator am billigsten schummelt:
+ * formal lang genug, inhaltlich leer. Die Wortzahl ist eine Heuristik und
+ * keine Substanzpruefung — „aaa bbb ccc ddd eee" kommt durch. Sie faengt nur
+ * den plumpen Fall der Zeichenfuellung ab, mehr soll sie nicht leisten.
+ */
+const BegruendungSchema = z
+  .string()
+  .trim()
+  .min(20, 'Jede Antwort braucht eine Begründung mit Substanz.')
+  .refine(
+    (s) => s.split(/\s+/).filter(Boolean).length >= 5,
+    'Begründung braucht mindestens fünf Wörter, keine Zeichenfüllung.',
+  );
+
+export const AntwortSchema = z.object({
+  text: z.string().trim().min(1),
+  richtig: z.boolean(),
+  begruendung: BegruendungSchema,
+});
+
+export const FrageSchema = z.object({
+  id: z.string().trim().min(1),
+  frage: z.string().trim().min(1),
   antworten: z
     .array(AntwortSchema)
     .min(3)
@@ -999,39 +1392,93 @@ const FrageSchema = z.object({
     .refine(
       (a) => a.filter((x) => x.richtig).length === 1,
       'Genau eine Antwort muss richtig sein.',
+    )
+    // Normalisiert verglichen, nicht exakt: sonst entkommt "Ja " gegen "Ja".
+    // Ausserdem haengt der React-key in Frage.tsx an genau diesem Text.
+    .refine(
+      (a) => new Set(a.map((x) => x.text.trim().toLowerCase())).size === a.length,
+      'Antworttexte müssen sich innerhalb einer Frage unterscheiden.',
+    )
+    .refine(
+      (a) => new Set(a.map((x) => x.begruendung.trim().toLowerCase())).size === a.length,
+      'Jede Antwort braucht eine eigene Begründung, keine Kopie einer anderen.',
     ),
 });
 
-const QuelleSchema = z.object({
-  pfad: z.string().min(1),
+export const QuelleSchema = z.object({
+  pfad: z.string().trim().min(1),
   url: z.url().optional(),
 });
+// Hinweis: z.string().url() ist in Zod 4 verworfen (ts(6385) beim Bauen).
+// Deshalb hier direkt z.url().optional() verwendet.
 
-const lektionen = defineCollection({
-  loader: glob({ pattern: '**/*.mdx', base: './inhalt/lektionen' }),
-  schema: z.object({
-    titel: z.string().min(1),
-    prinzip: z.string().min(1),
+export const LektionSchema = z
+  .object({
+    titel: z.string().trim().min(1),
+    // Zeichenlaenge ist ein Naeherungsmass fuer „ein Satz". Eine Satzzaehlung
+    // per Regex ist im Deutschen unzuverlaessig: „z. B.", „u. a." und „Nr. 7"
+    // enthalten Punkte, die keine Satzenden sind. Das echte prinzip hat 125
+    // Zeichen, die Grenze laesst also reichlich Luft.
+    prinzip: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200, 'prinzip soll ein Satz sein, kein Absatz (max. 200 Zeichen).'),
     reihenfolge: z.number().int().positive(),
     gesperrt: z.boolean().default(false),
     fragen: z.array(FrageSchema).min(2).max(4),
     transfer: FrageSchema,
     quellen: z.array(QuelleSchema).min(1),
-  }),
+  })
+  // `id` ist der einzige Kandidat fuer eine stabile Frage-Identitaet, an der
+  // spaeter der Lernfortschritt haengt. Kollidieren zwei, verschmilzt der
+  // Fortschritt zweier Fragen lautlos — teuer und schwer zu bemerken.
+  // Die Transferfrage zaehlt dabei mit.
+  .refine(
+    (l) => {
+      const ids = [...l.fragen.map((f) => f.id), l.transfer.id];
+      return new Set(ids).size === ids.length;
+    },
+    'fragen[].id und transfer.id müssen innerhalb der Lektion eindeutig sein.',
+  );
+
+export type Lektion = z.infer<typeof LektionSchema>;
+```
+
+`gesperrt: true` markiert von Hand geschriebene oder nachgebesserte Lektionen. Der Compiler aus Abschnitt 2 wird diese Dateien überspringen. In diesem Abschnitt hat das Feld noch keine Wirkung, aber die Markierung steht damit von Anfang an im Inhalt.
+
+- [ ] **Schritt 4: Content-Konfiguration schreiben**
+
+Datei `src/content.config.ts` — dünn, nur noch die Verbindung zu `astro:content`:
+
+```typescript
+import { defineCollection } from 'astro:content';
+import { glob } from 'astro/loaders';
+import { LektionSchema } from './content/schema';
+
+const lektionen = defineCollection({
+  loader: glob({ pattern: '**/*.mdx', base: './inhalt/lektionen' }),
+  schema: LektionSchema,
 });
 
 export const collections = { lektionen };
 ```
 
-`gesperrt: true` markiert von Hand geschriebene oder nachgebesserte Lektionen. Der Compiler aus Abschnitt 2 wird diese Dateien überspringen. In diesem Abschnitt hat das Feld noch keine Wirkung, aber die Markierung steht damit von Anfang an im Inhalt.
+- [ ] **Schritt 5: Test laufen lassen, Erfolg bestätigen**
 
-- [ ] **Schritt 2: Inhaltsordner anlegen**
+```bash
+npx vitest run tests/content-schema.test.ts
+```
+
+Erwartet: 8 Tests grün.
+
+- [ ] **Schritt 6: Inhaltsordner anlegen**
 
 ```bash
 mkdir -p inhalt/lektionen && touch inhalt/lektionen/.gitkeep
 ```
 
-- [ ] **Schritt 3: Typen erzeugen lassen und prüfen**
+- [ ] **Schritt 7: Typen erzeugen lassen und prüfen**
 
 ```bash
 npx astro sync && npx astro check
@@ -1039,10 +1486,10 @@ npx astro sync && npx astro check
 
 Erwartet: `astro sync` erzeugt `.astro/types.d.ts` ohne Fehler. `astro check` meldet noch keine Nutzung der Collection — das ist in Ordnung.
 
-- [ ] **Schritt 4: Committen**
+- [ ] **Schritt 8: Committen**
 
 ```bash
-git add src/content.config.ts inhalt && git commit -m "feat: Lektions-Collection mit erzwungenen Qualitaetsregeln"
+git add src/content.config.ts src/content tests/content-schema.test.ts inhalt && git commit -m "feat: Lektions-Collection mit erzwungenen Qualitaetsregeln"
 ```
 
 ---
@@ -1073,7 +1520,7 @@ fragen:
         begruendung: "Der Reranker sortiert nur, was die Suche bereits geholt hat. Ein Dokument, das nicht unter den Kandidaten war, kann er nicht nach oben schieben."
       - text: "Die Precision der obersten fünf Treffer"
         richtig: false
-        begruendung: "Genau dafür ist er da. Im Bild oben steigt sie von einem auf drei Treffer, ohne dass ein einziges Dokument neu gefunden wurde."
+        begruendung: "Genau dafür ist er da. Im Bild oben steigt sie von einem auf drei Treffer, ohne dass die Suche ein einziges Dokument zusätzlich geholt hätte."
       - text: "Die Qualität der Antwort des Modells"
         richtig: false
         begruendung: "Sie steigt mit, weil das Modell besseren Kontext bekommt. Das ist eine Folge, kein Widerspruch."
@@ -1140,56 +1587,56 @@ Deine Suche liefert schlechte Treffer. Die naheliegende Reaktion ist ein bessere
 <Pipeline
   einheit="Dokument"
   schritte={[
-    { id: "anfrage", titel: "Anfrage", wirkung: "Wer trägt die Kosten für die Bauzeitverlängerung aus Nachtrag 7?" },
-    { id: "vektor", titel: "Vektorsuche", wirkung: "Holt 50 Kandidaten. Bestimmt, was überhaupt zur Auswahl steht." },
-    { id: "bm25", titel: "+ BM25", wirkung: "Sucht zusätzlich wörtlich. Findet Aktenzeichen und Nummern, die ein Embedding verwischt.", optional: true, standardAn: false },
-    { id: "rerank", titel: "+ Reranker", wirkung: "Sortiert die Kandidaten neu. Ändert nichts daran, was gefunden wurde.", optional: true, standardAn: false },
-    { id: "kontext", titel: "Top 5", wirkung: "Nur diese fünf sieht das Modell." }
+    { id: 'anfrage', titel: 'Anfrage', wirkung: 'Wer trägt die Kosten für die Bauzeitverlängerung aus Nachtrag 7?' },
+    { id: 'vektor', titel: 'Vektorsuche', wirkung: 'Holt 50 Kandidaten. Bestimmt, was überhaupt zur Auswahl steht.' },
+    { id: 'bm25', titel: '+ BM25', wirkung: 'Sucht zusätzlich wörtlich. Findet Aktenzeichen und Nummern, die ein Embedding verwischt.', optional: true, standardAn: false },
+    { id: 'rerank', titel: '+ Reranker', wirkung: 'Sortiert die Kandidaten neu. Ändert nichts daran, was gefunden wurde.', optional: true, standardAn: false },
+    { id: 'kontext', titel: 'Top 5', wirkung: 'Nur diese fünf sieht das Modell.' }
   ]}
   ergebnisse={[
     {
       wenn: [],
       ausgabe: [
-        { text: "Protokoll JF 14 — allgemeiner Terminstand", treffer: false },
-        { text: "Nachtrag 3 — Kostenübernahme Erdarbeiten", treffer: false },
-        { text: "Nachtrag 7 — Bauzeitverlängerung, Kostenträger", treffer: true },
-        { text: "Baustellenordnung, Abschnitt Termine", treffer: false },
-        { text: "Protokoll JF 9 — Verzug Rohbau", treffer: false }
+        { text: 'Protokoll JF 14 — allgemeiner Terminstand', treffer: false },
+        { text: 'Nachtrag 3 — Kostenübernahme Erdarbeiten', treffer: false },
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Kostenträger', treffer: true },
+        { text: 'Baustellenordnung, Abschnitt Termine', treffer: false },
+        { text: 'Protokoll JF 9 — Verzug Rohbau', treffer: false }
       ],
-      hinweis: "Ein Treffer unter fünf. Das richtige Dokument war unter den 50 Kandidaten — es steht nur zu weit hinten."
+      hinweis: 'Ein Treffer unter fünf. Das richtige Dokument war unter den 50 Kandidaten — es steht nur zu weit hinten.'
     },
     {
-      wenn: ["rerank"],
+      wenn: ['rerank'],
       ausgabe: [
-        { text: "Nachtrag 7 — Bauzeitverlängerung, Kostenträger", treffer: true },
-        { text: "Nachtrag 7 — Anlage 2: Kostenaufstellung", treffer: true },
-        { text: "Protokoll JF 12 — Beschluss zu Nachtrag 7", treffer: true },
-        { text: "Protokoll JF 9 — Verzug Rohbau", treffer: false },
-        { text: "Nachtrag 3 — Kostenübernahme Erdarbeiten", treffer: false }
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Kostenträger', treffer: true },
+        { text: 'Nachtrag 7 — Anlage 2: Kostenaufstellung', treffer: true },
+        { text: 'Protokoll JF 12 — Beschluss zu Nachtrag 7', treffer: true },
+        { text: 'Protokoll JF 9 — Verzug Rohbau', treffer: false },
+        { text: 'Nachtrag 3 — Kostenübernahme Erdarbeiten', treffer: false }
       ],
-      hinweis: "Drei Treffer statt einem, ohne dass ein einziges Dokument neu gefunden wurde. Der Reranker hat nur sortiert."
+      hinweis: 'Drei Treffer statt einem — und die Suche hat kein einziges Dokument zusätzlich geholt. Die neu erschienenen Zeilen standen längst unter den 50 Kandidaten, nur zu weit hinten für die Top 5.'
     },
     {
-      wenn: ["bm25"],
+      wenn: ['bm25'],
       ausgabe: [
-        { text: "Nachtrag 7 — Bauzeitverlängerung, Kostenträger", treffer: true },
-        { text: "Nachtrag 7 — Anlage 2: Kostenaufstellung", treffer: true },
-        { text: "Baustellenordnung, Abschnitt Termine", treffer: false },
-        { text: "Nachtrag 3 — Kostenübernahme Erdarbeiten", treffer: false },
-        { text: "Protokoll JF 14 — allgemeiner Terminstand", treffer: false }
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Kostenträger', treffer: true },
+        { text: 'Nachtrag 7 — Anlage 2: Kostenaufstellung', treffer: true },
+        { text: 'Baustellenordnung, Abschnitt Termine', treffer: false },
+        { text: 'Nachtrag 3 — Kostenübernahme Erdarbeiten', treffer: false },
+        { text: 'Protokoll JF 14 — allgemeiner Terminstand', treffer: false }
       ],
-      hinweis: "Die wörtliche Suche zieht „Nachtrag 7\" nach oben, weil die Zeichenfolge exakt vorkommt. Das Embedding allein sah zwischen Nachtrag 3 und Nachtrag 7 kaum einen Unterschied."
+      hinweis: 'Die wörtliche Suche zieht „Nachtrag 7" nach oben, weil die Zeichenfolge exakt vorkommt. Das Embedding allein sah zwischen Nachtrag 3 und Nachtrag 7 kaum einen Unterschied.'
     },
     {
-      wenn: ["bm25", "rerank"],
+      wenn: ['bm25', 'rerank'],
       ausgabe: [
-        { text: "Nachtrag 7 — Bauzeitverlängerung, Kostenträger", treffer: true },
-        { text: "Nachtrag 7 — Anlage 2: Kostenaufstellung", treffer: true },
-        { text: "Protokoll JF 12 — Beschluss zu Nachtrag 7", treffer: true },
-        { text: "Schriftverkehr AG — Anerkennung Bauzeitverlängerung", treffer: true },
-        { text: "Nachtrag 3 — Kostenübernahme Erdarbeiten", treffer: false }
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Kostenträger', treffer: true },
+        { text: 'Nachtrag 7 — Anlage 2: Kostenaufstellung', treffer: true },
+        { text: 'Protokoll JF 12 — Beschluss zu Nachtrag 7', treffer: true },
+        { text: 'Schriftverkehr AG — Anerkennung Bauzeitverlängerung', treffer: true },
+        { text: 'Nachtrag 3 — Kostenübernahme Erdarbeiten', treffer: false }
       ],
-      hinweis: "Vier von fünf. Beide Handgriffe wirken auf verschiedene Fehler: BM25 hat die Kandidatenmenge verbessert, der Reranker ihre Reihenfolge."
+      hinweis: 'Vier von fünf. Beide Handgriffe wirken auf verschiedene Fehler: BM25 hat die Kandidatenmenge verbessert, der Reranker ihre Reihenfolge.'
     }
   ]}
 />
@@ -1289,11 +1736,24 @@ import Frage from '../components/Frage.tsx';
 import Herkunft from '../components/Herkunft.astro';
 import { widgets } from '../widgets';
 
+/**
+ * Der einzige Ort im Projekt, der die Reihenfolge der sechs Takte kennt.
+ *
+ * Takt 1 (Der Widerspruch) und Takt 2 (Das Bild) stehen im MDX-Rumpf, Takt 3
+ * bis 6 im Frontmatter. Inhalt liefert damit Teile, nie Struktur: eine
+ * generierte Lektion kann den Rhythmus nicht umstellen, weil sie ihn gar
+ * nicht in der Hand hat.
+ *
+ * Entscheidend ist die Stellung von Takt 2 vor Takt 3 — erst spielen, dann
+ * erklaeren. Wer diese beiden Abschnitte tauscht, kippt die Didaktik, nicht
+ * das Layout.
+ */
 interface Props {
   eintrag: CollectionEntry<'lektionen'>;
 }
 
 const { eintrag } = Astro.props;
+// `render` ist eine eigenstaendige Funktion, kein `eintrag.render()`.
 const { Content } = await render(eintrag);
 const daten = eintrag.data;
 ---
@@ -1302,6 +1762,8 @@ const daten = eintrag.data;
     <h1>{daten.titel}</h1>
 
     <section class="takt" data-takt="widerspruch-und-bild">
+      {/* `components` loest die Widget-Namen auf, die der Rumpf benutzt.
+          Deshalb enthaelt generiertes MDX keine import-Zeilen. */}
       <Content components={widgets} />
     </section>
 
@@ -1468,9 +1930,16 @@ git add src/pages && git commit -m "feat: Uebersicht und Lektionsroute"
 npm test
 ```
 
-Erwartet: 28 Tests grün (2 Aufbau, 14 Schema, 6 Mischen, 6 Frage) — so viele meldet
-`npm test` beim Stand nach Aufgabe 6. Der Pipeline-Test aus Aufgabe 5, Schritt 1
-kommt in derselben Datei hinzu, sobald das Widget steht: dann 29.
+Erwartet: 43 Tests grün, aufgeschlüsselt je Datei:
+
+| Datei | Tests |
+|---|---|
+| `tests/aufbau.test.ts` | 2 |
+| `tests/schema.test.tsx` | 20 (18 Schema + 2 Pipeline-Komponente) |
+| `tests/mischen.test.ts` | 6 |
+| `tests/frage.test.tsx` | 7 |
+| `tests/content-schema.test.ts` | 8 |
+| **Summe** | **43** |
 
 - [ ] **Schritt 2: Typprüfung**
 
@@ -1494,7 +1963,16 @@ Erwartet: `dist/index.html` und `dist/lektion/recall-vor-precision/index.html` l
 npm run preview
 ```
 
-Diese sechs Punkte am fertigen Bau abhaken:
+**Vorbedingung:** Die Prüfung muss in einem **sichtbaren** Browserfenster
+stattfinden, nicht in einem minimierten oder verdeckten. Die Inseln (Pipeline
+und beide `Frage`-Instanzen) nutzen `client:visible` — Astro hydriert sie erst,
+wenn ein `IntersectionObserver` sie im Sichtbereich meldet. Ist das Fenster
+verborgen oder die Seite ungescrollt, feuert der Observer nicht, und nichts
+hydriert. Das Ergebnis sieht aus wie erwartet — statisches HTML ist ja da —
+und reagiert auf nichts. Vor Punkt 2 also erst zum Widget scrollen, vor Punkt 4
+zu den Fragen.
+
+Diese sieben Punkte am fertigen Bau abhaken:
 
 1. Die Lektion zeigt die Takte in der Reihenfolge Widerspruch → Bild → Satz → Probe → Transfer → Herkunft.
 2. Das Pipeline-Widget reagiert auf beide Schalter, und alle vier Kombinationen zeigen ein Ergebnis — keine zeigt „kein Ergebnis hinterlegt".
@@ -1502,6 +1980,10 @@ Diese sechs Punkte am fertigen Bau abhaken:
 4. Vor dem Antworten ist keine Begründung sichtbar.
 5. Nach einer Antwort sind alle Begründungen sichtbar, die richtige Antwort ist markiert, und ein zweiter Klick ändert nichts.
 6. Die drei Herkunftslinks öffnen die jeweiligen Verzeichnisse in `awesome-llm-apps`.
+7. Nach der Hydration steht **kein** `.widget-fehler` im Dokument (per DevTools-Konsole
+   prüfbar: `document.querySelector('.widget-fehler')` liefert `null`). Server-gerendert
+   kann das Widget korrekt aussehen und erst beim Hydrieren scheitern — etwa genau dann,
+   wenn die `children`-Behandlung aus Aufgabe 5, Schritt 3 fehlt.
 
 - [ ] **Schritt 5: Abschluss committen**
 
@@ -1517,4 +1999,4 @@ Eine handgeschriebene Lektion ist im Browser vollständig benutzbar, alle Unit-T
 
 ## Was Abschnitt 2 übernimmt, ohne es zu ändern
 
-`src/widgets/schema.ts` (Parameterprüfung), `src/content.config.ts` (Qualitätsregeln), das Frontmatter-Format der Lektion und die Widget-Registry. Der Compiler erzeugt Dateien in `inhalt/lektionen/` und prüft sie gegen genau diese Schemata, bevor er sie schreibt.
+`src/widgets/schema.ts` (Parameterprüfung), `src/content/schema.ts` (Qualitätsregeln), das Frontmatter-Format der Lektion und die Widget-Registry. Der Compiler erzeugt Dateien in `inhalt/lektionen/` und prüft sie gegen genau diese Schemata, bevor er sie schreibt. `src/content.config.ts` bleibt die dünne, nicht separat testbare Verbindung zu `astro:content` und wird nicht importiert.
