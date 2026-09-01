@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { baueManifest, MANIFEST_FASSUNG } from '../werkzeug/manifest.mjs';
+import { baueManifest, inhaltsHash, MANIFEST_FASSUNG } from '../werkzeug/manifest.mjs';
 
 // `as const` ist hier nicht Kosmetik: Ohne die Festlegung verbreitert
 // TypeScript `mitnehmen: true` im Array-Literal zu `boolean`, und die Fixture
@@ -11,6 +11,13 @@ const urteile = [
   { pfad: 'a/bild.png', mitnehmen: false, grund: 'Bild oder sonst binaer — traegt keinen Text' },
 ] as const;
 
+// Nur die uebernommenen Dateien stehen drin. Das Bild fehlt mit Absicht: Was
+// nicht uebernommen wurde, kann spaeter auch nicht abweichen.
+const hashes = new Map([
+  ['a/README.md', inhaltsHash('# Titel\n\nEin Absatz.\n')],
+  ['a/main.py', inhaltsHash('print("hallo")\n')],
+]);
+
 const herkunft = {
   art: 'git',
   url: 'https://github.com/Beispiel/repo.git',
@@ -20,7 +27,7 @@ const herkunft = {
 
 describe('baueManifest', () => {
   it('haelt die Herkunft samt Commit-SHA fest', () => {
-    const m = baueManifest({ herkunft, urteile, gestempeltAm: '2026-09-01T12:00:00Z' });
+    const m = baueManifest({ herkunft, urteile, hashes, gestempeltAm: '2026-09-01T12:00:00Z' });
     expect(m.herkunft.sha).toBe(herkunft.sha);
     expect(m.herkunft.url).toBe(herkunft.url);
     expect(m.fassung).toBe(MANIFEST_FASSUNG);
@@ -28,19 +35,38 @@ describe('baueManifest', () => {
   });
 
   it('listet die uebernommenen Dateien mit Rubrik und Groesse', () => {
-    const m = baueManifest({ herkunft, urteile, gestempeltAm: '2026-09-01T12:00:00Z' });
+    const m = baueManifest({ herkunft, urteile, hashes, gestempeltAm: '2026-09-01T12:00:00Z' });
     expect(m.uebernommen).toHaveLength(2);
     expect(m.uebernommen[0]).toMatchObject({ pfad: 'a/README.md', rubrik: 'beschreibung' });
   });
 
+  it('gibt jeder uebernommenen Datei ihren Inhalts-Hash mit', () => {
+    // Der Commit-SHA belegt den Stand der Quelle. Ob eine einzelne `roh/*.md`
+    // danach noch dieselbe ist, sagt nur der Hash der Datei selbst.
+    const m = baueManifest({ herkunft, urteile, hashes, gestempeltAm: '2026-09-01T12:00:00Z' });
+    for (const d of m.uebernommen) {
+      expect(d.hash).toBe(hashes.get(d.pfad));
+      expect(d.hash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    }
+    expect(new Set(m.uebernommen.map((d) => d.hash)).size).toBe(2);
+  });
+
   it('listet die Auslassungen MIT Grund — sonst haelt man das Rohmaterial fuer vollstaendig', () => {
-    const m = baueManifest({ herkunft, urteile, gestempeltAm: '2026-09-01T12:00:00Z' });
+    const m = baueManifest({ herkunft, urteile, hashes, gestempeltAm: '2026-09-01T12:00:00Z' });
     expect(m.ausgelassen).toHaveLength(1);
     expect(m.ausgelassen[0].grund).toMatch(/binaer/i);
   });
 
+  it('verlangt fuer ausgelassene Dateien keinen Hash', () => {
+    // `hashes` kennt das Bild nicht, und das ist kein Mangel: Ein Pfad, der
+    // nie uebernommen wurde, kann auch nicht unbemerkt abweichen.
+    expect(hashes.has('a/bild.png')).toBe(false);
+    const m = baueManifest({ herkunft, urteile, hashes, gestempeltAm: '2026-09-01T12:00:00Z' });
+    expect(m.ausgelassen[0]).not.toHaveProperty('hash');
+  });
+
   it('zaehlt zusammen, damit ein Blick genuegt', () => {
-    const m = baueManifest({ herkunft, urteile, gestempeltAm: '2026-09-01T12:00:00Z' });
+    const m = baueManifest({ herkunft, urteile, hashes, gestempeltAm: '2026-09-01T12:00:00Z' });
     expect(m.summe).toEqual({ uebernommen: 2, ausgelassen: 1, bytes: 300 });
   });
 
@@ -50,12 +76,56 @@ describe('baueManifest', () => {
     // zusammen: TypeScript schweigt hier, meldet sich aber, falls das Feld
     // je optional wuerde und dieser Test dann nichts mehr pruefte.
     // @ts-expect-error gestempeltAm fehlt mit Absicht
-    expect(() => baueManifest({ herkunft, urteile })).toThrow(/Zeitstempel/i);
+    expect(() => baueManifest({ herkunft, urteile, hashes })).toThrow(/Zeitstempel/i);
   });
 
   it('verlangt einen SHA — ohne ihn ist die Herkunft wertlos', () => {
     const ohne = { ...herkunft, sha: '' };
-    expect(() => baueManifest({ herkunft: ohne, urteile, gestempeltAm: '2026-09-01T12:00:00Z' }))
-      .toThrow(/sha/i);
+    expect(() =>
+      baueManifest({ herkunft: ohne, urteile, hashes, gestempeltAm: '2026-09-01T12:00:00Z' }),
+    ).toThrow(/sha/i);
+  });
+
+  it('lehnt eine uebernommene Datei ohne Hash ab und nennt sie beim Namen', () => {
+    // Ein Manifest, das eine Datei ohne Hash fuehrt, sieht vollstaendig aus
+    // und belegt fuer genau diese Datei nichts. Das soll knallen.
+    const luecke = new Map(hashes);
+    luecke.delete('a/main.py');
+    expect(() =>
+      baueManifest({ herkunft, urteile, hashes: luecke, gestempeltAm: '2026-09-01T12:00:00Z' }),
+    ).toThrow(/a\/main\.py/);
+  });
+
+  it('lehnt einen leeren Hash genauso ab wie einen fehlenden', () => {
+    const leer = new Map(hashes);
+    leer.set('a/main.py', '');
+    expect(() =>
+      baueManifest({ herkunft, urteile, hashes: leer, gestempeltAm: '2026-09-01T12:00:00Z' }),
+    ).toThrow(/Hash fehlt/i);
+  });
+
+  it('lehnt ein Manifest ganz ohne Hashes ab', () => {
+    // @ts-expect-error hashes fehlt mit Absicht
+    expect(() => baueManifest({ herkunft, urteile, gestempeltAm: '2026-09-01T12:00:00Z' })).toThrow(
+      /hashes/i,
+    );
+  });
+});
+
+describe('inhaltsHash', () => {
+  it('ergibt fuer denselben Inhalt denselben Wert — sonst belegt er nichts', () => {
+    const text = 'Zeile eins\nZeile zwei\n';
+    expect(inhaltsHash(text)).toBe(inhaltsHash(text));
+  });
+
+  it('aendert sich bei der kleinsten Aenderung', () => {
+    expect(inhaltsHash('a')).not.toBe(inhaltsHash('a '));
+    expect(inhaltsHash('Zeile\n')).not.toBe(inhaltsHash('Zeile\r\n'));
+  });
+
+  it('nennt das Verfahren im Wert, damit spaetere Leser nicht raten muessen', () => {
+    expect(inhaltsHash('')).toBe(
+      'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    );
   });
 });

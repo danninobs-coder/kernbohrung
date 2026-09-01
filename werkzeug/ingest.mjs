@@ -2,7 +2,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { hole } from './adapter/git.mjs';
-import { baueManifest } from './manifest.mjs';
+import { baueManifest, inhaltsHash } from './manifest.mjs';
 import { RUBRIK } from './auswahl.mjs';
 
 /**
@@ -51,6 +51,23 @@ const { herkunft, urteile, lies } = await hole({
 });
 
 const uebernommen = urteile.filter((u) => u.mitnehmen);
+
+/**
+ * Inhalts-Hash je uebernommener Datei, gerechnet aus dem Text, den `lies()`
+ * ohnehin liefert.
+ *
+ * Ein eigener Durchgang und nicht verstreut in der Variantenschleife: Der Hash
+ * gilt fuer den ganzen Bestand, und eine Datei, die sich nicht lesen laesst,
+ * soll auffallen, bevor der halbe Rohordner schon geschrieben ist.
+ *
+ * Gehasht wird der Text wieder als UTF-8. Fuer die ausgewaehlten Textdateien
+ * ist das byteweise dieselbe Folge wie in der Quelle — der Git-Adapter haelt
+ * `core.autocrlf` ausdruecklich aus, damit die Zeilenenden unterwegs nicht
+ * kippen und derselbe Stand auf zwei Rechnern denselben Hash ergibt.
+ *
+ * @type {Map<string, string>}
+ */
+const hashes = new Map(uebernommen.map((d) => [d.pfad, inhaltsHash(lies(d.pfad))]));
 
 /**
  * Gruppiert die uebernommenen Dateien zu Varianten.
@@ -196,6 +213,7 @@ writeFileSync(path.join(quellordner, 'uebersicht.md'), uebersicht, 'utf8');
 const manifest = baueManifest({
   herkunft,
   urteile,
+  hashes,
   gestempeltAm: new Date().toISOString(),
 });
 writeFileSync(path.join(quellordner, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
