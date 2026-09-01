@@ -32,6 +32,44 @@ const UMSETZUNG = /\.(py|ts|tsx|js|jsx|go|rs|java|rb|sql)$/i;
 
 /** Textdateien, die trotzdem nichts erklaeren. */
 const ABHAENGIGKEITEN = /(^|\/)(requirements[^/]*\.txt|package(-lock)?\.json|pnpm-lock\.yaml|poetry\.lock|Pipfile(\.lock)?|go\.sum|Cargo\.lock)$/i;
+
+/**
+ * Konfiguration und Geruest: nennt Werkzeuge, erklaert nichts.
+ *
+ * Derselbe Gedanke wie bei den Abhaengigkeitslisten, eine Ebene weiter. Eine
+ * Build-Konfiguration zaehlt Schalter und Werkzeuge auf, eine Typdeklaration
+ * beschreibt die Form fremden Codes, ein Dockerfile ist eine Bauanleitung fuer
+ * Maschinen. Keine von ihnen sagt, *warum* etwas so gebaut ist — und genau
+ * darauf ist der ganze Durchgang aus.
+ *
+ * Die Regel haengt am Namensmuster, nicht an einer Liste von Werkzeugen:
+ * `<werkzeug>.config.<endung>` ist die Konvention, der vite, babel, jest,
+ * vitest, tailwind, postcss, next, astro, rollup und webpack gleichermassen
+ * folgen. Wer stattdessen zehn Namen aufzaehlt, hat beim elften Werkzeug
+ * wieder eine Luecke.
+ *
+ * Punktdateien wie `.eslintrc*` stehen der Vollstaendigkeit halber im Muster,
+ * erreicht werden sie hier aber nicht: Die Pruefung auf versteckte Dateien
+ * liegt weiter oben und faengt sie mit einem ebenso richtigen Grund ab.
+ */
+const KONFIGURATION = new RegExp(
+  [
+    // Typdeklarationen — sagen, welche Form fremder Code hat, nicht warum.
+    String.raw`\.d\.(ts|mts|cts)$`,
+    // Werkzeugkonfiguration nach dem ueblichen `<werkzeug>.config.<endung>`.
+    String.raw`(^|/)[^/]+\.config\.[^/.]+$`,
+    // tsconfig.json, tsconfig.node.json, jsconfig.json — dieselbe Sache, anderer Name.
+    String.raw`(^|/)[jt]sconfig[^/]*\.json$`,
+    // Linter- und Formatiererregeln, mit oder ohne fuehrenden Punkt.
+    String.raw`(^|/)\.?(eslintrc|prettierrc|babelrc|editorconfig|npmrc)[^/]*$`,
+    // Containerbau und Aufrufhuellen.
+    String.raw`(^|/)(Dockerfile|Containerfile)[^/]*$`,
+    String.raw`(^|/)docker-compose[^/]*\.ya?ml$`,
+    String.raw`(^|/)(Makefile|GNUmakefile|Procfile|Justfile|Taskfile)[^/]*$`,
+  ].join('|'),
+  'i',
+);
+
 const DATEN = /\.(csv|tsv|json|jsonl|parquet|ya?ml|xml|db|sqlite3?)$/i;
 const BINAER = /\.(png|jpe?g|gif|svg|webp|ico|pdf|zip|gz|mp4|mov|woff2?|ttf)$/i;
 
@@ -51,6 +89,12 @@ export function beurteile(pfad, bytes) {
   }
   if (ABHAENGIGKEITEN.test(pfad)) {
     return nein(pfad, 'Abhaengigkeitsliste — nennt Pakete, erklaert nichts');
+  }
+  // Vor BESCHREIBUNG und UMSETZUNG, nicht danach: `vite.config.ts` und
+  // `vite-env.d.ts` sind gueltige TypeScript-Endungen. TypeScript soll als
+  // Umsetzung gelten — nur nicht in dieser Rolle.
+  if (KONFIGURATION.test(pfad)) {
+    return nein(pfad, 'Konfiguration oder Geruest — nennt Werkzeuge, erklaert nichts');
   }
   if (BESCHREIBUNG.test(name)) {
     return bytes > MAX_BYTES
