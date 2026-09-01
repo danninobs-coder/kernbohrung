@@ -1,0 +1,134 @@
+---
+titel: "Recall und Precision sind zwei Probleme, nicht eins"
+prinzip: "Recall entsteht beim Holen, Precision beim Sortieren — repariere sie mit verschiedenen Werkzeugen, und in dieser Reihenfolge."
+reihenfolge: 1
+gesperrt: true
+fragen:
+  - id: rvp-1
+    frage: "Du hängst einen Reranker hinter die Suche. Welche Größe kann sich dadurch nicht verbessern?"
+    antworten:
+      - text: "Der Recall der Kandidatenmenge"
+        richtig: true
+        begruendung: "Der Reranker sortiert nur, was die Suche bereits geholt hat. Ein Dokument, das nicht unter den Kandidaten war, kann er nicht nach oben schieben."
+      - text: "Die Precision der obersten fünf Treffer"
+        richtig: false
+        begruendung: "Genau dafür ist er da. Im Bild oben steigt sie von einem auf drei Treffer, ohne dass ein einziges Dokument neu gefunden wurde."
+      - text: "Die Qualität der Antwort des Modells"
+        richtig: false
+        begruendung: "Sie steigt mit, weil das Modell besseren Kontext bekommt. Das ist eine Folge, kein Widerspruch."
+      - text: "Der Anteil relevanter Dokumente im Kontextfenster"
+        richtig: false
+        begruendung: "Das ist Precision unter anderem Namen, und die verbessert der Reranker."
+  - id: rvp-2
+    frage: "Ein bestimmtes Dokument taucht in den Suchergebnissen überhaupt nicht auf, auch nicht unter 200 Kandidaten. Was hilft?"
+    antworten:
+      - text: "Ein größeres Reranker-Modell einsetzen"
+        richtig: false
+        begruendung: "Er sortiert nur die Kandidatenmenge. Was nicht darin ist, bleibt draußen, egal wie gut er ist."
+      - text: "top_k von 50 auf 200 erhöhen"
+        richtig: false
+        begruendung: "Wenn es auch unter 200 nicht auftaucht, liegt der Fehler nicht an der Menge, sondern daran, wonach gesucht wird."
+      - text: "Eine zweite Suchart danebenstellen, etwa BM25"
+        richtig: true
+        begruendung: "Wenn semantische Ähnlichkeit das Dokument nicht findet, braucht es eine andere Trefferlogik daneben. Aktenzeichen, Normnummern und Eigennamen verwischt ein Embedding, eine wörtliche Suche nicht."
+      - text: "Die Chunks verkleinern"
+        richtig: false
+        begruendung: "Kleinere Chunks ändern die Granularität, nicht die Art der Ähnlichkeit. Was semantisch danebenliegt, liegt auch in kleineren Stücken daneben."
+  - id: rvp-3
+    frage: "Warum lautet die Reihenfolge erst Recall, dann Precision — und nicht umgekehrt?"
+    antworten:
+      - text: "Weil Precision-Maßnahmen auf der Kandidatenmenge aufsetzen und deren Obergrenze nicht überschreiten können"
+        richtig: true
+        begruendung: "Der Reranker kann höchstens so gut werden, wie die Kandidatenmenge Treffer enthält. Zuerst an der Precision zu arbeiten heißt, gegen eine Decke zu drücken, die man noch anheben könnte."
+      - text: "Weil Reranker teurer sind als Vektorsuchen"
+        richtig: false
+        begruendung: "Stimmt meistens, ist aber ein Kostenargument. Die Reihenfolge folgt aus der Abhängigkeit der beiden Schritte, nicht aus dem Preis."
+      - text: "Weil Recall leichter zu messen ist"
+        richtig: false
+        begruendung: "Eher umgekehrt: Für Recall muss man wissen, was es überhaupt zu finden gäbe. Das ist der schwerer zu beschaffende Wert."
+      - text: "Weil ein Reranker mit zu wenigen Kandidaten überanpasst"
+        richtig: false
+        begruendung: "Reranker lernen nicht an deinen Daten, sie bewerten Paare aus Anfrage und Dokument. Das Problem ist keine Überanpassung, sondern eine Obergrenze."
+transfer:
+  id: rvp-transfer
+  frage: "In einem Bewerbungsverfahren gehen 400 Bewerbungen ein. Ein Stichwortfilter lässt 40 durch, eine Fachjury wählt daraus 5 aus. Die Jury beklagt, unter den 5 sei kaum jemand Passendes. Wo liegt das Problem am wahrscheinlichsten?"
+  antworten:
+    - text: "Beim Stichwortfilter"
+      richtig: true
+      begruendung: "Die Jury kann nur aus den 40 wählen, die durchkamen. Sind die Passenden schon im Filter hängengeblieben, ändert auch die beste Jury nichts. Filter und Jury verhalten sich zueinander wie Suche und Reranker."
+    - text: "Bei der Jury"
+      richtig: false
+      begruendung: "Möglich, aber unwahrscheinlicher. Die Jury sieht 40 und wählt 5 — sie hat den kleineren Spielraum. Prüfe zuerst, was gar nicht erst bei ihr ankommt."
+    - text: "Bei der Zahl 5"
+      richtig: false
+      begruendung: "Mehr Plätze ließen mehr Bewerber durch, aber keine besseren. Die Menge ist nicht das Problem, die Auswahlgrundlage ist es."
+    - text: "Bei den 400 Bewerbungen"
+      richtig: false
+      begruendung: "Möglich, wenn niemand Passendes dabei war. Das prüft man aber erst, wenn feststeht, dass der Filter die Passenden nicht aussortiert hat."
+quellen:
+  - pfad: "rag_tutorials/hybrid_search_rag"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/hybrid_search_rag"
+  - pfad: "rag_tutorials/local_hybrid_search_rag"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/local_hybrid_search_rag"
+  - pfad: "rag_tutorials/corrective_rag"
+    url: "https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/rag_tutorials/corrective_rag"
+---
+
+Deine Suche liefert schlechte Treffer. Die naheliegende Reaktion ist ein besseres Embedding-Modell. Meistens ist das die falsche Baustelle. Denn „schlechte Treffer" zerfällt in zwei Fehler, die entgegengesetzte Gegenmittel verlangen. Fehlt das richtige Dokument schon unter den Kandidaten, hilft nur, anders zu suchen. Ist es dabei, steht aber auf Platz vierzig, hilft nur, besser zu sortieren. Wer beides mit demselben Handgriff behandelt, verschlimmert regelmäßig das eine, während er das andere repariert.
+
+<Pipeline
+  einheit="Dokument"
+  schritte={[
+    { id: 'anfrage', titel: 'Anfrage', wirkung: 'Wer trägt die Kosten für die Bauzeitverlängerung aus Nachtrag 7?' },
+    { id: 'vektor', titel: 'Vektorsuche', wirkung: 'Holt 50 Kandidaten. Bestimmt, was überhaupt zur Auswahl steht.' },
+    { id: 'bm25', titel: '+ BM25', wirkung: 'Sucht zusätzlich wörtlich. Findet Aktenzeichen und Nummern, die ein Embedding verwischt.', optional: true, standardAn: false },
+    { id: 'rerank', titel: '+ Reranker', wirkung: 'Sortiert die Kandidaten neu. Ändert nichts daran, was gefunden wurde.', optional: true, standardAn: false },
+    { id: 'kontext', titel: 'Top 5', wirkung: 'Nur diese fünf sieht das Modell.' }
+  ]}
+  ergebnisse={[
+    {
+      wenn: [],
+      ausgabe: [
+        { text: 'Protokoll JF 14 — allgemeiner Terminstand', treffer: false },
+        { text: 'Nachtrag 3 — Kostenübernahme Erdarbeiten', treffer: false },
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Kostenträger', treffer: true },
+        { text: 'Baustellenordnung, Abschnitt Termine', treffer: false },
+        { text: 'Protokoll JF 9 — Verzug Rohbau', treffer: false }
+      ],
+      hinweis: 'Ein Treffer unter fünf. Das richtige Dokument war unter den 50 Kandidaten — es steht nur zu weit hinten.'
+    },
+    {
+      wenn: ['rerank'],
+      ausgabe: [
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Kostenträger', treffer: true },
+        { text: 'Nachtrag 7 — Anlage 2: Kostenaufstellung', treffer: true },
+        { text: 'Protokoll JF 12 — Beschluss zu Nachtrag 7', treffer: true },
+        { text: 'Protokoll JF 9 — Verzug Rohbau', treffer: false },
+        { text: 'Nachtrag 3 — Kostenübernahme Erdarbeiten', treffer: false }
+      ],
+      hinweis: 'Drei Treffer statt einem, ohne dass ein einziges Dokument neu gefunden wurde. Der Reranker hat nur sortiert.'
+    },
+    {
+      wenn: ['bm25'],
+      ausgabe: [
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Kostenträger', treffer: true },
+        { text: 'Nachtrag 7 — Anlage 2: Kostenaufstellung', treffer: true },
+        { text: 'Baustellenordnung, Abschnitt Termine', treffer: false },
+        { text: 'Nachtrag 3 — Kostenübernahme Erdarbeiten', treffer: false },
+        { text: 'Protokoll JF 14 — allgemeiner Terminstand', treffer: false }
+      ],
+      hinweis: 'Die wörtliche Suche zieht „Nachtrag 7" nach oben, weil die Zeichenfolge exakt vorkommt. Das Embedding allein sah zwischen Nachtrag 3 und Nachtrag 7 kaum einen Unterschied.'
+    },
+    {
+      wenn: ['bm25', 'rerank'],
+      ausgabe: [
+        { text: 'Nachtrag 7 — Bauzeitverlängerung, Kostenträger', treffer: true },
+        { text: 'Nachtrag 7 — Anlage 2: Kostenaufstellung', treffer: true },
+        { text: 'Protokoll JF 12 — Beschluss zu Nachtrag 7', treffer: true },
+        { text: 'Schriftverkehr AG — Anerkennung Bauzeitverlängerung', treffer: true },
+        { text: 'Nachtrag 3 — Kostenübernahme Erdarbeiten', treffer: false }
+      ],
+      hinweis: 'Vier von fünf. Beide Handgriffe wirken auf verschiedene Fehler: BM25 hat die Kandidatenmenge verbessert, der Reranker ihre Reihenfolge.'
+    }
+  ]}
+/>
