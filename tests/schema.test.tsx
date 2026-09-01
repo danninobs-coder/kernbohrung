@@ -198,6 +198,15 @@ describe('PipelineProps als Schranke', () => {
 });
 
 describe('Pipeline-Komponente', () => {
+  it('laeuft unter Vitest als Laufzeit, nicht als Bauzeit', () => {
+    // Diese Zusicherung traegt die beiden Tests darunter. Pipeline.tsx wirft bei
+    // Maengeln, wenn `import.meta.env.SSR` true ist, und rendert sonst den
+    // Fehlerkasten. Waere der Wert unter Vitest true oder undefined, pruefte der
+    // naechste Test nicht mehr, was er zu pruefen behauptet - er stuerzte ab
+    // oder liefe ins Leere. Gemessen: false, und zwar als Boolean.
+    expect(import.meta.env.SSR).toBe(false);
+  });
+
   it('meldet ungültige Parameter, statt still zu scheitern', async () => {
     const { render, screen } = await import('@testing-library/react');
     const { default: Pipeline } = await import('../src/widgets/Pipeline');
@@ -205,11 +214,43 @@ describe('Pipeline-Komponente', () => {
     expect(screen.getByText(/ungültige Parameter/i)).toBeTruthy();
   });
 
+  it('zeigt im Fehlerkasten die lesbaren Maengel, nicht rohe Zod-Ausgabe', async () => {
+    const { render } = await import('@testing-library/react');
+    const { default: Pipeline } = await import('../src/widgets/Pipeline');
+    const { container } = render(<Pipeline {...gueltig} erfundenesFeld="halluziniert" />);
+
+    const kasten = container.querySelector('.widget-fehler');
+    expect(kasten).toBeTruthy();
+    expect(kasten?.textContent).toContain('erfundenesFeld');
+    expect(kasten?.textContent).not.toContain('unrecognized_keys');
+  });
+
+  it('meldet eine Abdeckungsluecke, die das Schema allein nicht sieht', async () => {
+    // Der Fehlerkasten haengt jetzt an pruefeWidget, nicht mehr an
+    // PipelineProps.safeParse - also faengt er auch das, was nur die
+    // Zusatzpruefung findet.
+    const { render } = await import('@testing-library/react');
+    const { default: Pipeline } = await import('../src/widgets/Pipeline');
+    const luecke = {
+      ...gueltig,
+      schritte: [
+        ...gueltig.schritte,
+        { id: 'bm25', titel: 'BM25', wirkung: 'Sucht wörtlich.', optional: true, standardAn: false },
+      ],
+    };
+    expect(PipelineProps.safeParse(luecke).success).toBe(true);
+
+    const { container } = render(<Pipeline {...luecke} />);
+    expect(container.querySelector('.widget-fehler')?.textContent).toContain('bm25+rerank');
+  });
+
   it('stolpert nicht über das children-Prop aus der Hydration', async () => {
     // Astro reicht children serverseitig nicht mit, React bei der Hydration
-    // schon. Ohne das Verwerfen in Pipeline.tsx weist strictObject es ab und
-    // das Widget kippt im Browser in den Fehlerkasten - waehrend Tests, Build
-    // und das server-gerenderte HTML unauffaellig bleiben.
+    // schon. Ohne das Verwerfen weist strictObject es ab und das Widget kippt
+    // im Browser in den Fehlerkasten - waehrend Tests, Build und das
+    // server-gerenderte HTML unauffaellig bleiben. Verworfen wird es seit
+    // Commit "Widget-Pruefstelle" in pruefeWidget, nicht mehr in Pipeline.tsx:
+    // sonst muesste jedes weitere Widget die Zeile abschreiben.
     const { render } = await import('@testing-library/react');
     const { default: Pipeline } = await import('../src/widgets/Pipeline');
 

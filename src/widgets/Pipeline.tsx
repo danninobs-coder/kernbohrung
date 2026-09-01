@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { PipelineProps, findeErgebnis, type PipelineDaten } from './schema';
+import { findeErgebnis, type PipelineDaten } from './schema';
+import { pruefeWidget } from './pruefung';
 
 /**
  * Nimmt bewusst einen ungeprueften Schluessel-Wert-Beutel entgegen statt
@@ -8,28 +9,79 @@ import { PipelineProps, findeErgebnis, type PipelineDaten } from './schema';
  * der Typ. `unknown` waere hier falsch - TypeScript leitet daraus fuer JSX
  * `IntrinsicAttributes` ab, womit `<Pipeline schritte={...} />` nicht mehr
  * typpruefbar ist (ts2322).
+ *
+ * Das Verwerfen von `children` steht nicht mehr hier, sondern in
+ * `pruefeWidget` - so kann Widget zwei bis sieben es nicht vergessen.
  */
-export default function Pipeline({
-  children: _children,
-  ...props
-}: Record<string, unknown>) {
-  // `children` wird verworfen, bevor geprueft wird. Astro reicht es
-  // serverseitig nicht mit, React bei der Hydration schon - ohne diese Zeile
-  // faellt das Widget im Browser in den Fehlerkasten, waehrend Tests, Build
-  // und das server-gerenderte HTML unauffaellig bleiben. Framework-Rauschen,
-  // kein Inhalt; die strictObject-Schranke gilt weiter fuer alles andere.
-  const geprueft = PipelineProps.safeParse(props);
+export default function Pipeline(props: Record<string, unknown>) {
+  const geprueft = pruefeWidget('Pipeline', props);
 
-  if (!geprueft.success) {
+  if (!geprueft.ok) {
+    // Zur Bauzeit werfen, zur Laufzeit den Fehlerkasten zeigen.
+    //
+    // Astro rendert jede Seite zur Bauzeit; wirft eine Komponente dabei, bricht
+    // `astro build` ab. Das ist der einzige Hebel, mit dem ein halluzinierter
+    // Widget-Parameter den Bau anhaelt, ohne dass irgendwer MDX zerlegen muss -
+    // fuer das Frontmatter erledigt das Zod ueber `astro sync`, fuer
+    // Widget-Parameter gab es bis hierher nichts.
+    //
+    // `import.meta.env.SSR` ist beim Server-Rendern true, im Browser false, und
+    // unter Vitest gemessen false (siehe tests/schema.test.tsx). Im Client-Bundle
+    // faellt der Zweig samt Meldungstext bei der Toten-Code-Entfernung weg.
+    if (import.meta.env.SSR) throw new Error(bauzeitMeldung(geprueft.maengel, props));
+
+    // Zweites Netz: falls jemand die Bauzeitpruefung umgeht, faellt das Widget
+    // im Browser sichtbar aus, statt still kaputt zu sein.
     return (
       <div className="widget-fehler">
         <strong>Pipeline: ungültige Parameter</strong>
-        <pre>{JSON.stringify(geprueft.error.issues, null, 2)}</pre>
+        <ul>
+          {geprueft.maengel.map((mangel) => (
+            <li key={mangel}>{mangel}</li>
+          ))}
+        </ul>
       </div>
     );
   }
 
-  return <Ansicht daten={geprueft.data} />;
+  return <Ansicht daten={geprueft.daten} />;
+}
+
+/**
+ * Die Meldung, mit der der Bau abbricht.
+ *
+ * Sie muss allein tragen: Wer sie liest, sieht nur die Konsolenausgabe von
+ * `npm run build`, nicht diesen Quelltext. Deshalb stehen der Widget-Name, jeder
+ * einzelne Mangel und ein Zeiger auf die betroffene Lektion darin. Den Dateinamen
+ * kennt die Komponente nicht - Astro reicht ihn nicht an die Insel weiter -, wohl
+ * aber die Schritt-Ids des Aufrufs. Die sind eindeutig genug, um die Lektion mit
+ * einer Suche zu finden.
+ */
+function bauzeitMeldung(maengel: readonly string[], props: Record<string, unknown>): string {
+  const zeilen = maengel.map((mangel) => `  - ${mangel}`).join('\n');
+  return [
+    'Pipeline: ungültige Widget-Parameter — der Bau wird angehalten.',
+    zeilen,
+    `  Betroffene Lektion: der MDX-Rumpf unter inhalt/lektionen/ mit ${fingerabdruck(props)}`,
+  ].join('\n');
+}
+
+/** Etwas Suchbares aus dem Aufruf — Schritt-Ids, sonst die Parameternamen. */
+function fingerabdruck(props: Record<string, unknown>): string {
+  const schritte = props.schritte;
+  if (Array.isArray(schritte) && schritte.length > 0) {
+    const ids = schritte.map((schritt) =>
+      schritt !== null && typeof schritt === 'object' && 'id' in schritt
+        ? String((schritt as { id: unknown }).id)
+        : '(ohne id)',
+    );
+    return `diesem <Pipeline …/>-Aufruf, Schritt-Ids: ${ids.join(', ')}`;
+  }
+
+  const schluessel = Object.keys(props);
+  return schluessel.length > 0
+    ? `diesem <Pipeline …/>-Aufruf, Parameter: ${schluessel.join(', ')}`
+    : 'einem <Pipeline />-Aufruf ganz ohne Parameter';
 }
 
 function Ansicht({ daten }: { daten: PipelineDaten }) {
