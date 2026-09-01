@@ -1,0 +1,39 @@
+:root {
+  color-scheme: light dark;
+  --grund: Canvas;
+  --schrift: CanvasText;
+  --linie: color-mix(in oklab, CanvasText 20%, transparent);
+  --treffer: color-mix(in oklab, green 55%, CanvasText);
+  --fehl: color-mix(in oklab, crimson 55%, CanvasText);
+}
+
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--schrift);
+  font: 17px/1.6 system-ui, sans-serif;
+}
+
+main { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 6rem; }
+.heim { display: block; padding: 1rem 1.25rem; font-size: 0.85rem; }
+
+.takt { padding: 2rem 0; border-top: 1px solid var(--linie); }
+.prinzip { font-size: 1.25rem; font-weight: 600; }
+
+.pipeline-schritte { display: grid; gap: 0.5rem; padding: 0; list-style: none; }
+.pipeline-schritt[data-an='false'] { opacity: 0.4; }
+.schritt-wirkung { margin: 0.25rem 0 0; font-size: 0.9rem; }
+.pipeline-ergebnis { margin-top: 1.5rem; }
+.ausgabe li[data-treffer='true'] { color: var(--treffer); font-weight: 600; }
+.ausgabe li[data-treffer='false'] { opacity: 0.55; }
+.zaehler { font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+
+.antworten { display: grid; gap: 0.75rem; padding: 0; list-style: none; }
+.antwort { display: block; width: 100%; padding: 0.6rem 0.8rem; text-align: left; font: inherit; cursor: pointer; background: transparent; color: inherit; border: 1px solid var(--linie); }
+.antwort:disabled { cursor: default; }
+.antwort[data-zustand='richtig'] { border-color: var(--treffer); font-weight: 600; }
+.antwort[data-zustand='falsch'] { border-color: var(--fehl); }
+.begruendung { margin: 0.4rem 0 0; font-size: 0.9rem; opacity: 0.8; }
+
+.widget-fehler { border: 2px solid var(--fehl); padding: 1rem; }
+.herkunft { font-size: 0.9rem; }

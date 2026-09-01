@@ -1,0 +1,21 @@
+---
+interface Quelle {
+  pfad: string;
+  url?: string;
+}
+
+interface Props {
+  quellen: Quelle[];
+}
+
+const { quellen } = Astro.props;
+---
+<ul class="herkunft">
+  {quellen.map((quelle) => (
+    <li>
+      {quelle.url
+        ? <a href={quelle.url} rel="noreferrer">{quelle.pfad}</a>
+        : <span>{quelle.pfad}</span>}
+    </li>
+  ))}
+</ul>

@@ -1,0 +1,22 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  titel: string;
+}
+
+const { titel } = Astro.props;
+---
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{titel} — Kernbohrung</title>
+  </head>
+  <body>
+    <a class="heim" href="/">Kernbohrung</a>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>

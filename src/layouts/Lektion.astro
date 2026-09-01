@@ -1,0 +1,66 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { render } from 'astro:content';
+import Seite from './Seite.astro';
+import Frage from '../components/Frage.tsx';
+import Herkunft from '../components/Herkunft.astro';
+import { widgets } from '../widgets';
+
+/**
+ * Der einzige Ort im Projekt, der die Reihenfolge der sechs Takte kennt.
+ *
+ * Takt 1 (Der Widerspruch) und Takt 2 (Das Bild) stehen im MDX-Rumpf, Takt 3
+ * bis 6 im Frontmatter. Inhalt liefert damit Teile, nie Struktur: eine
+ * generierte Lektion kann den Rhythmus nicht umstellen, weil sie ihn gar
+ * nicht in der Hand hat.
+ *
+ * Entscheidend ist die Stellung von Takt 2 vor Takt 3 — erst spielen, dann
+ * erklaeren. Wer diese beiden Abschnitte tauscht, kippt die Didaktik, nicht
+ * das Layout.
+ */
+interface Props {
+  eintrag: CollectionEntry<'lektionen'>;
+}
+
+const { eintrag } = Astro.props;
+// `render` ist eine eigenstaendige Funktion, kein `eintrag.render()`.
+const { Content } = await render(eintrag);
+const daten = eintrag.data;
+---
+<Seite titel={daten.titel}>
+  <article class="lektion">
+    <h1>{daten.titel}</h1>
+
+    <section class="takt" data-takt="widerspruch-und-bild">
+      {/* `components` loest die Widget-Namen auf, die der Rumpf benutzt.
+          Deshalb enthaelt generiertes MDX keine import-Zeilen. */}
+      <Content components={widgets} />
+    </section>
+
+    <section class="takt" data-takt="satz">
+      <p class="prinzip">{daten.prinzip}</p>
+    </section>
+
+    <section class="takt" data-takt="probe">
+      <h2>Die Probe</h2>
+      {daten.fragen.map((frage) => (
+        <Frage client:visible id={frage.id} frage={frage.frage} antworten={frage.antworten} />
+      ))}
+    </section>
+
+    <section class="takt" data-takt="transfer">
+      <h2>Der Transfer</h2>
+      <Frage
+        client:visible
+        id={daten.transfer.id}
+        frage={daten.transfer.frage}
+        antworten={daten.transfer.antworten}
+      />
+    </section>
+
+    <section class="takt" data-takt="herkunft">
+      <h2>Herkunft</h2>
+      <Herkunft quellen={daten.quellen} />
+    </section>
+  </article>
+</Seite>
