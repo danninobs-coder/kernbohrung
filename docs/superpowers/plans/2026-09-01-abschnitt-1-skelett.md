@@ -266,7 +266,97 @@ describe('fehlendeKombinationen', () => {
     expect(fehlendeKombinationen(d).sort()).toEqual(['bm25', 'bm25+rerank']);
   });
 });
+
+describe('PipelineProps als Schranke', () => {
+  it('lehnt zwei Schritte mit derselben id ab', () => {
+    const kaputt = {
+      ...gueltig,
+      schritte: [
+        { id: 'doppelt', titel: 'A', wirkung: 'x', optional: true, standardAn: false },
+        { id: 'doppelt', titel: 'B', wirkung: 'y', optional: true, standardAn: false },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('lehnt zwei Ergebnisse fuer dieselbe Kombination ab', () => {
+    const kaputt = {
+      ...gueltig,
+      ergebnisse: [
+        ...gueltig.ergebnisse,
+        { wenn: ['rerank'], ausgabe: [{ text: 'B', treffer: true }], hinweis: 'nochmal' },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('erkennt dieselbe Kombination auch bei anderer Reihenfolge der Ids', () => {
+    const kaputt = {
+      einheit: 'Dokument',
+      schritte: [
+        { id: 'eins', titel: 'A', wirkung: 'x', optional: true, standardAn: false },
+        { id: 'zwei', titel: 'B', wirkung: 'y', optional: true, standardAn: false },
+      ],
+      ergebnisse: [
+        { wenn: ['eins', 'zwei'], ausgabe: [{ text: 'A', treffer: true }], hinweis: 'a' },
+        { wenn: ['zwei', 'eins'], ausgabe: [{ text: 'B', treffer: true }], hinweis: 'b' },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('lehnt Ids mit Sonderzeichen ab, die den Schluessel zerlegen wuerden', () => {
+    for (const id of ['a+b', 'a b', 'A', '']) {
+      const kaputt = {
+        ...gueltig,
+        schritte: [
+          { id, titel: 'A', wirkung: 'x' },
+          { id: 'zweiter', titel: 'B', wirkung: 'y' },
+        ],
+      };
+      expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+    }
+  });
+
+  it('nimmt die real verwendeten Ids an', () => {
+    for (const id of ['suche', 'rerank', 'bm25', 'anfrage', 'vektor', 'kontext']) {
+      const ok = {
+        ...gueltig,
+        schritte: [
+          { id, titel: 'A', wirkung: 'x' },
+          { id: 'zweiter', titel: 'B', wirkung: 'y' },
+        ],
+        ergebnisse: [{ wenn: [], ausgabe: [{ text: 'A', treffer: false }], hinweis: 'ohne' }],
+      };
+      expect(PipelineProps.safeParse(ok).success).toBe(true);
+    }
+  });
+
+  it('lehnt reinen Leerraum als Titel ab', () => {
+    const kaputt = {
+      ...gueltig,
+      schritte: [
+        { id: 'eins', titel: '   ', wirkung: 'x' },
+        { id: 'zwei', titel: 'B', wirkung: 'y' },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+});
 ```
+
+Der zweite Block ist nicht Kür. Das Schema ist die Qualitätsschranke, die der
+Compiler aus Abschnitt 2 unverändert importiert; die drei Löcher, die er
+schließt, erzeugen jeweils **strukturell gültige** Daten und damit keinen
+Fehler, sondern nur ein falsches Ergebnis:
+
+- Ein `+` in einer Id bricht den kanonischen Schlüssel: `schluessel(['a+b','c'])`
+  und `schluessel(['a','b+c'])` liefern beide `'a+b+c'`.
+- Zwei Schritte mit derselben Id lassen `fehlendeKombinationen` dieselbe Lücke
+  doppelt melden und erfinden eine Phantom-Kombination `a+a`; in der Komponente
+  gäbe es zusätzlich doppelte React-Keys.
+- Zwei `ergebnisse`-Einträge mit demselben Schlüssel: `findeErgebnis` nimmt still
+  den ersten, und die Abdeckungsprüfung zählt die Dopplung als „vorhanden".
 
 - [ ] **Schritt 2: Test laufen lassen, Fehlschlag bestätigen**
 
@@ -283,38 +373,67 @@ Datei `src/widgets/schema.ts`:
 ```typescript
 import { z } from 'astro/zod';
 
+/**
+ * Kanonischer Schlüssel einer Menge aktiver Schritt-Ids.
+ *
+ * Steht bewusst vor den Schema-Definitionen: PipelineProps prüft damit, ob
+ * zwei Einträge in `ergebnisse` für dieselbe Kombination gelten.
+ *
+ * Das Trennzeichen `+` ist nur eindeutig, solange keine Id selbst ein `+`
+ * enthält — sonst wären `['a+b', 'c']` und `['a', 'b+c']` derselbe Schlüssel.
+ * Dafür sorgt die Zeichensatz-Regel auf `SchrittSchema.id`.
+ */
+export function schluessel(ids: readonly string[]): string {
+  return [...ids].sort().join('+');
+}
+
 export const SchrittSchema = z.object({
-  id: z.string().min(1),
-  titel: z.string().min(1),
-  wirkung: z.string().min(1),
+  id: z.string().regex(
+    /^[a-z0-9]+(-[a-z0-9]+)*$/,
+    'nur Kleinbuchstaben, Ziffern und Bindestrich - keine Leerzeichen oder Sonderzeichen.',
+  ),
+  titel: z.string().trim().min(1),
+  wirkung: z.string().trim().min(1),
   optional: z.boolean().default(false),
   standardAn: z.boolean().default(true),
 });
 
 export const AusgabeZeileSchema = z.object({
-  text: z.string().min(1),
+  text: z.string().trim().min(1),
   treffer: z.boolean(),
 });
 
 export const ErgebnisSchema = z.object({
   wenn: z.array(z.string()),
   ausgabe: z.array(AusgabeZeileSchema).min(1),
-  hinweis: z.string().min(1),
+  hinweis: z.string().trim().min(1),
 });
 
-export const PipelineProps = z.object({
-  einheit: z.string().default('Dokument'),
-  schritte: z.array(SchrittSchema).min(2),
-  ergebnisse: z.array(ErgebnisSchema).min(1),
-});
+export const PipelineProps = z
+  .object({
+    einheit: z.string().trim().min(1).default('Dokument'),
+    // Das Maximum deckelt die 2^n-Laufzeit von fehlendeKombinationen und ist
+    // zugleich didaktisch sinnvoll: mehr als acht Stufen liest niemand mehr.
+    schritte: z.array(SchrittSchema).min(2).max(8),
+    ergebnisse: z.array(ErgebnisSchema).min(1),
+  })
+  .refine(
+    (d) => new Set(d.schritte.map((s) => s.id)).size === d.schritte.length,
+    {
+      message: 'Zwei Schritte haben dieselbe id.',
+      path: ['schritte'],
+    },
+  )
+  .refine(
+    (d) => new Set(d.ergebnisse.map((e) => schluessel(e.wenn))).size === d.ergebnisse.length,
+    {
+      message: 'Zwei Eintraege in ergebnisse gelten fuer dieselbe Kombination.',
+      path: ['ergebnisse'],
+    },
+  );
 
 export type PipelineDaten = z.infer<typeof PipelineProps>;
 export type Ergebnis = z.infer<typeof ErgebnisSchema>;
-
-/** Kanonischer Schlüssel einer Menge aktiver Schritt-Ids. */
-export function schluessel(ids: readonly string[]): string {
-  return [...ids].sort().join('+');
-}
 
 export function findeErgebnis(
   ergebnisse: readonly Ergebnis[],
@@ -349,7 +468,17 @@ export function fehlendeKombinationen(daten: PipelineDaten): string[] {
 npx vitest run tests/schema.test.ts
 ```
 
-Erwartet: 8 Tests grün.
+Erwartet: 14 Tests grün.
+
+Zwei Punkte, die beim Nacharbeiten leicht danebengehen:
+
+- `schluessel` steht **vor** den Schema-Definitionen. Die zweite `.refine()`-Klausel
+  ruft die Funktion auf; stünde sie wie sonst üblich unten bei den Hilfsfunktionen,
+  griffe die Referenz ins Leere.
+- `z.object` bleibt `z.object` und wird **nicht** zu `z.strictObject`. Das wurde
+  erwogen und bewusst verworfen: Die `.astro`-Hülle aus Aufgabe 5, Schritt 5 reicht
+  `Astro.props` per Spread an die React-Insel weiter. Legt Astro dabei etwas bei,
+  würde ein striktes Schema zur Laufzeit fehlschlagen. Das wird separat geprüft.
 
 - [ ] **Schritt 5: Committen**
 
@@ -400,8 +529,25 @@ describe('mischen', () => {
     expect(mischen([], 'x')).toEqual([]);
     expect(mischen(['a'], 'x')).toEqual(['a']);
   });
+
+  it('mischt reproduzierbar auf eine fest verankerte Reihenfolge', () => {
+    // Anker gegen stille Aenderungen an den Konstanten: Eine vertippte Ziffer
+    // in xmur3 oder mulberry32 ergibt weiterhin eine gueltige Permutation,
+    // nur eine andere. Nur dieser Test wuerde das bemerken.
+    expect(mischen(['a', 'b', 'c', 'd'], 'kb-001')).toEqual(['d', 'a', 'b', 'c']);
+  });
 });
 ```
+
+Der letzte Test ist der einzige mit Zähnen. Die fünf davor prüfen **Eigenschaften**
+— deterministisch, elementerhaltend, nicht-mutierend. Ein Tippfehler in einer der
+Magie-Konstanten, etwa `1779033703` zu `1779033701`, erzeugt weiterhin eine
+gültige, deterministische, elementerhaltende Permutation. Nur eine andere: aus
+`['d','a','b','c']` wird `['a','d','c','b']`. Alle fünf Eigenschaftstests blieben
+grün, während sämtliche Antwortreihenfolgen der App still umspringen.
+
+Der erwartete Wert wird **ausgerechnet, nicht geraten**: Erst implementieren,
+dann die echte Funktion einmal laufen lassen und das gemessene Ergebnis eintragen.
 
 - [ ] **Schritt 2: Test laufen lassen, Fehlschlag bestätigen**
 
@@ -416,7 +562,11 @@ Erwartet: FAIL — Modul `../src/lib/mischen` nicht auflösbar.
 Datei `src/lib/mischen.ts`:
 
 ```typescript
-/** xmur3: String zu 32-Bit-Startwert. */
+/**
+ * xmur3-Hash (bryc, github.com/bryc/code/blob/master/jshash/PRNGs.md).
+ * String zu 32-Bit-Startwert. Die Konstanten sind Teil des Algorithmus
+ * und duerfen nicht veraendert werden.
+ */
 function startwert(text: string): number {
   let h = 1779033703 ^ text.length;
   for (let i = 0; i < text.length; i++) {
@@ -427,7 +577,11 @@ function startwert(text: string): number {
   return h >>> 0;
 }
 
-/** mulberry32: kleiner, schneller Pseudozufallsgenerator. */
+/**
+ * mulberry32 (bryc, siehe oben). Liefert bei jedem Aufruf eine Zahl in [0, 1) —
+ * 1.0 wird nie erreicht. Genau darauf verlaesst sich der Tausch in mischen():
+ * nur so bleibt j <= i. Die Konstanten sind Teil des Algorithmus.
+ */
 function generator(saat: number): () => number {
   let a = saat;
   return () => {
@@ -441,6 +595,9 @@ function generator(saat: number): () => number {
 /**
  * Fisher-Yates mit festem Startwert. Gleiche Liste plus gleicher Startwert
  * ergibt immer dieselbe Reihenfolge. Die Eingabe bleibt unberührt.
+ *
+ * `saat` muss ueber Builds und Aufrufe hinweg stabil sein (etwa eine Frage-Id) —
+ * kein Zeitstempel, kein Zufallswert.
  */
 export function mischen<T>(liste: readonly T[], saat: string): T[] {
   const kopie = [...liste];
@@ -459,7 +616,7 @@ export function mischen<T>(liste: readonly T[], saat: string): T[] {
 npx vitest run tests/mischen.test.ts
 ```
 
-Erwartet: 5 Tests grün.
+Erwartet: 6 Tests grün.
 
 - [ ] **Schritt 5: Committen**
 
@@ -676,7 +833,7 @@ git mv tests/schema.test.ts tests/schema.test.tsx
 npx vitest run tests/schema.test.tsx
 ```
 
-Erwartet: 8 Tests grün, 1 FAIL — Modul `../src/widgets/Pipeline` nicht auflösbar.
+Erwartet: 14 Tests grün, 1 FAIL — Modul `../src/widgets/Pipeline` nicht auflösbar.
 
 - [ ] **Schritt 3: Widget implementieren**
 
@@ -847,10 +1004,8 @@ const FrageSchema = z.object({
 
 const QuelleSchema = z.object({
   pfad: z.string().min(1),
-  url: z.string().url().optional(),
+  url: z.url().optional(),
 });
-// Hinweis: In Zod 4 gilt z.string().url() als verworfen, funktioniert aber.
-// Falls beim Bauen eine Verwerfungswarnung erscheint: durch z.url().optional() ersetzen.
 
 const lektionen = defineCollection({
   loader: glob({ pattern: '**/*.mdx', base: './inhalt/lektionen' }),
@@ -1313,7 +1468,9 @@ git add src/pages && git commit -m "feat: Uebersicht und Lektionsroute"
 npm test
 ```
 
-Erwartet: 22 Tests grün (2 Aufbau, 9 Schema und Pipeline, 5 Mischen, 6 Frage).
+Erwartet: 28 Tests grün (2 Aufbau, 14 Schema, 6 Mischen, 6 Frage) — so viele meldet
+`npm test` beim Stand nach Aufgabe 6. Der Pipeline-Test aus Aufgabe 5, Schritt 1
+kommt in derselben Datei hinzu, sobald das Widget steht: dann 29.
 
 - [ ] **Schritt 2: Typprüfung**
 
