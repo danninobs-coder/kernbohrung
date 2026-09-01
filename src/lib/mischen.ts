@@ -1,4 +1,8 @@
-/** xmur3: String zu 32-Bit-Startwert. */
+/**
+ * xmur3-Hash (bryc, github.com/bryc/code/blob/master/jshash/PRNGs.md).
+ * String zu 32-Bit-Startwert. Die Konstanten sind Teil des Algorithmus
+ * und duerfen nicht veraendert werden.
+ */
 function startwert(text: string): number {
   let h = 1779033703 ^ text.length;
   for (let i = 0; i < text.length; i++) {
@@ -9,7 +13,11 @@ function startwert(text: string): number {
   return h >>> 0;
 }
 
-/** mulberry32: kleiner, schneller Pseudozufallsgenerator. */
+/**
+ * mulberry32 (bryc, siehe oben). Liefert bei jedem Aufruf eine Zahl in [0, 1) —
+ * 1.0 wird nie erreicht. Genau darauf verlaesst sich der Tausch in mischen():
+ * nur so bleibt j <= i. Die Konstanten sind Teil des Algorithmus.
+ */
 function generator(saat: number): () => number {
   let a = saat;
   return () => {
@@ -23,6 +31,9 @@ function generator(saat: number): () => number {
 /**
  * Fisher-Yates mit festem Startwert. Gleiche Liste plus gleicher Startwert
  * ergibt immer dieselbe Reihenfolge. Die Eingabe bleibt unberührt.
+ *
+ * `saat` muss ueber Builds und Aufrufe hinweg stabil sein (etwa eine Frage-Id) —
+ * kein Zeitstempel, kein Zufallswert.
  */
 export function mischen<T>(liste: readonly T[], saat: string): T[] {
   const kopie = [...liste];

@@ -26,4 +26,11 @@ describe('mischen', () => {
     expect(mischen([], 'x')).toEqual([]);
     expect(mischen(['a'], 'x')).toEqual(['a']);
   });
+
+  it('mischt reproduzierbar auf eine fest verankerte Reihenfolge', () => {
+    // Anker gegen stille Aenderungen an den Konstanten: Eine vertippte Ziffer
+    // in xmur3 oder mulberry32 ergibt weiterhin eine gueltige Permutation,
+    // nur eine andere. Nur dieser Test wuerde das bemerken.
+    expect(mischen(['a', 'b', 'c', 'd'], 'kb-001')).toEqual(['d', 'a', 'b', 'c']);
+  });
 });
