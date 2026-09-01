@@ -140,6 +140,51 @@ describe('PipelineProps als Schranke', () => {
     }
   });
 
+  it('lehnt Ids in wenn ab, die den Schluessel zerlegen wuerden', () => {
+    // Dieselbe Gefahr wie bei SchrittSchema.id: ein `+` im Eintrag macht
+    // ['a+b'] und ['a', 'b'] zum selben Schluessel.
+    const kaputt = {
+      ...gueltig,
+      ergebnisse: [
+        { wenn: ['a+b'], ausgabe: [{ text: 'A', treffer: false }], hinweis: 'x' },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('lehnt zwei Ausgabezeilen mit demselben Text ab', () => {
+    const kaputt = {
+      ...gueltig,
+      ergebnisse: [
+        {
+          wenn: [],
+          ausgabe: [
+            { text: 'Nachtrag 7', treffer: true },
+            { text: 'Nachtrag 7', treffer: false },
+          ],
+          hinweis: 'x',
+        },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('lehnt einen unbekannten Zusatzschluessel ab, statt ihn still zu verwerfen', () => {
+    const kaputt = { ...gueltig, erfundenesFeld: 'aus einer Halluzination' };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('nimmt einheitPlural an, verlangt es aber nicht', () => {
+    expect(PipelineProps.parse(gueltig).einheitPlural).toBeUndefined();
+
+    const mitPlural = PipelineProps.parse({
+      ...gueltig,
+      einheit: 'Passage',
+      einheitPlural: 'Passagen',
+    });
+    expect(mitPlural.einheitPlural).toBe('Passagen');
+  });
+
   it('lehnt reinen Leerraum als Titel ab', () => {
     const kaputt = {
       ...gueltig,

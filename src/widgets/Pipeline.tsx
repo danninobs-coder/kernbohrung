@@ -75,7 +75,7 @@ function Ansicht({ daten }: { daten: PipelineDaten }) {
             <p className="hinweis">{ergebnis.hinweis}</p>
             <p className="zaehler">
               {ergebnis.ausgabe.filter((z) => z.treffer).length} von {ergebnis.ausgabe.length}{' '}
-              {daten.einheit}en relevant
+              {daten.einheitPlural ?? `${daten.einheit}en`} relevant
             </p>
           </>
         ) : (
