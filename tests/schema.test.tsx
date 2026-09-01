@@ -204,4 +204,24 @@ describe('Pipeline-Komponente', () => {
     render(<Pipeline schritte={[]} ergebnisse={[]} />);
     expect(screen.getByText(/ungültige Parameter/i)).toBeTruthy();
   });
+
+  it('stolpert nicht über das children-Prop aus der Hydration', async () => {
+    // Astro reicht children serverseitig nicht mit, React bei der Hydration
+    // schon. Ohne das Verwerfen in Pipeline.tsx weist strictObject es ab und
+    // das Widget kippt im Browser in den Fehlerkasten - waehrend Tests, Build
+    // und das server-gerenderte HTML unauffaellig bleiben.
+    const { render } = await import('@testing-library/react');
+    const { default: Pipeline } = await import('../src/widgets/Pipeline');
+
+    // Bewusst gegen `container` gepruft statt gegen `screen`: Weil
+    // @testing-library/react hier erst waehrend der Testausfuehrung geladen
+    // wird, registriert sich sein afterEach(cleanup) zu spaet - die Hooks der
+    // Suite sind da schon eingesammelt. Reste des vorigen Tests bleiben also
+    // im document. `container` sieht nur den eigenen Renderbaum.
+    const { container } = render(<Pipeline {...gueltig} children={undefined} />);
+
+    expect(container.querySelector('.widget-fehler')).toBeNull();
+    expect(container.querySelector('.widget-pipeline')).toBeTruthy();
+    expect(container.textContent).toContain('ohne');
+  });
 });

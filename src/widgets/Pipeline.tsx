@@ -9,7 +9,15 @@ import { PipelineProps, findeErgebnis, type PipelineDaten } from './schema';
  * `IntrinsicAttributes` ab, womit `<Pipeline schritte={...} />` nicht mehr
  * typpruefbar ist (ts2322).
  */
-export default function Pipeline(props: Record<string, unknown>) {
+export default function Pipeline({
+  children: _children,
+  ...props
+}: Record<string, unknown>) {
+  // `children` wird verworfen, bevor geprueft wird. Astro reicht es
+  // serverseitig nicht mit, React bei der Hydration schon - ohne diese Zeile
+  // faellt das Widget im Browser in den Fehlerkasten, waehrend Tests, Build
+  // und das server-gerenderte HTML unauffaellig bleiben. Framework-Rauschen,
+  // kein Inhalt; die strictObject-Schranke gilt weiter fuer alles andere.
   const geprueft = PipelineProps.safeParse(props);
 
   if (!geprueft.success) {
