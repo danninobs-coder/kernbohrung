@@ -4,8 +4,21 @@
  * Bewusst eine reine Funktion ohne Dateisystemzugriff: So laesst sie sich ohne
  * Quelle testen, und der Adapter kann sie auf einen Git-Baum anwenden, bevor er
  * auch nur eine Datei geholt hat.
+ *
+ * Die Typen unten stehen als JSDoc da, nicht zur Zierde: `astro check` bezieht
+ * `werkzeug/` mit ein, und ohne die literalen `true`/`false` verbreitert
+ * TypeScript `mitnehmen` zu `boolean`. Dann ist `Urteil` keine unterscheidbare
+ * Union mehr, und jeder Zugriff auf `grund` oder `rubrik` gilt als Fehler —
+ * obwohl er zur Laufzeit richtig ist. Das ist zugleich der Vertrag, auf den
+ * sich Manifest und Adapter stuetzen.
+ *
+ * @typedef {'beschreibung' | 'umsetzung'} Rubrik
+ * @typedef {{ pfad: string, mitnehmen: true, rubrik: Rubrik, bytes: number }} Mitnehmen
+ * @typedef {{ pfad: string, mitnehmen: false, grund: string }} Auslassen
+ * @typedef {Mitnehmen | Auslassen} Urteil
  */
 
+/** @type {{ beschreibung: 'beschreibung', umsetzung: 'umsetzung' }} */
 export const RUBRIK = {
   beschreibung: 'beschreibung',
   umsetzung: 'umsetzung',
@@ -22,6 +35,11 @@ const ABHAENGIGKEITEN = /(^|\/)(requirements[^/]*\.txt|package(-lock)?\.json|pnp
 const DATEN = /\.(csv|tsv|json|jsonl|parquet|ya?ml|xml|db|sqlite3?)$/i;
 const BINAER = /\.(png|jpe?g|gif|svg|webp|ico|pdf|zip|gz|mp4|mov|woff2?|ttf)$/i;
 
+/**
+ * @param {string} pfad Pfad relativ zur Quellwurzel
+ * @param {number} bytes Groesse in Bytes
+ * @returns {Urteil}
+ */
 export function beurteile(pfad, bytes) {
   const name = pfad.split('/').pop() ?? pfad;
 
@@ -50,10 +68,21 @@ export function beurteile(pfad, bytes) {
   return nein(pfad, 'unbekannte Endung');
 }
 
+/**
+ * @param {string} pfad
+ * @param {Rubrik} rubrik
+ * @param {number} bytes
+ * @returns {Mitnehmen}
+ */
 function ja(pfad, rubrik, bytes) {
   return { pfad, mitnehmen: true, rubrik, bytes };
 }
 
+/**
+ * @param {string} pfad
+ * @param {string} grund
+ * @returns {Auslassen}
+ */
 function nein(pfad, grund) {
   return { pfad, mitnehmen: false, grund };
 }

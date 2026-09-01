@@ -1,28 +1,45 @@
 import { describe, it, expect } from 'vitest';
 import { beurteile, RUBRIK } from '../werkzeug/auswahl.mjs';
 
+type Urteil = ReturnType<typeof beurteile>;
+
+/**
+ * Grenzt das Urteil ein und wirft mit einer brauchbaren Meldung, wenn es
+ * anders ausfiel als erwartet.
+ *
+ * TypeScript verlangt die Eingrenzung, weil `Urteil` eine unterscheidbare
+ * Union ist — ein `expect(u.mitnehmen).toBe(true)` davor grenzt den Typ nicht
+ * ein. Der Umweg zahlt sich aus: Statt „expected undefined to be
+ * 'beschreibung'" steht im Fehlerfall da, warum die Datei liegen blieb.
+ */
+function alsMitnehmen(u: Urteil): Extract<Urteil, { mitnehmen: true }> {
+  if (!u.mitnehmen) throw new Error(`${u.pfad} wurde ausgelassen: ${u.grund}`);
+  return u;
+}
+
+function alsAuslassen(u: Urteil): Extract<Urteil, { mitnehmen: false }> {
+  if (u.mitnehmen) throw new Error(`${u.pfad} wurde mitgenommen als ${u.rubrik}`);
+  return u;
+}
+
 describe('beurteile', () => {
   it('nimmt eine README als Beschreibung', () => {
-    const u = beurteile('rag_tutorials/corrective_rag/README.md', 2367);
-    expect(u.mitnehmen).toBe(true);
+    const u = alsMitnehmen(beurteile('rag_tutorials/corrective_rag/README.md', 2367));
     expect(u.rubrik).toBe(RUBRIK.beschreibung);
   });
 
   it('nimmt Python als Umsetzung', () => {
-    const u = beurteile('rag_tutorials/corrective_rag/corrective_rag.py', 16609);
-    expect(u.mitnehmen).toBe(true);
+    const u = alsMitnehmen(beurteile('rag_tutorials/corrective_rag/corrective_rag.py', 16609));
     expect(u.rubrik).toBe(RUBRIK.umsetzung);
   });
 
   it('laesst Bilder liegen und nennt den Grund', () => {
-    const u = beurteile('rag_tutorials/x/assets/architektur.png', 500000);
-    expect(u.mitnehmen).toBe(false);
+    const u = alsAuslassen(beurteile('rag_tutorials/x/assets/architektur.png', 500000));
     expect(u.grund).toMatch(/Bild|binaer/i);
   });
 
   it('laesst Abhaengigkeitslisten liegen', () => {
-    const u = beurteile('rag_tutorials/x/requirements.txt', 348);
-    expect(u.mitnehmen).toBe(false);
+    const u = alsAuslassen(beurteile('rag_tutorials/x/requirements.txt', 348));
     expect(u.grund).toMatch(/Abhaengigkeit/i);
   });
 
@@ -33,8 +50,7 @@ describe('beurteile', () => {
   });
 
   it('laesst zu grosse Textdateien liegen und nennt die Groesse', () => {
-    const u = beurteile('rag_tutorials/x/riesig.py', 400_000);
-    expect(u.mitnehmen).toBe(false);
+    const u = alsAuslassen(beurteile('rag_tutorials/x/riesig.py', 400_000));
     expect(u.grund).toMatch(/gross/i);
   });
 

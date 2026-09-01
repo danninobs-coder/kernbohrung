@@ -9,6 +9,14 @@
 
 export const MANIFEST_FASSUNG = 1;
 
+/**
+ * @typedef {import('./auswahl.mjs').Urteil} Urteil
+ * @typedef {{ art: string, url: string, unterpfad: string, sha: string }} Herkunft
+ */
+
+/**
+ * @param {{ herkunft: Herkunft, urteile: readonly Urteil[], gestempeltAm: string }} eingabe
+ */
 export function baueManifest({ herkunft, urteile, gestempeltAm }) {
   if (!gestempeltAm) {
     throw new Error(

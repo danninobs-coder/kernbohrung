@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { baueManifest, MANIFEST_FASSUNG } from '../werkzeug/manifest.mjs';
 
+// `as const` ist hier nicht Kosmetik: Ohne die Festlegung verbreitert
+// TypeScript `mitnehmen: true` im Array-Literal zu `boolean`, und die Fixture
+// erfuellt den Urteil-Vertrag aus auswahl.mjs nicht mehr. Genau das soll sie
+// aber — sie steht stellvertretend fuer echte Auswahlergebnisse.
 const urteile = [
   { pfad: 'a/README.md', mitnehmen: true, rubrik: 'beschreibung', bytes: 100 },
   { pfad: 'a/main.py', mitnehmen: true, rubrik: 'umsetzung', bytes: 200 },
   { pfad: 'a/bild.png', mitnehmen: false, grund: 'Bild oder sonst binaer — traegt keinen Text' },
-];
+] as const;
 
 const herkunft = {
   art: 'git',
@@ -41,6 +45,11 @@ describe('baueManifest', () => {
   });
 
   it('verlangt einen Zeitstempel, statt selbst einen zu erfinden', () => {
+    // Der Aufruf ist absichtlich unvollstaendig - geprueft wird die
+    // Laufzeitschranke, nicht der Typ. `@ts-expect-error` haelt beides
+    // zusammen: TypeScript schweigt hier, meldet sich aber, falls das Feld
+    // je optional wuerde und dieser Test dann nichts mehr pruefte.
+    // @ts-expect-error gestempeltAm fehlt mit Absicht
     expect(() => baueManifest({ herkunft, urteile })).toThrow(/Zeitstempel/i);
   });
 
