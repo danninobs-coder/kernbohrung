@@ -74,3 +74,80 @@ describe('fehlendeKombinationen', () => {
     expect(fehlendeKombinationen(d).sort()).toEqual(['bm25', 'bm25+rerank']);
   });
 });
+
+describe('PipelineProps als Schranke', () => {
+  it('lehnt zwei Schritte mit derselben id ab', () => {
+    const kaputt = {
+      ...gueltig,
+      schritte: [
+        { id: 'doppelt', titel: 'A', wirkung: 'x', optional: true, standardAn: false },
+        { id: 'doppelt', titel: 'B', wirkung: 'y', optional: true, standardAn: false },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('lehnt zwei Ergebnisse fuer dieselbe Kombination ab', () => {
+    const kaputt = {
+      ...gueltig,
+      ergebnisse: [
+        ...gueltig.ergebnisse,
+        { wenn: ['rerank'], ausgabe: [{ text: 'B', treffer: true }], hinweis: 'nochmal' },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('erkennt dieselbe Kombination auch bei anderer Reihenfolge der Ids', () => {
+    const kaputt = {
+      einheit: 'Dokument',
+      schritte: [
+        { id: 'eins', titel: 'A', wirkung: 'x', optional: true, standardAn: false },
+        { id: 'zwei', titel: 'B', wirkung: 'y', optional: true, standardAn: false },
+      ],
+      ergebnisse: [
+        { wenn: ['eins', 'zwei'], ausgabe: [{ text: 'A', treffer: true }], hinweis: 'a' },
+        { wenn: ['zwei', 'eins'], ausgabe: [{ text: 'B', treffer: true }], hinweis: 'b' },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+
+  it('lehnt Ids mit Sonderzeichen ab, die den Schluessel zerlegen wuerden', () => {
+    for (const id of ['a+b', 'a b', 'A', '']) {
+      const kaputt = {
+        ...gueltig,
+        schritte: [
+          { id, titel: 'A', wirkung: 'x' },
+          { id: 'zweiter', titel: 'B', wirkung: 'y' },
+        ],
+      };
+      expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+    }
+  });
+
+  it('nimmt die real verwendeten Ids an', () => {
+    for (const id of ['suche', 'rerank', 'bm25', 'anfrage', 'vektor', 'kontext']) {
+      const ok = {
+        ...gueltig,
+        schritte: [
+          { id, titel: 'A', wirkung: 'x' },
+          { id: 'zweiter', titel: 'B', wirkung: 'y' },
+        ],
+        ergebnisse: [{ wenn: [], ausgabe: [{ text: 'A', treffer: false }], hinweis: 'ohne' }],
+      };
+      expect(PipelineProps.safeParse(ok).success).toBe(true);
+    }
+  });
+
+  it('lehnt reinen Leerraum als Titel ab', () => {
+    const kaputt = {
+      ...gueltig,
+      schritte: [
+        { id: 'eins', titel: '   ', wirkung: 'x' },
+        { id: 'zwei', titel: 'B', wirkung: 'y' },
+      ],
+    };
+    expect(PipelineProps.safeParse(kaputt).success).toBe(false);
+  });
+});
