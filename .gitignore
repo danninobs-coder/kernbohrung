@@ -26,3 +26,7 @@ pnpm-debug.log*
 
 # jetbrains setting folder
 .idea/
+
+# Lektionsentwuerfe: Durchgang B schreibt hierher und prueft, bevor
+# etwas nach inhalt/lektionen/ wandert. Zwischenstand, kein Ergebnis.
+entwurf/
