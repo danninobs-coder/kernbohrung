@@ -242,6 +242,22 @@ Meldet es Mängel, **behebe sie im Entwurf**. Verschiebe erst bei `in Ordnung`:
 mv entwurf/<id>.mdx inhalt/lektionen/<id>.mdx
 ```
 
+### B5a · Zwei Fallen, die beim Schreiben zuverlässig zuschlagen
+
+**Deutsche Anführungszeichen brechen das YAML.** Wer `„…` mit einem geraden `"`
+schließt, beendet damit den YAML-String, und die Meldung lautet nur
+`bad indentation of a mapping entry` — sie zeigt auf eine Zeile weiter unten und
+sagt nichts über die Ursache. Das korrekte Schlusszeichen ist `“`. Prüf das,
+bevor du die Einrückung suchst:
+
+```bash
+grep -n '„[^“]*"' entwurf/<id>.mdx
+```
+
+**`einheitPlural` steht im Dativ.** Der Zähler des Pipeline-Widgets rendert
+„3 von 5 <Plural> relevant". Also `Dokumenten`, nicht `Dokumente`; `Abschnitten`,
+nicht `Abschnitte`. Die Prüfung merkt das nicht — es ist Grammatik, kein Schema.
+
 ### B6 · Der Bau als letzte Schranke
 
 ```bash
