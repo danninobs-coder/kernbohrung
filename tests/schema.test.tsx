@@ -151,3 +151,12 @@ describe('PipelineProps als Schranke', () => {
     expect(PipelineProps.safeParse(kaputt).success).toBe(false);
   });
 });
+
+describe('Pipeline-Komponente', () => {
+  it('meldet ungültige Parameter, statt still zu scheitern', async () => {
+    const { render, screen } = await import('@testing-library/react');
+    const { default: Pipeline } = await import('../src/widgets/Pipeline');
+    render(<Pipeline schritte={[]} ergebnisse={[]} />);
+    expect(screen.getByText(/ungültige Parameter/i)).toBeTruthy();
+  });
+});
