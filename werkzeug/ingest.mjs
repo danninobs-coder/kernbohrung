@@ -81,6 +81,58 @@ mkdirSync(rohordner, { recursive: true });
 /** @type {{ name: string, ersterAbsatz: string, dateien: number }[]} */
 const einstiege = [];
 
+/**
+ * Sucht in einer Beschreibung die erste Zeile, die tatsaechlich etwas beschreibt.
+ *
+ * Ueberschriften, Abzeichen und Verweise scheiden aus. Der letzte Fall ist der
+ * wichtige: Steht am Anfang nur ein Verweis auf ein Tutorial, traegt der
+ * Uebersichtseintrag null Information — bei der ersten eingelesenen Quelle
+ * betraf das 6 von 24 Varianten.
+ *
+ * Die Regel ist bewusst allgemein gehalten und nicht auf diese Quelle
+ * zugeschnitten. Zwei Merkmale zusammen tragen sie:
+ *
+ * 1. Nach Abzug von Markdown-Syntax, Verweisen und Bildern muss genug Text
+ *    uebrig bleiben. Das faengt reine Abzeichen- und Verweiszeilen ab.
+ * 2. Der Rest muss einen Satz **anfangen**, also gross beginnen. Das ist der
+ *    entscheidende Teil: Bei der ersten Quelle stand hinter dem Werbeverweis
+ *    noch Fliesstext ("… and learn how to build this from scratch"), also
+ *    reichlich Zeichen — aber als Fortsetzung des Aufrufs, klein beginnend.
+ *    Eine Beschreibung faengt einen Satz an, ein Fragment nicht.
+ *
+ * Wer stattdessen einen bestimmten Wortlaut ausschliesst, hat die naechste
+ * Quelle schon verloren.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function ersteBeschreibendeZeile(text) {
+  for (const zeile of text.split('\n')) {
+    const roh = zeile.trim();
+    if (!roh || roh.startsWith('#') || roh.startsWith('>')) continue;
+
+    // Lesbar bleiben soll, was zurueckkommt — Bindestriche gehoeren zum Wort
+    // ("Retrieval-Augmented"), Sternchen und Emoji nicht.
+    const lesbar = roh
+      .replace(/!?\[[^\]]*\]\([^)]*\)/g, '') // Verweise und Bilder samt Beschriftung
+      .replace(/<[^>]+>/g, '') // rohes HTML, etwa Abzeichen
+      .replace(/[*_`~]/g, '') // Auszeichnung
+      .replace(/\p{Extended_Pictographic}/gu, '') // Emoji als Schmuck
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    // Fuer das Urteil faellt zusaetzlich alles weg, was auch ohne Bedeutung
+    // Laenge erzeugen wuerde.
+    const nurText = lesbar.replace(/[|>-]/g, '').trim();
+
+    if (nurText.length < 40) continue;
+    if (!/^[\p{Lu}\p{N}"„]/u.test(nurText)) continue;
+
+    return lesbar;
+  }
+  return '';
+}
+
 // Eigener Vergleich statt `sort()`: Der Standardvergleich wuerde die Paare
 // erst in Zeichenketten verwandeln, und `localeCompare` haengt an der
 // Spracheinstellung des Rechners. Beides waere fuer einen Lauf, der
@@ -116,11 +168,7 @@ for (const [name, dateien] of nachNamen) {
   writeFileSync(path.join(rohordner, `${name}.md`), teile.join('\n'), 'utf8');
 
   const ersterAbsatz =
-    beschreibungen.length > 0
-      ? (lies(beschreibungen[0].pfad)
-          .split('\n')
-          .filter((z) => z.trim() && !z.startsWith('#'))[0] ?? '')
-      : '';
+    beschreibungen.length > 0 ? ersteBeschreibendeZeile(lies(beschreibungen[0].pfad)) : '';
   einstiege.push({ name, ersterAbsatz: ersterAbsatz.slice(0, 300), dateien: dateien.length });
 }
 
