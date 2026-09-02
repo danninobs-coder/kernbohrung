@@ -126,10 +126,13 @@ Du baust einen Ersatzweg ein: Findet der Abruf nichts Passendes, soll das System
     {
       wenn: ['schwelle', 'verweigern'],
       ausgabe: [
-        { text: 'Kein Abschnitt über 0,45 — kein Kontext', treffer: false },
-        { text: 'Ausgabe: „Dazu finde ich in diesem Bestand nichts.“', treffer: true }
+        { text: 'verworfen: Baustellenordnung — 0,38 < 0,45', treffer: false },
+        { text: 'verworfen: Protokoll JF 14 — 0,36 < 0,45', treffer: false },
+        { text: 'verworfen: Nachtrag 3 — 0,34 < 0,45', treffer: false },
+        { text: 'verworfen: Sicherheitsunterweisung — 0,33 < 0,45', treffer: false },
+        { text: 'verworfen: Protokoll JF 9 — 0,31 < 0,45', treffer: false }
       ],
-      hinweis: 'Erst beide zusammen tragen. Die Schwelle macht die Lücke sichtbar, die Verweigerung spricht sie aus. Beachte, dass sich der Abruf in allen vier Fällen gleich verhalten hat — geändert hat sich nur, was das System daraus macht.'
+      hinweis: 'Erst beide zusammen tragen. Die Schwelle macht die Lücke sichtbar, die Verweigerung spricht sie aus — statt einer Antwort kommt der Satz, dass der Bestand dazu nichts hergibt. Sieh dabei auf den Zähler: Er stand in allen vier Stellungen auf null. Der Abruf hat sich nie geändert, nur was das System daraus macht.'
     }
   ]}
 />
