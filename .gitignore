@@ -30,3 +30,7 @@ pnpm-debug.log*
 # Lektionsentwuerfe: Durchgang B schreibt hierher und prueft, bevor
 # etwas nach inhalt/lektionen/ wandert. Zwischenstand, kein Ergebnis.
 entwurf/
+
+# Ortsunabhaengige Kopie des Baus fuer die Handy-Vorschau: abgeleitet
+# aus dist/ ueber werkzeug/relative-verweise.mjs.
+handy/
