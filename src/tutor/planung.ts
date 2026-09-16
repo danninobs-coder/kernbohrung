@@ -16,7 +16,35 @@ import type { Zuversicht } from './typen';
  * hinein- und wieder herausgeht.
  */
 
-const planer = fsrs();
+/**
+ * Zwei Abweichungen von den Standardwerten, beide gemessen begruendet.
+ *
+ * `enable_short_term: false` schaltet die Lernschritte im Minutenbereich ab.
+ * Mit ihnen graduiert `Hard` auf einer neuen Karte NIE: Sie bleibt auf
+ * Lernschritt eins haengen, sechs Minuten, dauerhaft, waehrend die
+ * Schwierigkeit auf 9,83 klettert. Wer eine neue Frage raet und trifft, saehe
+ * sie alle sechs Minuten wieder. Ohne die Kurzzeitschritte waechst dieselbe
+ * Reihe 2, 4, 9, 15, 23, 32, 41, 52, 63, 76 Tage — genau das, was ein
+ * Werkzeug fuer Prinzipien braucht. Es ist auch der passendere Takt: Diese App
+ * wird in Sitzungen benutzt, nicht im Drill. Niemand will dieselbe Frage sechs
+ * Minuten spaeter, sondern morgen.
+ *
+ * `maximum_interval: 365` deckelt den Ausreisser nach oben. Mit dem Standard
+ * von 36 500 Tagen laeuft „immer sicher" ab der siebten Wiederholung in
+ * hundert Jahre — die Karte verschwindet nach vier richtigen Antworten
+ * endgueltig. Ein Prinzip einmal im Jahr wiederzusehen haelt es am Leben,
+ * ohne zu nerven.
+ *
+ * Der Deckel kostet etwas, und das gehoert hierhin: Ab der fuenften
+ * Wiederholung liegen „eher" und „sicher" beide am Deckel, der Abstand
+ * zwischen den Zuversichtsstufen verschwindet dort. Das ist vertretbar, weil
+ * die Stufen ihre Arbeit in den ersten Wochen leisten — dort stehen 8 gegen
+ * 19 gegen 136 Tage. Nach einem Jahr richtiger Abrufe ist ein Prinzip
+ * gelernt; der Unterschied zwischen „in einem Jahr" und „in hundert Jahren"
+ * ist dann kein Lernsignal mehr, sondern nur die Frage, ob es
+ * wiederkommt.
+ */
+const planer = fsrs({ enable_short_term: false, maximum_interval: 365 });
 
 export function neueKarte(jetzt: Date): Card {
   return createEmptyCard(jetzt);

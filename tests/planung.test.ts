@@ -116,3 +116,59 @@ describe('naechsterTermin auf einer gereiften Karte', () => {
     );
   });
 });
+
+describe('die Planereinstellungen', () => {
+  const TAG = 86400000;
+
+  /** Zehn Wiederholungen mit derselben Zuversicht, immer richtig. */
+  function reihe(zuversicht: 'sicher' | 'eher' | 'geraten'): number[] {
+    let jetzt = new Date('2026-09-16T08:00:00Z');
+    let karte = neueKarte(jetzt);
+    const tage: number[] = [];
+    for (let i = 0; i < 10; i++) {
+      const termin = naechsterTermin(karte, zuversicht, true, jetzt);
+      tage.push((termin.faellig.getTime() - jetzt.getTime()) / TAG);
+      karte = termin.karte;
+      jetzt = termin.faellig;
+    }
+    return tage;
+  }
+
+  it('laesst geratene Treffer graduieren statt sie im Minutentakt festzuhalten', () => {
+    // Mit den Kurzzeitschritten des Standards bleibt Hard auf einer neuen
+    // Karte ewig bei sechs Minuten haengen. Wer eine neue Frage raet und
+    // trifft, saehe sie alle sechs Minuten wieder.
+    const tage = reihe('geraten');
+    expect(tage[0]).toBeGreaterThanOrEqual(1);
+    for (let i = 1; i < tage.length; i++) {
+      expect(tage[i]).toBeGreaterThan(tage[i - 1]);
+    }
+  });
+
+  it('laesst keine Karte laenger als ein Jahr verschwinden', () => {
+    // Ohne Deckel laeuft „immer sicher" ab der siebten Wiederholung in
+    // 36 500 Tage — die Karte ist nach vier richtigen Antworten weg.
+    //
+    // Die Schranke liegt bewusst etwas ueber dem Deckel von 365: ts-fsrs
+    // verankert Faelligkeiten auf Tagesgrenzen, gemessen werden dadurch bis
+    // zu 367 Tage. Geprueft wird die Absicht — keine Karte verschwindet laenger
+    // als etwa ein Jahr —, nicht die Tagesarithmetik des Pakets.
+    for (const zuversicht of ['sicher', 'eher', 'geraten'] as const) {
+      for (const tage of reihe(zuversicht)) {
+        expect(tage).toBeLessThanOrEqual(370);
+      }
+    }
+  });
+
+  it('haelt die Zuversichtsstufen in den ersten Wochen auseinander', () => {
+    // Der Deckel kassiert den Abstand im Langlauf. Er muss deshalb dort
+    // sitzen, wo gelernt wird: in den ersten vier Wiederholungen.
+    const geraten = reihe('geraten');
+    const eher = reihe('eher');
+    const sicher = reihe('sicher');
+    for (const i of [2, 3]) {
+      expect(geraten[i]).toBeLessThan(eher[i]);
+      expect(eher[i]).toBeLessThan(sicher[i]);
+    }
+  });
+});
