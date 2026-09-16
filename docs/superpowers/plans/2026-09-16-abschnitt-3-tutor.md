@@ -672,3 +672,67 @@ Die Landkarte zeigt den Fortschritt dorthin als Zeile: „Eigene Parameter ab 40
 Vier Lektionen sind mit Zuversichtsangabe beantwortbar, die Ereignisse überleben einen Neustart, die Landkarte zeigt Reifegrade und — sobald genug Beobachtungen vorliegen — die Überzeugungslücke. Heller und dunkler Modus sind beide vollständig, mit gemessenem Textkontrast über 4,5:1. Die Schwelle für eigene Parameter steht im Code und wird auf der Landkarte als Fortschritt gezeigt.
 
 **Ausdrücklich nicht Teil:** eigene FSRS-Parameter. Die kommen, wenn die Historie sie trägt.
+
+---
+
+# Anhang zu Aufgabe 6: Die gemessenen Token
+
+Gemessen im Browser am Entwurf, nicht gerechnet: alle zwoelf Werte liegen
+ueber 4,5:1. Uebernimm sie unveraendert.
+
+| Token | hell | dunkel | Kontrast auf Grund (hell / dunkel) |
+|---|---|---|---|
+| `--grund` | `#EFF2F0` | `#0F1214` | — |
+| `--flaeche` | `#FFFFFF` | `#161B1E` | — |
+| `--flaeche-2` | `#E4E9E6` | `#1E2528` | — |
+| `--rand` | `#D2DAD6` | `#2A3134` | — |
+| `--rand-stark` | `#B4C0BB` | `#3C4649` | — |
+| `--ink` | `#14191B` | `#E8EBE7` | 15,7 / 15,6 |
+| `--ink-2` | `#5C6663` | `#8D9894` | 5,3 / 6,3 |
+| `--akzent` | `#8F5709` | `#E8A33C` | 5,3 / 8,7 |
+| `--akzent-fill` | `#E8A33C` | `#E8A33C` | Text darauf: `--auf-fill`, 8,5 |
+| `--auf-fill` | `#14191B` | `#14191B` | — |
+| `--teal` | `#116E62` | `#2FB8A6` | 5,4 / 7,6 |
+| `--teal-weich` | `#DCEBE8` | `#10312E` | — |
+| `--richtig` | `#116E62` | `#2FB8A6` | wie `--teal` |
+| `--falsch` | `#9A3D12` | `#E0763C` | 6,1 / 6,1 |
+
+**Knappster Wert:** der Begruendungskopf (`--teal` auf `--teal-weich`) im hellen
+Modus mit 4,98:1. Besteht, hat aber wenig Luft — wer an `--teal-weich` dreht,
+muss nachmessen.
+
+## Umbenennung der bestehenden Variablen
+
+`src/styles/global.css` hat heute 39 Zeilen mit Systemfarben. Es gibt **keine
+einzige fest verdrahtete Farbe** in `src/` — alles laeuft bereits ueber
+`var(--…)`. Die Umstellung ist damit eine reine Umbenennung plus Erweiterung:
+
+| alt | neu |
+|---|---|
+| `--grund` | `--grund` (bleibt) |
+| `--schrift` | `--ink` |
+| `--linie` | `--rand` |
+| `--treffer` | `--richtig` |
+| `--fehl` | `--falsch` |
+
+`color-scheme: light dark` bleibt stehen — es faerbt Scrollbalken und
+Formularelemente, die kein Token erreicht.
+
+## Was der Entwurf sonst festlegt
+
+- **Schriften:** Syne 600/800 (Ueberschriften), Atkinson Hyperlegible 400/700
+  (Fliesstext), JetBrains Mono 400/600 (Zahlen, Marken, Augenbrauen). Ueber
+  Google Fonts mit `display=swap`, jeweils mit echtem Rueckfall.
+- **Radien:** Karte 16px, Antwort 11px, Pille 999px.
+- **Der Glanz** ist ein einzelner `radial-gradient` oben rechts, kein Teppich
+  ueber die ganze Seite.
+- **Der Zuversichtsschritt** erscheint erst NACH der Antwortwahl, nie davor.
+  Die Begruendung traegt bei „sicher und falsch" eine eigene Ueberschrift.
+
+## Ein Fund aus dem Entwurf, der noch zu loesen ist
+
+Die klebende Kopfleiste (`position: sticky`) liegt im Entwurf innerhalb der
+760px-Bahn. Ihr Hintergrund endet damit an der Bahnkante, waehrend die Seite
+darunter durchscrollt. Im Entwurf faellt das kaum auf, in der App mit breiterem
+Inhalt schon. **Loesung:** die Leiste voll ueber die Fensterbreite legen und
+nur ihren Inhalt auf die Bahn begrenzen.
