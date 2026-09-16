@@ -45,11 +45,22 @@ const daten = eintrag.data;
       <p class="prinzip">{daten.prinzip}</p>
     </section>
 
+    {/*
+      client:idle statt client:visible, gemessen begruendet: Frage.js ist
+      1,1 KB, waehrend die React-Laufzeit mit 180 KB ohnehin geladen wird,
+      weil das Pipeline-Widget in Takt 2 hydriert. Aufgeschobenes Hydrieren
+      spart hier also nichts und handelt sich dafuer einen Ausfallmodus ein:
+      client:visible haengt an einem IntersectionObserver, und der feuert
+      nicht, solange das Dokument als versteckt gilt — im Hintergrundtab, bei
+      Vorabdarstellung, in eingebetteten Ansichten. Ein Antwortknopf, der
+      nicht reagiert, ist bei einer Lern-App kein Randfall, sondern die
+      kaputte Hauptsache.
+    */}
     <section class="takt" data-takt="probe">
       <p class="augenbraue">Takt 4 · Die Probe</p>
       <h2>Die Probe</h2>
       {daten.fragen.map((frage) => (
-        <Frage client:visible id={frage.id} frage={frage.frage} antworten={frage.antworten} />
+        <Frage client:idle id={frage.id} frage={frage.frage} antworten={frage.antworten} />
       ))}
     </section>
 
@@ -57,7 +68,7 @@ const daten = eintrag.data;
       <p class="augenbraue">Takt 5 · Der Transfer</p>
       <h2>Der Transfer</h2>
       <Frage
-        client:visible
+        client:idle
         id={daten.transfer.id}
         frage={daten.transfer.frage}
         antworten={daten.transfer.antworten}
