@@ -1,0 +1,74 @@
+import { createEmptyCard, fsrs, Rating, type Card, type Grade } from 'ts-fsrs';
+import type { Zuversicht } from './typen';
+
+/**
+ * Die Terminplanung, gekapselt.
+ *
+ * ts-fsrs plant mit Standardparametern. Das ist Absicht und keine Luecke:
+ * Eine Anpassung der einundzwanzig FSRS-Parameter braucht einige hundert
+ * Bewertungen; sie an fuenfzig zu schaetzen waere Ueberanpassung. Die Historie
+ * dafuer wird gesammelt (siehe speicher.ts), die Schaetzung kommt, wenn die
+ * Datenmenge sie traegt.
+ *
+ * Ein Planer fuer das ganze Modul, nicht einer je Aufruf: `fsrs()` baut die
+ * Parameter und die Strategien jedes Mal neu auf. Der Planer haelt keinen
+ * Zustand ueber Aufrufe hinweg — der Zustand steckt in der Karte, die
+ * hinein- und wieder herausgeht.
+ */
+
+const planer = fsrs();
+
+export function neueKarte(jetzt: Date): Card {
+  return createEmptyCard(jetzt);
+}
+
+/**
+ * Zuversicht und Richtigkeit werden zu einer FSRS-Bewertung.
+ *
+ * Hier verdient der Zuversichtsknopf sein Geld. Ohne ihn kennt der Planer nur
+ * richtig und falsch und muesste jeden Treffer gleich behandeln. Mit ihm
+ * unterscheidet er den sicheren Treffer vom geratenen — und der geratene
+ * bekommt ein kurzes Intervall, weil Glueck kein Koennen ist.
+ *
+ * Falsch ist immer Again, unabhaengig von der Zuversicht. Die Zuversicht
+ * aendert nichts daran, DASS die Karte zurueckkommt; sie aendert, wie
+ * dringend sie im Fehlermuster auftaucht (siehe kalibrierung.ts).
+ *
+ * Rueckgabetyp ist `Grade`, nicht `Rating`: `Rating` enthaelt zusaetzlich
+ * `Rating.Manual`, das `FSRS.next()` nicht annimmt. `Grade` ist genau die
+ * Teilmenge der vier echten Bewertungen. Fuer den Aufrufer ist das derselbe
+ * Wert — `Grade` schliesst nur den Fall aus, den der Planer ablehnen wuerde.
+ */
+export function alsBewertung(zuversicht: Zuversicht, richtig: boolean): Grade {
+  if (!richtig) return Rating.Again;
+  if (zuversicht === 'sicher') return Rating.Easy;
+  if (zuversicht === 'eher') return Rating.Good;
+  return Rating.Hard;
+}
+
+export type Termin = {
+  readonly karte: Card;
+  readonly faellig: Date;
+};
+
+/**
+ * Plant den naechsten Termin und gibt die fortgeschriebene Karte zurueck.
+ *
+ * `jetzt` wird uebergeben und nicht im Modul gelesen. Das ist der Grund, warum
+ * diese Datei ohne Zeitattrappe testbar ist: Zweimal derselbe Aufruf mit
+ * demselben Zeitpunkt liefert denselben Termin. Die Standardparameter haben
+ * `enable_fuzz = false`, es streut also auch nichts nach.
+ */
+export function naechsterTermin(
+  karte: Card,
+  zuversicht: Zuversicht,
+  richtig: boolean,
+  jetzt: Date,
+): Termin {
+  const ergebnis = planer.next(karte, jetzt, alsBewertung(zuversicht, richtig));
+  // `card.due` ist in ts-fsrs 5.4.2 bereits ein echtes Date. Die Kopie ueber
+  // getTime() ist trotzdem gewollt: Sonst zeigen `termin.faellig` und
+  // `termin.karte.due` auf dasselbe veraenderliche Objekt, und wer an einem
+  // dreht, verschiebt unbemerkt das andere.
+  return { karte: ergebnis.card, faellig: new Date(ergebnis.card.due.getTime()) };
+}
