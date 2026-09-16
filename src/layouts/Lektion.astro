@@ -38,10 +38,15 @@ const daten = eintrag.data;
     </section>
 
     <section class="takt" data-takt="satz">
+      {/* Die Augenbrauen benennen den Takt, den die Datei ohnehin kennt.
+          Sie sind Beschriftung, keine Struktur: wer sie entfernt, aendert
+          die Reihenfolge nicht. */}
+      <p class="augenbraue">Takt 3 · Der Satz</p>
       <p class="prinzip">{daten.prinzip}</p>
     </section>
 
     <section class="takt" data-takt="probe">
+      <p class="augenbraue">Takt 4 · Die Probe</p>
       <h2>Die Probe</h2>
       {daten.fragen.map((frage) => (
         <Frage client:visible id={frage.id} frage={frage.frage} antworten={frage.antworten} />
@@ -49,6 +54,7 @@ const daten = eintrag.data;
     </section>
 
     <section class="takt" data-takt="transfer">
+      <p class="augenbraue">Takt 5 · Der Transfer</p>
       <h2>Der Transfer</h2>
       <Frage
         client:visible
@@ -59,6 +65,7 @@ const daten = eintrag.data;
     </section>
 
     <section class="takt" data-takt="herkunft">
+      <p class="augenbraue">Takt 6 · Herkunft</p>
       <h2>Herkunft</h2>
       <Herkunft quellen={daten.quellen} />
     </section>

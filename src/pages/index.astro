@@ -7,7 +7,12 @@ const lektionen = (await getCollection('lektionen')).sort(
 );
 ---
 <Seite titel="Übersicht">
+  <p class="augenbraue">Kernbohrung · Übersicht</p>
   <h1>Lektionen</h1>
+  <p class="vorspann">
+    Jede Lektion läuft in sechs Takten: Widerspruch, Bild, Satz, Probe, Transfer, Herkunft.
+    Erst spielen, dann erklären.
+  </p>
   <ol class="uebersicht">
     {lektionen.map((eintrag) => (
       <li>

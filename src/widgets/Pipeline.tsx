@@ -111,10 +111,17 @@ function Ansicht({ daten }: { daten: PipelineDaten }) {
                   aria-pressed={an}
                   onClick={() => umschalten(schritt.id)}
                 >
+                  {/* Nur Gestalt — der Knoten in der Pille. `aria-hidden`,
+                      weil `aria-pressed` den Zustand bereits ansagt und ein
+                      zweiter, stummer Punkt nur Laerm im Screenreader waere. */}
+                  <i className="punkt" aria-hidden="true" />
                   {schritt.titel}
                 </button>
               ) : (
-                <span className="schritt-name">{schritt.titel}</span>
+                <span className="schritt-name">
+                  <i className="punkt" aria-hidden="true" />
+                  {schritt.titel}
+                </span>
               )}
               <p className="schritt-wirkung">{schritt.wirkung}</p>
             </li>

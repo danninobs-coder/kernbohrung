@@ -1,39 +1,606 @@
+/* ===============================================================
+   Kernbohrung — Token-Schicht und Grundgestalt (Richtung B)
+   =============================================================== */
+
+/* ---------------------------------------------------------------
+   Die Token-Schicht.
+
+   Hell steht VOLLSTAENDIG auf blankem :root. Dunkel definiert
+   dieselben Namen zweimal neu — einmal fuer die Systemeinstellung,
+   einmal fuer den ausdruecklichen Wunsch am Umschalter.
+
+   Keine Farbe darf ausschliesslich in einem Media- oder
+   [data-theme]-Block stehen: sie faellt sonst im jeweils anderen
+   Fall auf nichts zurueck und erbt am Ende eine fremde Farbe.
+
+   Der Grund fuer die doppelte Absicherung: Die Systemeinstellung
+   deckt den Standardfall, das Attribut den ausdruecklichen Wunsch.
+   Ohne den :not([data-theme="light"])-Schutz ueberstimmt die
+   Systemeinstellung den Umschalter in einer Richtung — naemlich
+   genau dann, wenn das System dunkel steht und der Nutzer hell
+   waehlt. Das ist der Fehler, den man erst sieht, wenn man alle
+   vier Kombinationen durchprobiert.
+
+   Die Hexwerte sind im Browser am Entwurf gemessen, nicht
+   geschaetzt (Anhang zu Aufgabe 6 des Plans). Wer an ihnen dreht,
+   misst nach. Und: die beiden Dunkelbloecke sind Zwillinge —
+   wer einen aendert, aendert beide.
+   --------------------------------------------------------------- */
 :root {
+  /* Faerbt Scrollbalken und Formularelemente, die kein Token
+     erreicht. Die drei Modi schaerfen den Wert unten nach, sonst
+     bliebe im ausdruecklich hellen Modus auf einem dunklen System
+     der Scrollbalken dunkel. */
   color-scheme: light dark;
-  --grund: Canvas;
-  --schrift: CanvasText;
-  --linie: color-mix(in oklab, CanvasText 20%, transparent);
-  --treffer: color-mix(in oklab, green 55%, CanvasText);
-  --fehl: color-mix(in oklab, crimson 55%, CanvasText);
+
+  --grund:        #EFF2F0;
+  --flaeche:      #FFFFFF;
+  --flaeche-2:    #E4E9E6;
+  --rand:         #D2DAD6;
+  --rand-stark:   #B4C0BB;
+  --ink:          #14191B;
+  --ink-2:        #5C6663;
+  --akzent:       #8F5709; /* Amber, auf hell abgedunkelt bis Textkontrast */
+  --akzent-fill:  #E8A33C; /* Amber als Flaeche, mit dunkler Schrift darauf */
+  --auf-fill:     #14191B;
+  --teal:         #116E62;
+  --teal-weich:   #DCEBE8;
+  --richtig:      #116E62;
+  --falsch:       #9A3D12;
+
+  --schatten: 0 1px 2px rgba(20, 25, 27, 0.06), 0 8px 24px -12px rgba(20, 25, 27, 0.18);
+  --glanz: radial-gradient(60% 50% at 78% 0%, rgba(232, 163, 60, 0.16), transparent 70%);
+
+  /* Formen aus dem Entwurf. */
+  --radius-karte: 16px;
+  --radius-antwort: 11px;
+  --radius-pille: 999px;
+  --bahn: 760px;
+
+  /* Schriften mit echtem Rueckfall: faellt Google Fonts aus, steht
+     immer noch eine Schrift da, die es auf dem Geraet wirklich gibt. */
+  --schrift-kopf: 'Syne', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+  --schrift-text: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+  --schrift-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* Zwilling 1 von 2 — siehe :root[data-theme="dark"] weiter unten. */
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --grund:       #0F1214;
+    --flaeche:     #161B1E;
+    --flaeche-2:   #1E2528;
+    --rand:        #2A3134;
+    --rand-stark:  #3C4649;
+    --ink:         #E8EBE7;
+    --ink-2:       #8D9894;
+    --akzent:      #E8A33C;
+    --akzent-fill: #E8A33C;
+    --auf-fill:    #14191B;
+    --teal:        #2FB8A6;
+    --teal-weich:  #10312E;
+    --richtig:     #2FB8A6;
+    --falsch:      #E0763C;
+
+    --schatten: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px -14px rgba(0, 0, 0, 0.7);
+    --glanz: radial-gradient(60% 50% at 78% 0%, rgba(232, 163, 60, 0.1), transparent 70%);
+  }
+}
+
+/* Zwilling 2 von 2 — identische Werte, anderer Anlass. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --grund:       #0F1214;
+  --flaeche:     #161B1E;
+  --flaeche-2:   #1E2528;
+  --rand:        #2A3134;
+  --rand-stark:  #3C4649;
+  --ink:         #E8EBE7;
+  --ink-2:       #8D9894;
+  --akzent:      #E8A33C;
+  --akzent-fill: #E8A33C;
+  --auf-fill:    #14191B;
+  --teal:        #2FB8A6;
+  --teal-weich:  #10312E;
+  --richtig:     #2FB8A6;
+  --falsch:      #E0763C;
+
+  --schatten: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px -14px rgba(0, 0, 0, 0.7);
+  --glanz: radial-gradient(60% 50% at 78% 0%, rgba(232, 163, 60, 0.1), transparent 70%);
+}
+
+/* Keine Farbe, nur die Schaerfung von oben: die hellen Werte stehen
+   bereits auf blankem :root und gelten hier unveraendert weiter. */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+/* ---------------------------------------------------------------
+   Grundgestalt
+   --------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  background: var(--grund);
-  color: var(--schrift);
-  font: 17px/1.6 system-ui, sans-serif;
+  padding: 0 0 5rem;
+  background-color: var(--grund);
+  /* Ein einzelner warmer Lichtfleck oben rechts, kein Verlaufsteppich
+     ueber die ganze Seite. */
+  background-image: var(--glanz);
+  background-repeat: no-repeat;
+  color: var(--ink);
+  font-family: var(--schrift-text);
+  font-size: 17px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
-main { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 6rem; }
-.heim { display: block; padding: 1rem 1.25rem; font-size: 0.85rem; }
+.bahn {
+  max-width: var(--bahn);
+  margin: 0 auto;
+  padding: 0 20px;
+}
 
-.takt { padding: 2rem 0; border-top: 1px solid var(--linie); }
-.prinzip { font-size: 1.25rem; font-weight: 600; }
+a {
+  color: var(--akzent);
+  text-underline-offset: 3px;
+}
 
-.pipeline-schritte { display: grid; gap: 0.5rem; padding: 0; list-style: none; }
-.pipeline-schritt[data-an='false'] { opacity: 0.4; }
-.schritt-wirkung { margin: 0.25rem 0 0; font-size: 0.9rem; }
-.pipeline-ergebnis { margin-top: 1.5rem; }
-.ausgabe li[data-treffer='true'] { color: var(--treffer); font-weight: 600; }
-.ausgabe li[data-treffer='false'] { opacity: 0.55; }
-.zaehler { font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+:focus-visible {
+  outline: 2px solid var(--akzent);
+  outline-offset: 2px;
+}
 
-.antworten { display: grid; gap: 0.75rem; padding: 0; list-style: none; }
-.antwort { display: block; width: 100%; padding: 0.6rem 0.8rem; text-align: left; font: inherit; cursor: pointer; background: transparent; color: inherit; border: 1px solid var(--linie); }
-.antwort:disabled { cursor: default; }
-.antwort[data-zustand='richtig'] { border-color: var(--treffer); font-weight: 600; }
-.antwort[data-zustand='falsch'] { border-color: var(--fehl); }
-.begruendung { margin: 0.4rem 0 0; font-size: 0.9rem; opacity: 0.8; }
+code {
+  font-family: var(--schrift-mono);
+  font-size: 0.9em;
+  color: var(--ink);
+}
 
-.widget-fehler { border: 2px solid var(--fehl); padding: 1rem; }
-.herkunft { font-size: 0.9rem; }
+h1 {
+  font-family: var(--schrift-kopf);
+  font-weight: 800;
+  font-size: clamp(30px, 6vw, 46px);
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+  max-width: 20ch;
+  text-wrap: balance;
+  margin: 8px 0 14px;
+}
+
+h2 {
+  font-family: var(--schrift-kopf);
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+}
+
+h3 {
+  font-family: var(--schrift-kopf);
+  font-weight: 600;
+  font-size: 16.5px;
+  letter-spacing: -0.01em;
+  margin: 0 0 8px;
+}
+
+.augenbraue {
+  font-family: var(--schrift-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--akzent);
+  margin: 0 0 8px;
+}
+
+.vorspann {
+  color: var(--ink-2);
+  max-width: 58ch;
+  margin: 0 0 40px;
+}
+
+/* ---------------------------------------------------------------
+   Die klebende Kopfleiste
+
+   Sie liegt ueber die volle Fensterbreite, nur ihr Inhalt sitzt auf
+   der Bahn. Laege die Leiste selbst in der Bahn, endete ihr
+   Hintergrund an deren Kante und die Seite wuerde daneben sichtbar
+   durchscrollen.
+   --------------------------------------------------------------- */
+.leiste {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin-bottom: 28px;
+  background: color-mix(in srgb, var(--grund) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--rand);
+}
+
+.leiste-inhalt {
+  max-width: var(--bahn);
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.marke {
+  font-family: var(--schrift-kopf);
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  margin-right: auto;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.marke span {
+  color: var(--akzent);
+}
+
+.schalter {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--flaeche-2);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-pille);
+}
+
+.schalter button {
+  font: inherit;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  padding: 5px 13px;
+  border: 0;
+  border-radius: var(--radius-pille);
+  cursor: pointer;
+  background: transparent;
+  color: var(--ink-2);
+}
+
+.schalter button[aria-pressed='true'] {
+  background: var(--flaeche);
+  color: var(--ink);
+  box-shadow: var(--schatten);
+}
+
+/* ---------------------------------------------------------------
+   Karten und Takte
+   --------------------------------------------------------------- */
+.karte {
+  background: var(--flaeche);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-karte);
+  padding: 26px;
+  box-shadow: var(--schatten);
+}
+
+.takt {
+  padding: 2rem 0;
+  border-top: 1px solid var(--rand);
+}
+
+.takt > h2 {
+  margin-bottom: 18px;
+}
+
+/* Takt 3: der Satz. Kein Absatz unter vielen, sondern der Kern der
+   Lektion — deshalb eigene Flaeche statt nur fetter Schrift. */
+.prinzip {
+  font-family: var(--schrift-kopf);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  text-wrap: pretty;
+  margin: 0;
+  padding: 18px 22px;
+  border-radius: var(--radius-karte);
+  border: 1px solid var(--rand);
+  border-left: 3px solid var(--akzent-fill);
+  background: var(--teal-weich);
+  color: var(--ink);
+}
+
+/* Die Uebersicht auf der Startseite. */
+.uebersicht {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.uebersicht li {
+  background: var(--flaeche);
+  border: 1px solid var(--rand);
+  border-radius: 13px;
+  padding: 15px 16px;
+  box-shadow: var(--schatten);
+}
+
+.uebersicht a {
+  font-family: var(--schrift-kopf);
+  font-weight: 600;
+  font-size: 15.5px;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: var(--ink);
+  text-decoration-color: var(--rand-stark);
+}
+
+.uebersicht a:hover {
+  color: var(--akzent);
+}
+
+.uebersicht p {
+  margin: 9px 0 0;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+
+/* ---------------------------------------------------------------
+   Das Pipeline-Widget — Knoten als Pillen
+   --------------------------------------------------------------- */
+.widget {
+  margin: 1.75rem 0;
+}
+
+.widget-pipeline {
+  background: var(--flaeche);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-karte);
+  padding: 22px 24px;
+  box-shadow: var(--schatten);
+}
+
+.pipeline-schritte {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.pipeline-schritt {
+  background: var(--flaeche-2);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-antwort);
+  padding: 12px 14px;
+}
+
+/* Kein opacity: das dimmt die Schrift unter jedes messbare
+   Kontrastverhaeltnis. Der ausgeschaltete Schritt wird ueber
+   Rand und Zweitfarbe zurueckgenommen, nicht ueber Transparenz. */
+.pipeline-schritt[data-an='false'] {
+  background: transparent;
+  border-style: dashed;
+}
+
+.pipeline-schritt[data-an='false'] .schritt-wirkung {
+  color: var(--ink-2);
+}
+
+.schritt-knopf,
+.schritt-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--schrift-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 4px 11px;
+  border-radius: var(--radius-pille);
+  border: 1px solid var(--rand-stark);
+  background: var(--flaeche);
+  color: var(--ink);
+}
+
+.schritt-knopf {
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.schritt-knopf:hover {
+  border-color: var(--akzent-fill);
+}
+
+.schritt-knopf[aria-pressed='true'] {
+  background: var(--akzent-fill);
+  border-color: var(--akzent-fill);
+  color: var(--auf-fill);
+}
+
+.schritt-wirkung {
+  margin: 0.5rem 0 0;
+  font-size: 14.5px;
+  color: var(--ink);
+}
+
+.pipeline-ergebnis {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed var(--rand-stark);
+}
+
+.ausgabe {
+  padding-left: 1.25rem;
+  margin: 0 0 0.75rem;
+}
+
+.ausgabe li[data-treffer='true'] {
+  color: var(--richtig);
+  font-weight: 700;
+}
+
+/* Siehe oben: Zweitfarbe statt Transparenz. */
+.ausgabe li[data-treffer='false'] {
+  color: var(--ink-2);
+}
+
+.hinweis {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+
+.zaehler {
+  margin: 0.5rem 0 0;
+  font-family: var(--schrift-mono);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------
+   Die Fragekarte
+   --------------------------------------------------------------- */
+.frage + .frage {
+  margin-top: 14px;
+}
+
+.frage-text {
+  font-size: 19px;
+  line-height: 1.4;
+  margin: 0 0 20px;
+  text-wrap: pretty;
+}
+
+.antworten {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.antwort {
+  display: block;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: var(--flaeche-2);
+  color: var(--ink);
+  border: 1px solid var(--rand);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-antwort);
+  padding: 14px 16px;
+  line-height: 1.4;
+  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+}
+
+.antwort:hover:not(:disabled) {
+  border-color: var(--rand-stark);
+  transform: translateX(2px);
+}
+
+.antwort:disabled {
+  cursor: default;
+}
+
+.antwort[data-zustand='richtig'] {
+  border-color: var(--richtig);
+  border-left-color: var(--richtig);
+  font-weight: 700;
+}
+
+.antwort[data-zustand='falsch'] {
+  border-color: var(--falsch);
+  border-left-color: var(--falsch);
+}
+
+/* Der Entwurf nimmt die uebrigen Antworten mit opacity .5 zurueck.
+   Gemessen sind das rund 3,4:1 — durchgefallen. Dieselbe Wirkung
+   traegt die gemessene Zweitfarbe auf dem Grund. */
+.antwort[data-zustand='neutral'] {
+  background: var(--grund);
+  color: var(--ink-2);
+}
+
+.begruendung {
+  margin: 7px 0 2px;
+  padding: 12px 15px;
+  border-radius: 12px;
+  background: var(--teal-weich);
+  border: 1px solid var(--rand);
+  font-size: 15px;
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------
+   Pillen, Herkunft, Fehlerkasten
+   --------------------------------------------------------------- */
+.pille {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--schrift-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: var(--radius-pille);
+  border: 1px solid currentColor;
+}
+
+/* Der Knotenpunkt in einer Pille. Er erbt die Farbe der Pille, damit
+   ein neuer Zustand nur eine Regel braucht, nicht zwei. */
+.punkt {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+.pille[data-reife='sitzt'] { color: var(--teal); }
+.pille[data-reife='frisch'] { color: var(--ink-2); }
+.pille[data-reife='verblasst'] { color: var(--akzent); }
+.pille[data-reife='wackelt'] { color: var(--falsch); }
+.pille[data-reife='unberuehrt'] { color: var(--ink-2); }
+
+.herkunft {
+  padding-left: 1.25rem;
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+
+.herkunft li + li {
+  margin-top: 4px;
+}
+
+.widget-fehler {
+  background: var(--flaeche);
+  border: 2px solid var(--falsch);
+  border-radius: 13px;
+  padding: 1rem 1.25rem;
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

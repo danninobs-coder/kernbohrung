@@ -12,11 +12,121 @@ const { titel } = Astro.props;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{titel} — Kernbohrung</title>
+
+    <!-- Schriften: Syne (Ueberschriften), Atkinson Hyperlegible
+         (Fliesstext), JetBrains Mono (Zahlen, Marken, Augenbrauen).
+         `display=swap` zeigt sofort den Rueckfall, statt den Text
+         bis zum Eintreffen der Datei unsichtbar zu lassen. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&family=Syne:wght@600;800&display=swap"
+    />
+
+    {/* Muss inline im <head> stehen und muss `is:inline` tragen.
+        Astro buendelt ein Skript ohne dieses Merkmal zu einem
+        <script type="module"> — und das laeuft erst NACH dem ersten
+        Malen. Genau dann blitzt beim Laden die helle Fassung auf,
+        bevor die dunkle greift. Inline und synchron heisst: das
+        Attribut steht, bevor irgendein Pixel gemalt ist. */}
+    <script is:inline>
+      (function () {
+        try {
+          var wahl = localStorage.getItem('kernbohrung:modus');
+          if (wahl === 'dark' || wahl === 'light') {
+            document.documentElement.setAttribute('data-theme', wahl);
+          } else {
+            document.documentElement.removeAttribute('data-theme');
+          }
+        } catch (fehler) {
+          /* Im privaten Fenster wirft schon der Lesezugriff. Dann
+             gilt die Systemeinstellung — das ist kein Fehlerfall,
+             sondern der Standardfall ohne gespeicherte Wahl. */
+        }
+      })();
+    </script>
   </head>
   <body>
-    <a class="heim" href="/">Kernbohrung</a>
-    <main>
+    <header class="leiste">
+      <div class="leiste-inhalt">
+        <a class="marke" href="/">Kern<span>bohrung</span></a>
+        <div class="schalter" role="group" aria-label="Darstellungsmodus">
+          <button type="button" data-modus="system" aria-pressed="true">System</button>
+          <button type="button" data-modus="light" aria-pressed="false">Hell</button>
+          <button type="button" data-modus="dark" aria-pressed="false">Dunkel</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="bahn">
       <slot />
     </main>
+
+    {/* Am Ende des Rumpfes, damit die Knoepfe schon dastehen. Das
+        Umschalten selbst ist unkritisch fuer das Aufblitzen — das
+        erledigt das Skript im <head>. Hier wird nur verdrahtet und
+        der gespeicherte Zustand an den Knoepfen nachgezogen: das
+        Markup kommt statisch aus dem Bau und behauptet zunaechst
+        immer "System". */}
+    <script is:inline>
+      (function () {
+        var SCHLUESSEL = 'kernbohrung:modus';
+        var wurzel = document.documentElement;
+        var knoepfe = document.querySelectorAll('.schalter button');
+
+        /** @returns {string} 'system', 'light' oder 'dark' */
+        function lies() {
+          try {
+            var wahl = localStorage.getItem(SCHLUESSEL);
+            return wahl === 'dark' || wahl === 'light' ? wahl : 'system';
+          } catch (fehler) {
+            return 'system';
+          }
+        }
+
+        /** @param {string} modus */
+        function schreibe(modus) {
+          try {
+            if (modus === 'system') localStorage.removeItem(SCHLUESSEL);
+            else localStorage.setItem(SCHLUESSEL, modus);
+          } catch (fehler) {
+            /* Privates Fenster: die Wahl gilt dann nur fuer diese
+               Seite. Besser als eine Ausnahme, die den Umschalter
+               ganz lahmlegt. */
+          }
+        }
+
+        /** @param {string} modus */
+        function anwenden(modus) {
+          /* "System" heisst: gar kein Attribut. Nur so kommt die
+             @media-Regel ueberhaupt zum Zug. */
+          if (modus === 'system') wurzel.removeAttribute('data-theme');
+          else wurzel.setAttribute('data-theme', modus);
+
+          knoepfe.forEach(function (knopf) {
+            knopf.setAttribute('aria-pressed', String(knopf.getAttribute('data-modus') === modus));
+          });
+        }
+
+        knoepfe.forEach(function (knopf) {
+          knopf.addEventListener('click', function () {
+            anwenden(schreibeUndGib(knopf.getAttribute('data-modus')));
+          });
+        });
+
+        /**
+         * @param {string | null} roh
+         * @returns {string}
+         */
+        function schreibeUndGib(roh) {
+          var modus = roh === 'dark' || roh === 'light' ? roh : 'system';
+          schreibe(modus);
+          return modus;
+        }
+
+        anwenden(lies());
+      })();
+    </script>
   </body>
 </html>

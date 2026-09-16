@@ -34,7 +34,9 @@ export default function Frage({ id, frage, antworten }: FrageProps) {
   }
 
   return (
-    <div className="frage" data-beantwortet={beantwortet}>
+    // `karte` traegt nur Gestalt: Flaeche, Rand, Radius, Schatten aus der
+    // Token-Schicht. Die Frage selbst weiss davon nichts.
+    <div className="frage karte" data-beantwortet={beantwortet}>
       <p className="frage-text">{frage}</p>
       <ul className="antworten">
         {gemischt.map((antwort) => (
