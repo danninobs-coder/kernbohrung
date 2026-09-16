@@ -552,6 +552,138 @@ h3 {
 }
 
 /* ---------------------------------------------------------------
+   Der Zuversichtsschritt
+
+   Erst die Antwort, dann die Sicherheit. Die Gestalt folgt dieser
+   Reihenfolge: Die gewaehlte Antwort bleibt markiert stehen,
+   waehrend darunter der zweite Schritt aufgeht.
+   --------------------------------------------------------------- */
+
+/* Die vorlaeufige Wahl. Kein Urteil, nur eine Markierung — der
+   Balken links ist Amber und nicht Teal oder Rot, weil in diesem
+   Moment noch nicht feststeht, was richtig war. Genau das ist der
+   Unterschied zu den drei Zustaenden nach der Aufloesung. */
+.antwort[data-zustand='gewaehlt'] {
+  background: var(--flaeche);
+  border-color: var(--rand-stark);
+  border-left-color: var(--akzent-fill);
+}
+
+/* Die Aufloesung steht auch in Worten da, nicht nur in der
+   Randfarbe. Farbe allein traegt sie nicht (WCAG 1.4.1). */
+.antwort-marke {
+  margin: 6px 0 0;
+  font-family: var(--schrift-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+/* Der Ergebnissatz. Er nimmt den Fokus auf, sobald der
+   Zuversichtsblock verschwindet — sein Umriss aus der
+   :focus-visible-Regel weiter oben bleibt deshalb unangetastet. */
+.aufloesung {
+  margin: 0 0 16px;
+  padding: 12px 15px;
+  border-radius: var(--radius-antwort);
+  border: 1px solid var(--rand);
+  border-left: 3px solid var(--rand-stark);
+  background: var(--flaeche-2);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.aufloesung[data-ergebnis='richtig'] {
+  border-left-color: var(--richtig);
+}
+
+.aufloesung[data-ergebnis='falsch'] {
+  border-left-color: var(--falsch);
+}
+
+.aufloesung-hinweis {
+  display: block;
+  margin-top: 4px;
+  font-weight: 400;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+
+.zuversicht {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--rand-stark);
+}
+
+.zuversicht-frage {
+  margin: 0 0 11px;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.stufen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 160px Basis statt der 130px aus dem Entwurf — das ist der ganze
+   Umbruch fuers Handy, ohne eine einzige Medienabfrage.
+
+   Gerechnet: Auf der Bahn bleiben innerhalb der Karte 668px, drei
+   Stufen passen nebeneinander. Auf einem 375px-Geraet bleiben 283px
+   uebrig; zwei Stufen brauchten 328px, also bricht jede in ihre
+   eigene Zeile und wird 283px breit. Mit 130px Basis passten dort
+   alle drei in eine Zeile und kaemen auf rund 89px Breite — drei
+   gequetschte Ziele nebeneinander, genau die Stelle, an der man mit
+   dem Daumen danebengreift.
+
+   min-height: WCAG 2.5.5 nennt 44x44 CSS-Pixel, Androids eigene
+   Vorgabe 48dp. Hier steht die groessere Zahl, weil sie nichts
+   kostet: Beschriftung und Behauptung stehen ohnehin zweizeilig. */
+.stufe {
+  flex: 1 1 160px;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 2px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 11px 14px;
+  border-radius: var(--radius-antwort);
+  background: var(--flaeche-2);
+  color: var(--ink);
+  /* Wie bei .antwort: --rand-bedien und nicht --rand, damit der
+     Umriss eines bedienbaren Elements die 3:1 aus WCAG 1.4.11
+     wirklich erreicht. */
+  border: 1px solid var(--rand-bedien);
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.stufe:hover {
+  border-color: var(--akzent-fill);
+  background: var(--flaeche);
+}
+
+.stufe b {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.stufe small {
+  font-family: var(--schrift-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------
    Pillen, Herkunft, Fehlerkasten
    --------------------------------------------------------------- */
 .pille {
