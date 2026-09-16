@@ -1,11 +1,17 @@
 {
   "extends": "astro/tsconfigs/strict",
-  "include": [
-    ".astro/types.d.ts",
-    "**/*"
-  ],
+  "include": [".astro/types.d.ts", "**/*"],
   "exclude": [
-    "dist"
+    // "exclude" ersetzt die Standardausnahme, es ergaenzt sie nicht. Wer hier
+    // etwas eintraegt, muss node_modules selbst wieder mitnehmen - sonst
+    // typprueft TypeScript die Abhaengigkeiten mit.
+    "node_modules",
+    "dist",
+    // Abgeleitete Baustaende: minifizierte Buendel, die mit checkJs im
+    // Pruefumfang landen und den Heap sprengen - der Lauf stirbt dann ohne
+    // erkennbaren Zusammenhang zur letzten Aenderung.
+    "handy",
+    ".astro/dist"
   ],
   "compilerOptions": {
     "jsx": "react-jsx",

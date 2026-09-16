@@ -101,8 +101,8 @@ export function schreibeUm(html, tiefe) {
   // srcset traegt mehrere Ziele mit Breitenangabe, durch Komma getrennt.
   const mitSrcset = einfach.replace(
     /\bsrcset=(["'])([^"']*)\1/gi,
-    (ganz, anfuehrung, liste) => {
-      const teile = liste.split(',').map((teil) => {
+    (/** @type {string} */ _ganz, /** @type {string} */ anfuehrung, /** @type {string} */ liste) => {
+      const teile = liste.split(',').map((/** @type {string} */ teil) => {
         // Gestutzt zurueckgeben, nicht das Teilstueck: Nach dem Zerlegen am
         // Komma traegt jedes Folgeteil ein fuehrendes Leerzeichen, das sich
         // beim Zusammenfuegen mit ", " zu einem doppelten summieren wuerde.
@@ -120,7 +120,13 @@ export function schreibeUm(html, tiefe) {
   return { html: mitSrcset, umgeschrieben };
 }
 
-/** Wie viele Verzeichnisse liegen zwischen Wurzel und Datei. */
+/**
+ * Wie viele Verzeichnisse liegen zwischen Wurzel und Datei.
+ *
+ * @param {string} wurzel
+ * @param {string} datei
+ * @returns {number}
+ */
 export function tiefeVon(wurzel, datei) {
   const rel = path.relative(wurzel, datei).split(path.sep);
   return rel.length - 1;
@@ -139,7 +145,7 @@ export async function relativiereBau(wurzel) {
 
   for (const eintrag of eintraege) {
     if (!eintrag.isFile() || !eintrag.name.endsWith('.html')) continue;
-    const voll = path.join(eintrag.parentPath ?? eintrag.path, eintrag.name);
+    const voll = path.join(eintrag.parentPath, eintrag.name);
     const html = await fs.readFile(voll, 'utf8');
     const { html: neu, umgeschrieben } = schreibeUm(html, tiefeVon(wurzel, voll));
     if (umgeschrieben > 0) await fs.writeFile(voll, neu, 'utf8');
@@ -150,8 +156,6 @@ export async function relativiereBau(wurzel) {
   return { dateien, verweise };
 }
 
-// pathToFileURL, nicht `file://${argv[1]}`: Auf Windows fehlt dort der dritte
-// Schraegstrich, der Vergleich schlaegt still fehl und das Werkzeug tut nichts.
 /**
  * Sucht nach wurzelbezogenen Verweisen, die uebrig geblieben sind.
  *
@@ -168,7 +172,7 @@ export async function suchWurzelbezogene(wurzel) {
   const funde = [];
   for (const eintrag of eintraege) {
     if (!eintrag.isFile() || !eintrag.name.endsWith('.html')) continue;
-    const voll = path.join(eintrag.parentPath ?? eintrag.path, eintrag.name);
+    const voll = path.join(eintrag.parentPath, eintrag.name);
     const html = await fs.readFile(voll, 'utf8');
     for (const [, , ziel] of html.matchAll(/([a-z-]+)=(["'])(\/[^"'/][^"']*)\2/gi)) {
       funde.push(`${path.relative(wurzel, voll)}: ${ziel}`);
