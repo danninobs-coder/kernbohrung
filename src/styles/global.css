@@ -38,6 +38,7 @@
   --flaeche-2:    #E4E9E6;
   --rand:         #D2DAD6;
   --rand-stark:   #B4C0BB;
+  --rand-bedien:  #7A8681; /* Umriss bedienbarer Elemente, >=3:1 (WCAG 1.4.11) */
   --ink:          #14191B;
   --ink-2:        #5C6663;
   --akzent:       #8F5709; /* Amber, auf hell abgedunkelt bis Textkontrast */
@@ -74,6 +75,7 @@
     --flaeche-2:   #1E2528;
     --rand:        #2A3134;
     --rand-stark:  #3C4649;
+    --rand-bedien: #6B777C;
     --ink:         #E8EBE7;
     --ink-2:       #8D9894;
     --akzent:      #E8A33C;
@@ -98,6 +100,7 @@
   --flaeche-2:   #1E2528;
   --rand:        #2A3134;
   --rand-stark:  #3C4649;
+  --rand-bedien: #6B777C;
   --ink:         #E8EBE7;
   --ink-2:       #8D9894;
   --akzent:      #E8A33C;
@@ -498,7 +501,11 @@ h3 {
   cursor: pointer;
   background: var(--flaeche-2);
   color: var(--ink);
-  border: 1px solid var(--rand);
+  /* Nicht --rand: Bei einem Knopf ist der Umriss das, woran man ihn als
+     bedienbar erkennt. WCAG 1.4.11 verlangt dafuer 3:1. --rand schafft
+     gegen --flaeche-2 nur 1,16 und waere damit reine Zierde. Karten und
+     Trennlinien duerfen weich bleiben, Knoepfe nicht. */
+  border: 1px solid var(--rand-bedien);
   border-left: 3px solid transparent;
   border-radius: var(--radius-antwort);
   padding: 14px 16px;
