@@ -724,7 +724,41 @@ h3 {
 }
 
 .herkunft li + li {
-  margin-top: 4px;
+  /* 14px statt 4: Die Quellverweise bekommen weiter unten eine auf 44px
+     aufgezogene Tippflaeche. Bei 4px Abstand ueberlappten sich die
+     Flaechen, und der obere Verweis finge Tipper, die dem unteren galten. */
+  margin-top: 14px;
+}
+
+/* ---------------------------------------------------------------
+   Tippflaechen
+
+   Am Handy gemessen: Die Widget-Schalter lagen bei 24 Pixeln Hoehe,
+   die Quellverweise bei 18, der Modusumschalter bei 29. WCAG 2.5.5
+   nennt 44, Android nennt 48dp. Mit dem Finger trifft man das nicht.
+
+   Der Ausweg ist nicht, alles groesser zu setzen - das zerreisst die
+   Textgestalt. Stattdessen waechst nur die FLAECHE ueber ein
+   Pseudoelement, waehrend die sichtbare Marke bleibt, wie sie ist.
+   --------------------------------------------------------------- */
+.schalter button,
+.schritt-knopf,
+.herkunft a {
+  position: relative;
+}
+
+.schalter button::after,
+.schritt-knopf::after,
+.herkunft a::after {
+  content: '';
+  position: absolute;
+  /* Zieht die Flaeche nach allen Seiten auf mindestens 44px auf, ohne
+     die Zeile umzubrechen oder Nachbarn zu verschieben. */
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
 }
 
 .widget-fehler {
