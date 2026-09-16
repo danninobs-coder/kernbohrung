@@ -144,4 +144,20 @@ describe('sicherUndFalsch', () => {
       ['Chunks kleiner schneiden', 1],
     ]);
   });
+
+  it('ordnet gleich häufige Fehlvorstellungen derselben Frage fest', () => {
+    // Ohne dritten Vergleich entscheidet die Einfuegereihenfolge der Map. Die
+    // beiden Faelle kommen hier in umgekehrter Reihenfolge herein und muessen
+    // trotzdem gleich herauskommen.
+    const vorwaerts = sicherUndFalsch([
+      e('sicher', false, 'f1', 'Zebra'),
+      e('sicher', false, 'f1', 'Anker'),
+    ]);
+    const rueckwaerts = sicherUndFalsch([
+      e('sicher', false, 'f1', 'Anker'),
+      e('sicher', false, 'f1', 'Zebra'),
+    ]);
+    expect(vorwaerts.map((t) => t.gewaehlt)).toEqual(['Anker', 'Zebra']);
+    expect(rueckwaerts.map((t) => t.gewaehlt)).toEqual(['Anker', 'Zebra']);
+  });
 });

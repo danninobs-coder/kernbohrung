@@ -107,5 +107,13 @@ export function sicherUndFalsch(ereignisse: readonly Ereignis[]): Fehlvorstellun
       anzahl: (bisher?.anzahl ?? 0) + 1,
     });
   }
-  return [...zaehler.values()].sort((a, b) => b.anzahl - a.anzahl || a.frage.localeCompare(b.frage));
+  // Der dritte Vergleich ist kein Schoenheitsfehler: Ohne ihn entscheidet bei
+  // gleicher Anzahl UND gleicher Frage die Einfuegereihenfolge der Map, und
+  // die Landkarte ordnet zwei Fehlvorstellungen je nach Antwortverlauf anders.
+  return [...zaehler.values()].sort(
+    (a, b) =>
+      b.anzahl - a.anzahl ||
+      a.frage.localeCompare(b.frage) ||
+      a.gewaehlt.localeCompare(b.gewaehlt),
+  );
 }
