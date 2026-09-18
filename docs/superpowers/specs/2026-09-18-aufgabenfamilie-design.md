@@ -199,13 +199,22 @@ Speicher: Ereignisse aus Fassung 1 sind nach dem Aufstieg auf 2 vollständig und
 
 Bau: 5 Seiten, `astro check` 0 Fehler, alle Tests grün. Am gebauten Stand bei 375 px: Tippflächen und Überlauf gemessen, Ablauf jedes Typs einmal durchgespielt und Ereignis in der Datenbank nachgesehen.
 
-## Voraussetzung, die noch fehlt
+## Die erste Lektion mit echtem Stoff
 
-Für den Nachweis mit echtem Stoff will ich keine erfundene Lektion in `inhalt/` legen — jede Behauptung zeigt auf eine Quelle. **Der Nutzer liefert einen Abschnitt aus einem Lehrbuch, das er tatsächlich einlesen will; eine Seite reicht.** Daraus entsteht die erste Lektion mit allen vier Typen von Hand. Sie ist zugleich die Vorlage für den Compiler in Teilprojekt 2. Bis dahin laufen alle Tests mit Testdaten; die Migration der vier RAG-Lektionen beweist `wahl`.
+Keine erfundene Lektion in `inhalt/` — jede Behauptung zeigt auf eine Quelle. Das Material liegt seit 2026-09-19 vor: neun Foliensätze einer Projektmanagement-Vorlesung (Module M1–M10). Daraus entsteht **eine** Lektion von Hand, die alle vier Typen trägt; sie ist zugleich die Vorlage für den Compiler in Teilprojekt 2.
+
+Gewählt ist der Teil zu Bauvertragsarten und Risikoverteilung (M7, Folien 31–33), weil er ein Prinzip mit echter Gegenintuition hergibt — in eigenen Worten: *Ein Pauschalpreis verlagert das Mengenrisiko; das Vollständigkeitsrisiko verlagert erst die Komplettheitsklausel.* Die verbreitete Annahme ist „pauschal heißt komplett".
+
+- `zuordnen`: Vertragsart ↔ Vergütungsgrundlage
+- `reihenfolge`: Vertragsformen nach wachsendem Risiko des Auftragnehmers
+- `fall`: Streit um eine im Leistungsverzeichnis fehlende Leistung unter einem Detail-Pauschalvertrag; Pflicht-Prüfpunkte trennen Mengen- von Vollständigkeitsrisiko
+- `wahl` (Transfer): welches Risiko ein Auftraggeber mit einem detaillierten Pauschalvertrag **nicht** verlagert hat
+
+Die Lektion ist eigene Formulierung, keine Abschrift der Folien; Herkunft nennt Datei und Foliennummern. Weil Folien Stichworte liefern und der Vortrag fehlt, wird jede Aussage, die über den Folientext hinausgeht, gegen eine zweite, benannte Quelle geprüft oder weggelassen. Die Lektion entsteht als letzter Schritt dieses Teilprojekts — vorher gibt es das Schema nicht, in das sie passt. Bis dahin laufen alle Tests mit Testdaten; die Migration der vier RAG-Lektionen beweist `wahl`.
 
 ## Außerhalb, mit Andockstelle
 
-- **Mathe**: `src/aufgaben/rechnen/` (Ergebnis mit Toleranz und Bruchvergleich, Formelsatz per KaTeX) und `src/aufgaben/herleiten/` (schrittweise ausgeblendete Beispiele). Hülle, Ereignis, Speicher, Tutor unverändert.
+- **Mathe**: `src/aufgaben/rechnen/` (Ergebnis mit Toleranz und Bruchvergleich, Formelsatz per KaTeX) und `src/aufgaben/herleiten/` (schrittweise ausgeblendete Beispiele). Hülle, Ereignis, Speicher, Tutor unverändert. `rechnen` ist der nächste Typ nach diesen vier: Schon das erste Material enthält zwei Rechenstellen (Indexfortschreibung einer Kostenschätzung, Budget mit Sicherheitspuffer), die sich mit den vier Typen nur umschreiben, nicht üben lassen.
 - **Programmieren**: `src/aufgaben/code/` (Editor, Tests im Browser) und `src/aufgaben/ausgabe/` (Ausgabe vorhersagen). Ebenso.
 - **Compiler** für die neuen Typen: Teilprojekt 2.
 - **`anteil` in der Planung**: nach Daten.
