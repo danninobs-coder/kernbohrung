@@ -14,8 +14,26 @@ body {
   font: 17px/1.6 system-ui, sans-serif;
 }
 
-main { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 6rem; }
-.heim { display: block; padding: 1rem 1.25rem; font-size: 0.85rem; }
+main {
+  max-width: 46rem;
+  margin: 0 auto;
+  /* Die safe-area-Werte halten den Inhalt auf Handys mit Kamera-Aussparung
+     oder Gestenleiste aus dem verdeckten Rand heraus. */
+  padding: 2rem max(1.25rem, env(safe-area-inset-right)) calc(6rem + env(safe-area-inset-bottom))
+    max(1.25rem, env(safe-area-inset-left));
+}
+.heim {
+  display: block;
+  padding: max(1rem, env(safe-area-inset-top)) max(1.25rem, env(safe-area-inset-left)) 1rem;
+  font-size: 0.85rem;
+}
+
+/* Fingerbedienung: Schaltflaechen mindestens 44px hoch, kein 300ms-Klickverzug,
+   kein Hervorheben beim Antippen. Am Rechner aendert das nichts Sichtbares. */
+button, .antwort, .schritt-knopf { min-height: 44px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+a { -webkit-tap-highlight-color: transparent; }
+.uebersicht li { margin-bottom: 1rem; }
+.uebersicht a { display: inline-block; padding: 0.25rem 0; }
 
 .takt { padding: 2rem 0; border-top: 1px solid var(--linie); }
 .prinzip { font-size: 1.25rem; font-weight: 600; }
@@ -29,11 +47,17 @@ main { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 6rem; }
 .zaehler { font-variant-numeric: tabular-nums; font-size: 0.9rem; }
 
 .antworten { display: grid; gap: 0.75rem; padding: 0; list-style: none; }
-.antwort { display: block; width: 100%; padding: 0.6rem 0.8rem; text-align: left; font: inherit; cursor: pointer; background: transparent; color: inherit; border: 1px solid var(--linie); }
+.antwort { display: block; width: 100%; padding: 0.6rem 0.8rem; word-break: break-word; text-align: left; font: inherit; cursor: pointer; background: transparent; color: inherit; border: 1px solid var(--linie); }
 .antwort:disabled { cursor: default; }
 .antwort[data-zustand='richtig'] { border-color: var(--treffer); font-weight: 600; }
 .antwort[data-zustand='falsch'] { border-color: var(--fehl); }
 .begruendung { margin: 0.4rem 0 0; font-size: 0.9rem; opacity: 0.8; }
 
 .widget-fehler { border: 2px solid var(--fehl); padding: 1rem; }
+
+/* Auf schmalen Bildschirmen etwas engere Raender, sonst wird die Zeile zu kurz. */
+@media (max-width: 30rem) {
+  body { font-size: 16px; }
+  .takt { padding: 1.5rem 0; }
+}
 .herkunft { font-size: 0.9rem; }

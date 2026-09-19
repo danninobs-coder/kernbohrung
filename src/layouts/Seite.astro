@@ -6,15 +6,26 @@ interface Props {
 }
 
 const { titel } = Astro.props;
+
+// Lokal `/`, auf GitHub Pages `/kernbohrung/` — siehe astro.config.mjs.
+// Astro liefert BASE_URL ohne Schlussstrich, ausser fuer `/` selbst.
+const basis = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 <html lang="de">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#111111" />
+    <link rel="icon" href={`${basis}favicon.svg`} type="image/svg+xml" />
+    <link rel="apple-touch-icon" href={`${basis}symbole/kernbohrung-192.png`} />
+    {/* Das Manifest macht die Seite auf Android zur installierbaren App
+        („Zum Startbildschirm hinzufuegen"). Seine Pfade sind relativ zum
+        Manifest selbst und funktionieren so mit jedem Basispfad. */}
+    <link rel="manifest" href={`${basis}manifest.webmanifest`} />
     <title>{titel} — Kernbohrung</title>
   </head>
   <body>
-    <a class="heim" href="/">Kernbohrung</a>
+    <a class="heim" href={basis}>Kernbohrung</a>
     <main>
       <slot />
     </main>
