@@ -97,7 +97,7 @@ Bedienung: linken Eintrag antippen — direkt darunter klappen die rechten Eintr
 
 Bewertung: `richtig` = alle Paare stimmen. `anteil` = richtige Paare / Anzahl Paare. `antwort` = die gebildeten Paare als `links→rechts`, durch `;` getrennt. `merkmal` = die falschen Paare in derselben Form.
 
-Schema verbietet: doppelte linke oder rechte Einträge, Ablenker, der einem `rechts` gleicht.
+Schema verbietet: doppelte linke oder rechte Einträge, Ablenker, der einem `rechts` gleicht oder doppelt vorkommt — und `→` sowie `;` in jedem Eintrag. Beide Zeichen trennen die Paare im gespeicherten Ereignis; stünde eines in einem Eintrag, wären zwei verschiedene Zuordnungen nicht mehr zu unterscheiden. Eine JSON-Kodierung wäre robuster, sprengt aber den Größenwächter (nachgerechnet 1 706 statt 1 390 Byte bei einer Schranke von 1 600). Das Verbot kostet kein Byte, trifft nur kurze Einträge, und macht die Zeichenketten eindeutig zerlegbar.
 
 ### reihenfolge
 

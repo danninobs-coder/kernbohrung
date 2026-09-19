@@ -4530,3 +4530,20 @@ Erwartet: sauberer Baum, fünfzehn bis siebzehn Commits. Das Zusammenführen ent
 | Außerhalb: Compiler, Landkarte, KI, Mathe, Code | nicht Teil dieses Plans; nur die eine SKILL.md-Zeile in 12 |
 
 **Erwartete Testzahlen entlang des Plans:** 270 → 279 (1) → 291 (2) → 301 (3) → 311 (4) → 321 (5) → 328 (6) → 332 (7) → 339 (8) → 346 (9) → 353 (10) → 358 (11) → 361 (12). Weicht eine Zahl ab, ist das kein Fehler für sich — aber der Grund gehört in den Bericht der Aufgabe.
+
+---
+
+## Nachträge aus den Reviews
+
+Was die Qualitätsprüfungen an **diesem Plan** gefunden haben — nicht an den Umsetzungen, die ihm wörtlich folgten. Die Aufgabentexte oben bleiben, wie sie ausgeführt wurden; hier steht, was dazukam.
+
+| Aufgabe | Befund | Nachtrag |
+|---|---|---|
+| 1 · `wahl` | Die Regel gegen doppelte Begründungen hatte keinen Test: Die Testhilfe `antwort()` macht jede Begründung von selbst eindeutig. | Drei Tests (doppelte Begründung, Grenzen 3–5, Fremdfeld in einer Antwort); ein Kommentar in `vertrag.ts` typneutral gefasst. |
+| 2 · `fall` | Kein Test verlangte `typ`; Obergrenze acht und Fremdfeld im Prüfpunkt ungetestet. Die Vorhersage der Mutationsprobe war ungenau: Die mutierte Zeile speist auch das Merkmal, es fallen drei Tests, nicht einer. | Vier Tests. Im Kommentar über `bewerteFall` steht die Falle des positionsbasierten Merkmals: neue Prüfpunkte anhängen, nicht einfügen. |
+| 3 · `zuordnen` | `→` und `;` trennen die Paare in `antwort` und `merkmal`, können aber in Einträgen vorkommen. „Wirft nie“ war nur für `null` getestet. | `EintragSchema` weist beide Zeichen in `links`, `rechts` und `ablenker` zurück (JSON sprengte den Größenwächter). Acht Tests insgesamt, darunter zu kurze und zu lange Zuordnung und ein gewählter Ablenker. |
+| 4 · `reihenfolge` | vorbeugend | Drei Tests mitgegeben: `typ` verlangt, zu lange Folge, unsinnige Indizes. |
+
+**Die Lehre, die für jeden künftigen Plan gilt:** Jede Regel braucht einen Test, der ohne sie rot würde — und eine Testhilfe, die Eingaben von selbst gültig macht, verdeckt genau das. Eine Zusage wie „wirft nie“ gilt erst, wenn jede Eingabeform einmal durchgespielt ist.
+
+**Erwartete Testzahlen, berichtigt:** nach Aufgabe 1: 282 · 2: 298 · 3: 316 · 4: 329. Die absoluten Zahlen in den Aufgaben 6, 11, 12, 14 und 15 liegen entsprechend höher; jeder Auftrag nennt dem Ausführenden den Stand vor seiner Aufgabe.
