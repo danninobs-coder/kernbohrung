@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ReihenfolgeSchema } from '../src/aufgaben/reihenfolge/schema';
 import { startfolge } from '../src/aufgaben/reihenfolge/startfolge';
 import { bewerteReihenfolge } from '../src/aufgaben/reihenfolge/bewerten';
+import { mischen } from '../src/lib/mischen';
 
 function reihenfolge(aenderung: Record<string, unknown> = {}) {
   return {
@@ -45,15 +46,33 @@ describe('ReihenfolgeSchema', () => {
 
 describe('startfolge', () => {
   it('ist eine Permutation und gleicht NIE der richtigen Folge', () => {
-    // Bei drei Schritten trifft das Mischen in einem von sechs Faellen die
-    // richtige Folge. Ueber 300 Saaten wird der Rotationszweig also sicher
-    // durchlaufen — und genau er wird hier geprueft.
+    // Die Zusage gilt per Konstruktion: Eine um eine Stelle rotierte Identitaet
+    // ist nie die Identitaet. Diese Stichprobe trifft den Rotationszweig nur
+    // bei kurzen Folgen sicher — den Nachweis je Laenge fuehrt der Test darunter.
     for (let anzahl = 3; anzahl <= 7; anzahl++) {
       for (let s = 0; s < 300; s++) {
         const folge = startfolge(anzahl, `saat-${s}`);
         expect([...folge].sort((a, b) => a - b)).toEqual(Array.from({ length: anzahl }, (_, i) => i));
         expect(folge.every((wert, i) => wert === i)).toBe(false);
       }
+    }
+  });
+
+  it('durchlaeuft den Rotationszweig bei jeder Laenge nachweislich', () => {
+    // Nachgerechnet: Unter 300 Saaten trifft das Mischen bei sechs und sieben
+    // Schritten kein einziges Mal die richtige Folge. Hier wird je Laenge so
+    // lange gesucht, bis eine Saat sie trifft — und genau die wird geprueft.
+    for (let anzahl = 3; anzahl <= 7; anzahl++) {
+      let geprueft = false;
+      for (let s = 0; s < 20000 && !geprueft; s++) {
+        const saat = `saat-${s}`;
+        const roh = mischen(Array.from({ length: anzahl }, (_, i) => i), saat);
+        if (roh.every((wert, i) => wert === i)) {
+          expect(startfolge(anzahl, saat).every((wert, i) => wert === i)).toBe(false);
+          geprueft = true;
+        }
+      }
+      expect(geprueft, `keine Saat traf bei Laenge ${anzahl} die Loesung`).toBe(true);
     }
   });
 
@@ -89,9 +108,9 @@ describe('bewerteReihenfolge', () => {
   });
 
   it('wertet eine zu lange Folge als falsch, statt zu werfen', () => {
-    // Die Komponente liefert nie mehr Stellen als Schritte. Eine reine Funktion
-    // soll trotzdem nie werfen — und eine ueberzaehlige Stelle ist nie richtig.
-    expect(bewerteReihenfolge(aufgabe, [0, 1, 2, 3, 4, 5]).richtig).toBe(false);
+    // Ein richtiger Anfang mit angehaengtem Muell darf den Anteil nicht auf 1
+    // retten: Der Nenner ist die groessere der beiden Laengen.
+    expect(bewerteReihenfolge(aufgabe, [0, 1, 2, 3, 4, 5])).toMatchObject({ richtig: false, anteil: 5 / 6 });
   });
 
   it('wertet unsinnige Indizes als falsch, statt zu werfen', () => {
