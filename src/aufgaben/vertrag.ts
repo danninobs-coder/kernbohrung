@@ -51,8 +51,8 @@ export type TypProps<A> = {
   /**
    * Der Ergebnissatz der Huelle. Der Typ stellt ihn zwischen Aufgabentext und
    * Bedienflaeche: Er ist die Ueberschrift der Aufloesung, die Einzelheiten
-   * darunter sind ihre Erlaeuterung. Wer ihn unten anhaengt, laesst erst vier
-   * Begruendungen vorlesen und sagt danach, ob es ueberhaupt gestimmt hat.
+   * darunter sind ihre Erlaeuterung. Wer ihn unten anhaengt, laesst erst alle
+   * Einzelheiten vorlesen und sagt danach, ob es ueberhaupt gestimmt hat.
    */
   readonly ergebnissatz?: ReactNode;
 };

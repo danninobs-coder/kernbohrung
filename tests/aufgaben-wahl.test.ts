@@ -67,6 +67,32 @@ describe('WahlSchema', () => {
     );
     expect(meldungen(befund)).toMatch(/fünf Wörter/);
   });
+
+  it('weist dieselbe Begruendung unter zwei Antworten zurueck, auch nur durch Schreibung getrennt', () => {
+    // Die Hilfe `antwort()` macht jede Begruendung von selbst eindeutig. Ohne
+    // diesen Test liesse sich die Regel loeschen, und nichts wuerde rot.
+    const gleiche = 'Diese Begruendung steht unter zwei Antworten zugleich.';
+    const befund = WahlSchema.safeParse(
+      wahl({
+        antworten: [antwort('A', true), antwort('B', false, gleiche), antwort('C', false, `  ${gleiche.toUpperCase()} `)],
+      }),
+    );
+    expect(meldungen(befund)).toMatch(/eigene Begründung/);
+  });
+
+  it('verlangt drei bis fuenf Antworten', () => {
+    const sechs = [antwort('A', true), antwort('B'), antwort('C'), antwort('D'), antwort('E'), antwort('F')];
+    expect(WahlSchema.safeParse(wahl({ antworten: sechs.slice(0, 2) })).success).toBe(false);
+    expect(WahlSchema.safeParse(wahl({ antworten: sechs })).success).toBe(false);
+    expect(WahlSchema.safeParse(wahl({ antworten: sechs.slice(0, 5) })).success).toBe(true);
+  });
+
+  it('weist ein fremdes Feld auch innerhalb einer Antwort zurueck', () => {
+    const mitFremdfeld = { ...antwort('C'), punkte: 3 };
+    expect(
+      WahlSchema.safeParse(wahl({ antworten: [antwort('A', true), antwort('B'), mitFremdfeld] })).success,
+    ).toBe(false);
+  });
 });
 
 describe('bewerteWahl', () => {
