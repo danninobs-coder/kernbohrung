@@ -82,6 +82,13 @@ describe('FallSchema', () => {
       FallSchema.safeParse(fall({ pruefpunkte: [mitFremdfeld, { text: 'Ohne Gewicht', pflicht: false }] })).success,
     ).toBe(false);
   });
+
+  it('verlangt das Feld typ', () => {
+    // `typ` ist der Diskriminant der Union. Wird das Literal versehentlich
+    // wahlfrei, faellt das sonst nirgends auf.
+    const { typ: _typ, ...ohne } = fall();
+    expect(FallSchema.safeParse(ohne).success).toBe(false);
+  });
 });
 
 describe('bewerteFall', () => {
@@ -120,6 +127,14 @@ describe('bewerteFall', () => {
 
   it('behandelt fehlende Haken als nicht abgehakt, statt zu werfen', () => {
     expect(bewerteFall(aufgabe, text, [true]).merkmal).toBe('fehlt:2');
+  });
+
+  it('ignoriert ueberzaehlige Haken, statt zu werfen', () => {
+    expect(bewerteFall(aufgabe, text, [true, true, true, true, true])).toMatchObject({
+      richtig: true,
+      anteil: 1,
+      merkmal: '',
+    });
   });
 
   it('gibt den geschriebenen Text unveraendert als Antwort zurueck', () => {

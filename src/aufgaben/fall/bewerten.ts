@@ -7,7 +7,14 @@ import type { Fall } from './schema.ts';
  * `richtig` haengt NUR an den wesentlichen Punkten. Der Anteil zaehlt alle.
  * Das Merkmal nennt die fehlenden wesentlichen Punkte als 1-basierte Nummern
  * in fester Reihenfolge — das ist die Auskunft, welcher Punkt jemanden immer
- * wieder faengt. Bekannte Schwaeche: Selbstbewertung ist nachsichtig. Das ist
+ * wieder faengt.
+ *
+ * Das Merkmal ist positionsbasiert: Wer die Pruefpunkte einer bestehenden
+ * Lektion umsortiert oder in der Mitte einen einfuegt, aendert die Bedeutung
+ * alter Ereignisse. Neue Punkte deshalb anhaengen, nicht einfuegen. Texte statt
+ * Nummern waeren robuster, sprengten aber den Groessenwaechter des Ereignisses.
+ *
+ * Bekannte Schwaeche: Selbstbewertung ist nachsichtig. Das ist
  * der Preis fuer offline und kostenlos; eine spaetere KI-Rueckmeldung prueft
  * gegen dieselben Pruefpunkte.
  */
