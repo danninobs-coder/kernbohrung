@@ -94,6 +94,19 @@ describe('ZuordnenSchema', () => {
     ];
     expect(ZuordnenSchema.safeParse(zuordnen({ paare })).success).toBe(false);
   });
+
+  it('weist → und ; in Eintraegen zurueck — links, rechts und im Ablenker', () => {
+    // Genau diese zwei Zeichen trennen die Paare im gespeicherten Ereignis.
+    // Stuende eines in einem Eintrag, waeren zwei verschiedene Zuordnungen
+    // nicht mehr zu unterscheiden.
+    const mit = (links: string, rechts: string) => [
+      { links, rechts },
+      ...zuordnen().paare.slice(1),
+    ];
+    expect(meldungen(ZuordnenSchema.safeParse(zuordnen({ paare: mit('Planung; Bau', 'A') })))).toMatch(/trennt die Paare/);
+    expect(meldungen(ZuordnenSchema.safeParse(zuordnen({ paare: mit('Planung', 'erst A → dann B') })))).toMatch(/trennt die Paare/);
+    expect(meldungen(ZuordnenSchema.safeParse(zuordnen({ ablenker: ['weder; noch'] })))).toMatch(/trennt die Paare/);
+  });
 });
 
 describe('bewerteZuordnen', () => {
@@ -120,5 +133,28 @@ describe('bewerteZuordnen', () => {
     const ergebnis = bewerteZuordnen(aufgabe, [ep, null, sl]);
     expect(ergebnis.anteil).toBe(2 / 3);
     expect(ergebnis.merkmal).toBe('Pauschalvertrag→');
+  });
+
+  it('wertet eine zu kurze Zuordnung als ueberall falsch, statt zu werfen', () => {
+    const ergebnis = bewerteZuordnen(aufgabe, [ep]);
+    expect(ergebnis.anteil).toBe(1 / 3);
+    expect(ergebnis.merkmal).toBe('Pauschalvertrag→;Stundenlohnvertrag→');
+  });
+
+  it('ignoriert ueberzaehlige Eintraege einer zu langen Zuordnung', () => {
+    expect(bewerteZuordnen(aufgabe, [ep, pv, sl, 'Unbekannt'])).toEqual({
+      richtig: true,
+      anteil: 1,
+      antwort: `Einheitspreisvertrag→${ep};Pauschalvertrag→${pv};Stundenlohnvertrag→${sl}`,
+      merkmal: '',
+    });
+  });
+
+  it('wertet einen gewaehlten Ablenker als falsch, statt zu werfen', () => {
+    const ablenker = 'Anteil am Gewinn';
+    const mitAblenker = ZuordnenSchema.parse(zuordnen({ ablenker: [ablenker] }));
+    const ergebnis = bewerteZuordnen(mitAblenker, [ablenker, pv, sl]);
+    expect(ergebnis.richtig).toBe(false);
+    expect(ergebnis.merkmal).toBe(`Einheitspreisvertrag→${ablenker}`);
   });
 });

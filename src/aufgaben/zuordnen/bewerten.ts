@@ -8,6 +8,10 @@ import type { Zuordnen } from './schema.ts';
  * der rechte Eintrag, den die lernende Person dem i-ten linken gegeben hat,
  * oder `null`. Die Antwort nennt alle Paare, das Merkmal nur die falschen —
  * welche Verwechslung jemanden faengt, ist die Auskunft.
+ *
+ * Die Trennzeichen `→` und `;` kommen in den Eintraegen nicht vor — das
+ * Schema weist sie zurueck —, die Zeichenketten lassen sich deshalb eindeutig
+ * zerlegen.
  */
 export function bewerteZuordnen(
   aufgabe: Zuordnen,
