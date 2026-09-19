@@ -1,6 +1,6 @@
 # Aufgabenfamilie — fachneutrales Lernformat
 
-Stand: 2026-09-18 · Teilprojekt 1 von 3 (Aufgabenfamilie → Bibliothek → Lernprofil)
+Stand: 2026-09-18 · präzisiert am 2026-09-19 beim Schreiben des Plans · Teilprojekt 1 von 3 (Aufgabenfamilie → Bibliothek → Lernprofil)
 
 ## Ziel
 
@@ -29,9 +29,9 @@ Nach diesem Teilprojekt ist der Aufgabentyp eine Eigenschaft der Aufgabe, nicht 
 
 ```
 src/aufgaben/
-  index.ts              Register: typ → Komponente (Muster wie widgets/index.ts)
+  Aufgabentyp.tsx       Verteiler: switch über typ, mit never-Prüfung auf Vollständigkeit
   schema.ts             AufgabeSchema = z.discriminatedUnion('typ', [...])
-  ergebnis.ts           gemeinsamer Ergebnistyp
+  vertrag.ts            Ergebnis, Abgabe, Phase, TypProps — der Vertrag mit der Hülle
   wahl/       schema.ts  Wahl.tsx        bewerten.ts
   fall/       schema.ts  Fall.tsx        bewerten.ts
   zuordnen/   schema.ts  Zuordnen.tsx    bewerten.ts
@@ -58,7 +58,7 @@ Bewertung: `richtig` = gewählte Antwort ist die richtige. `anteil` = 1 oder 0. 
 ```yaml
 typ: fall
 id: ...
-sachverhalt: |           # Markdown, der Fall
+sachverhalt: |           # Absätze durch Leerzeile getrennt, kein Markdown
   ...
 aufgabe: "..."           # was zu tun ist, ein Satz
 pruefpunkte:             # 2–8
@@ -66,7 +66,7 @@ pruefpunkte:             # 2–8
     pflicht: true        # mindestens einer pflicht
   - text: "..."
     pflicht: false
-musterloesung: |         # optional, Markdown, erscheint nach den Prüfpunkten
+musterloesung: |         # optional, Absätze, erscheint nach den Prüfpunkten
   ...
 ```
 
@@ -93,7 +93,7 @@ ablenker:                # optional, 0–2 zusätzliche rechte Einträge
   - "..."
 ```
 
-Bedienung: linken Eintrag antippen, dann rechten — das Paar entsteht und rückt zusammen. Ein bestehendes Paar antippen löst es. **Abgeben** ist aktiv, sobald jeder linke Eintrag ein Paar hat. Rechte Seite erscheint gemischt (deterministisch, Saat = `id`, wie `mischen.ts`).
+Bedienung: linken Eintrag antippen — direkt darunter klappen die rechten Einträge auf —, dann einen rechten antippen: Das Paar steht. Ein bestehendes Paar antippen löst es und klappt die Auswahl wieder auf. **Einspaltig**, weil zwei Spalten bei 375 px je rund 135 px hätten — zu schmal für die Begriffe, um die es geht. **Abgeben** ist aktiv, sobald jeder linke Eintrag ein Paar hat. Rechte Seite erscheint gemischt (deterministisch, Saat = `id`, wie `mischen.ts`).
 
 Bewertung: `richtig` = alle Paare stimmen. `anteil` = richtige Paare / Anzahl Paare. `antwort` = die gebildeten Paare als `links→rechts`, durch `;` getrennt. `merkmal` = die falschen Paare in derselben Form.
 
@@ -118,7 +118,7 @@ Schema verbietet: doppelte Schritte.
 ## Der gemeinsame Vertrag
 
 ```ts
-// src/aufgaben/ergebnis.ts
+// src/aufgaben/vertrag.ts
 export type Ergebnis = {
   readonly richtig: boolean;   // für Planer und Kalibrierung
   readonly anteil: number;     // 0–1, gespeichert, noch nicht geplant
@@ -131,16 +131,16 @@ Jede `bewerten.ts` liefert genau das. Die Hülle kennt keinen Typ.
 
 ## Die Hülle: Aufgabe.tsx
 
-Ersetzt `Frage.tsx`. Liest `typ`, holt die Komponente aus dem Register, führt den Zuversichtsschritt, schreibt das Ereignis, plant den Termin. Die Typkomponenten wissen nichts vom Tutor.
+Ersetzt `Frage.tsx`. Reicht die Aufgabe an den Verteiler `Aufgabentyp.tsx`, führt den Zuversichtsschritt, schreibt das Ereignis, plant den Termin. Die Typkomponenten wissen nichts vom Tutor.
 
 Phasen: `offen → abgegeben → zuversicht → aufgeloest`.
 
 Die Typkomponente bekommt `phase` als Prop und zwei Rückrufe:
 
-- `onAbgegeben(antwort)` — der Lernende hat sich festgelegt. Die Hülle zeigt Zuversicht.
-- `onErgebnis(ergebnis)` — die Bewertung steht. Die Hülle speichert, plant, zeigt den Ergebnissatz.
+- `onAbgegeben({ antwort, ergebnis })` — der Lernende hat sich festgelegt. Die Hülle zeigt Zuversicht. `ergebnis` ist die fertige Bewertung oder `null`, wenn sie erst nach der Zuversicht feststehen kann.
+- `onErgebnis(ergebnis)` — die nachgereichte Bewertung. Die Hülle speichert, plant, zeigt den Ergebnissatz.
 
-Bei `wahl`, `zuordnen`, `reihenfolge` rechnet die Komponente das Ergebnis, sobald `phase` auf `zuversicht` springt, und ruft `onErgebnis` sofort. Bei `fall` liegt zwischen `zuversicht` und `onErgebnis` das Abhaken der Prüfpunkte. Das ist der einzige Grund, warum es zwei Rückrufe sind und nicht einer.
+Bei `wahl`, `zuordnen`, `reihenfolge` steht die Bewertung schon bei der Abgabe fest; die Hülle hält sie zurück, bis die Zuversicht gewählt ist, und löst dann in einem Zug auf — dieselbe Reihenfolge wie heute in `Frage.tsx`, ohne einen Effekt, der auf einen Phasenwechsel wartet. Bei `fall` kommt `ergebnis: null`: Nach der Zuversicht steht die Phase `zuversicht`, der Lernende hakt die Prüfpunkte ab, und erst dann ruft die Komponente `onErgebnis`. Das ist der einzige Grund, warum es zwei Rückrufe sind und nicht einer.
 
 Unverändert aus der heutigen `Frage.tsx`: Wahl bis zur Zuversicht widerruflich; Sperre nach der Zuversicht; Fokus springt in den Zuversichtsblock und danach auf den Ergebnissatz; Ergebnis steht als Text, nicht nur als Farbe; Speicherfehler blockieren die Aufgabe nie (Ergebnis erscheint, nur die Aufzeichnung fehlt); Abbruch vor der Zuversicht wird nicht aufgezeichnet; `dauerMs` misst von Abgeben bis Zuversicht.
 
