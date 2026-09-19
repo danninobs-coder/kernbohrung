@@ -5,13 +5,16 @@ import Seite from '../layouts/Seite.astro';
 const lektionen = (await getCollection('lektionen')).sort(
   (a, b) => a.data.reihenfolge - b.data.reihenfolge,
 );
+
+// Lokal `/`, auf GitHub Pages `/kernbohrung/` — siehe astro.config.mjs.
+const basis = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 <Seite titel="Übersicht">
   <h1>Lektionen</h1>
   <ol class="uebersicht">
     {lektionen.map((eintrag) => (
       <li>
-        <a href={`/lektion/${eintrag.id}/`}>{eintrag.data.titel}</a>
+        <a href={`${basis}lektion/${eintrag.id}/`}>{eintrag.data.titel}</a>
         <p>{eintrag.data.prinzip}</p>
       </li>
     ))}
