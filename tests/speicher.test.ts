@@ -26,6 +26,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { IDBPDatabase } from 'idb';
 import {
   FASSUNG,
+  hebeAufV2,
   idbOeffner,
   speicher,
   SCHRITTE,
@@ -35,6 +36,7 @@ import {
 } from '../src/tutor/speicher';
 import { naechsterTermin, neueKarte } from '../src/tutor/planung';
 import type { Ereignis } from '../src/tutor/typen';
+import { AUFGABENTYPEN, type AufgabenTyp } from '../src/aufgaben/schema';
 
 const JETZT = new Date('2026-09-16T10:00:00Z');
 
@@ -49,9 +51,12 @@ function e(teil: Partial<Ereignis> = {}): Ereignis {
   return {
     lektion: 'recall-vor-precision',
     frage: 'rvp-1',
+    typ: 'wahl',
     zuversicht: 'sicher',
     richtig: true,
-    gewaehlt: 'Der Recall der Kandidatenmenge',
+    anteil: 1,
+    antwort: 'Der Recall der Kandidatenmenge',
+    merkmal: '',
     dauerMs: 8432,
     zeitpunkt: '2026-09-16T09:00:00.000Z',
     ...teil,
@@ -85,11 +90,11 @@ describe('Speicher im Normalfall', () => {
     // damit die Historie um — und `reife.ts` liest „die letzte Antwort"
     // schlicht als letztes Element.
     const s = speicher(idbOeffner(neuerName()));
-    await s.merkeEreignis(e({ gewaehlt: 'erste', zeitpunkt: '2026-09-16T09:00:00.000Z' }));
-    await s.merkeEreignis(e({ gewaehlt: 'zweite', zeitpunkt: '2026-09-16T08:00:00.000Z' }));
-    await s.merkeEreignis(e({ gewaehlt: 'dritte', zeitpunkt: '2026-09-16T10:00:00.000Z' }));
+    await s.merkeEreignis(e({ antwort: 'erste', zeitpunkt: '2026-09-16T09:00:00.000Z' }));
+    await s.merkeEreignis(e({ antwort: 'zweite', zeitpunkt: '2026-09-16T08:00:00.000Z' }));
+    await s.merkeEreignis(e({ antwort: 'dritte', zeitpunkt: '2026-09-16T10:00:00.000Z' }));
 
-    expect((await s.ereignisse()).map((ev) => ev.gewaehlt)).toEqual(['erste', 'zweite', 'dritte']);
+    expect((await s.ereignisse()).map((ev) => ev.antwort)).toEqual(['erste', 'zweite', 'dritte']);
     await s.schliessen();
   });
 
@@ -175,15 +180,15 @@ describe('Speicher im Normalfall', () => {
 describe('alsJson', () => {
   it('gibt die gesamte Historie heraus', async () => {
     const s = speicher(idbOeffner(neuerName()));
-    await s.merkeEreignis(e({ gewaehlt: 'erste' }));
-    await s.merkeEreignis(e({ gewaehlt: 'zweite' }));
+    await s.merkeEreignis(e({ antwort: 'erste' }));
+    await s.merkeEreignis(e({ antwort: 'zweite' }));
     await s.merkeKarte('recall-vor-precision', 'rvp-1', naechsterTermin(neueKarte(JETZT), 'eher', true, JETZT));
     await s.merkeEinstellung('modus', 'dunkel');
 
     const ausfuhr = JSON.parse(await s.alsJson(JETZT)) as Ausfuhr;
     expect(ausfuhr.fassung).toBe(FASSUNG);
     expect(ausfuhr.erzeugt).toBe(JETZT.toISOString());
-    expect(ausfuhr.ereignisse.map((ev) => ev.gewaehlt)).toEqual(['erste', 'zweite']);
+    expect(ausfuhr.ereignisse.map((ev) => ev.antwort)).toEqual(['erste', 'zweite']);
     expect(ausfuhr.karten).toHaveLength(1);
     expect(ausfuhr.einstellungen).toEqual({ modus: 'dunkel' });
     await s.schliessen();
@@ -316,7 +321,7 @@ describe('wenn die Verbindung mitten im Betrieb wegbricht', () => {
 
   it('gibt false zurück, statt den Schreibversuch werfen zu lassen', async () => {
     const s = await abgerissen();
-    await expect(s.merkeEreignis(e({ gewaehlt: 'zweite' }))).resolves.toBe(false);
+    await expect(s.merkeEreignis(e({ antwort: 'zweite' }))).resolves.toBe(false);
     expect(warnungen).toHaveBeenCalledWith(
       expect.stringContaining('merkeEreignis'),
       expect.anything(),
@@ -346,35 +351,35 @@ describe('wenn die Verbindung mitten im Betrieb wegbricht', () => {
  */
 describe('Schemafortschreibung', () => {
   /**
-   * Eine Fassung 2, die es heute noch nicht gibt.
+   * Eine nächste Fassung, die es heute noch nicht gibt.
    *
    * Der Umweg ueber den untypisierten Griff ist Absicht und kein Trick: Die
    * Typen der heutigen Fassung koennen einen Speicher der naechsten nicht
    * kennen. Genau das ist die Lage, in der die Leiter in einem halben Jahr
    * benutzt wird.
    */
-  const ZWEITE_FASSUNG: readonly Schritt[] = [
+  const NAECHSTE_FASSUNG: readonly Schritt[] = [
     ...SCHRITTE,
     (datenbank) => {
       (datenbank as unknown as IDBPDatabase).createObjectStore('notizen');
     },
   ];
 
-  it('hebt Daten aus Fassung 1 über den Aufstieg auf Fassung 2 hinüber', async () => {
+  it('hebt Daten über den Aufstieg auf die nächste Fassung hinüber', async () => {
     const name = neuerName();
 
     const eins = speicher(idbOeffner(name, SCHRITTE));
-    await eins.merkeEreignis(e({ gewaehlt: 'vor dem Aufstieg' }));
+    await eins.merkeEreignis(e({ antwort: 'vor dem Aufstieg' }));
     await eins.merkeKarte('recall-vor-precision', 'rvp-1', naechsterTermin(neueKarte(JETZT), 'eher', true, JETZT));
     await eins.merkeEinstellung('modus', 'dunkel');
     await eins.schliessen();
 
-    const zwei = speicher(idbOeffner(name, ZWEITE_FASSUNG));
+    const zwei = speicher(idbOeffner(name, NAECHSTE_FASSUNG));
     // Dass hier ueberhaupt etwas ankommt, beweist zweierlei: Der Bestand steht
     // noch, UND der erste Schritt wurde nicht erneut gefahren — ein zweites
     // `createObjectStore('ereignisse')` haette den Aufstieg mit einem
     // ConstraintError abgebrochen und die Liste leer gelassen.
-    expect((await zwei.ereignisse()).map((ev) => ev.gewaehlt)).toEqual(['vor dem Aufstieg']);
+    expect((await zwei.ereignisse()).map((ev) => ev.antwort)).toEqual(['vor dem Aufstieg']);
     expect(await zwei.karten()).toHaveLength(1);
     expect(await zwei.einstellung('modus')).toBe('dunkel');
     await zwei.schliessen();
@@ -387,7 +392,7 @@ describe('Schemafortschreibung', () => {
     await eins.schliessen();
 
     let offen: Awaited<ReturnType<Oeffner>> | null = null;
-    const echt = idbOeffner(name, ZWEITE_FASSUNG);
+    const echt = idbOeffner(name, NAECHSTE_FASSUNG);
     const zwei = speicher(async () => {
       offen = await echt();
       return offen;
@@ -395,17 +400,17 @@ describe('Schemafortschreibung', () => {
     await zwei.ereignisse();
 
     const griff = offen as unknown as IDBPDatabase | null;
-    expect(griff?.version).toBe(2);
+    expect(griff?.version).toBe(SCHRITTE.length + 1);
     expect([...(griff?.objectStoreNames ?? [])]).toContain('notizen');
     await zwei.schliessen();
   });
 
   it('läuft bei einer frischen Datenbank alle Schritte auf einmal', async () => {
     // Wer die App erst in einem halben Jahr zum ersten Mal oeffnet, steigt von
-    // 0 auf 2 in einem Zug. Das muss dieselben Speicher ergeben wie der Weg
-    // ueber Fassung 1.
+    // 0 auf die neueste Fassung in einem Zug. Das muss dieselben Speicher
+    // ergeben wie der Weg ueber Fassung 1.
     let offen: Awaited<ReturnType<Oeffner>> | null = null;
-    const echt = idbOeffner(neuerName(), ZWEITE_FASSUNG);
+    const echt = idbOeffner(neuerName(), NAECHSTE_FASSUNG);
     const s = speicher(async () => {
       offen = await echt();
       return offen;
@@ -447,34 +452,206 @@ describe('Schemafortschreibung', () => {
 });
 
 /**
- * (c) Die Groesse, als Wachposten.
+ * (c) Die Groesse, als Wachposten — je Typ.
  *
- * Gemessen an den echten Texten dieser App: 218 Byte je Ereignis als JSON,
- * 204 Byte in der strukturierten Kopie, mit Schluessel und Satzkopf rund 255.
- * Das sind 100 kB fuer die 400 Bewertungen, ab denen eigene FSRS-Parameter
- * tragen, und 2,5 MB fuer 10 000. Der Test haelt die Groessenordnung fest:
- * Wer `Ereignis` um den Fragetext oder die Begruendung erweitert, verzehnfacht
- * sie — und soll das hier merken und nicht in zwei Jahren.
+ * `antwort` haelt fest, was jemand getan hat, und das ist je Typ verschieden
+ * viel: ein Antworttext, eine Ziffernfolge, alle Paare, ein geschriebener
+ * Text. Eine gemeinsame Schranke waere entweder fuer `wahl` wertlos oder fuer
+ * `fall` falsch. Der Test haelt die Groessenordnung je Typ fest: Wer `Ereignis`
+ * um den Aufgabentext oder die Begruendung erweitert, vervielfacht sie — und
+ * soll das hier merken und nicht in zwei Jahren.
  */
 describe('Größe eines Ereignisses', () => {
-  const JE_EREIGNIS_HOECHSTENS = 400;
+  const HOECHSTENS: Record<AufgabenTyp, number> = {
+    wahl: 600,
+    reihenfolge: 400,
+    zuordnen: 1600,
+    fall: 4500,
+  };
 
-  it('bleibt auch im längsten Fall unter der Schranke', () => {
-    const laengste = e({
-      lektion: 'kontrollfluss-folgt-modellstaerke',
-      frage: 'kfm-transfer',
-      gewaehlt:
-        'Weil Precision-Maßnahmen auf der Kandidatenmenge aufsetzen und deren Obergrenze nicht überschreiten können',
-    });
-    const bytes = new TextEncoder().encode(JSON.stringify(laengste)).length;
+  const langerText =
+    'Weil Precision-Maßnahmen auf der Kandidatenmenge aufsetzen und deren Obergrenze nicht überschreiten können';
+  const sechsPaare = Array.from(
+    { length: 6 },
+    (_, i) => `Selbstkostenerstattungsvertrag Nummer ${i}→Nachgewiesene Kosten des Auftragnehmers samt Zuschlag ${i}`,
+  ).join(';');
+  const lang = { lektion: 'kontrollfluss-folgt-modellstaerke', frage: 'kfm-transfer', richtig: false, anteil: 0 };
 
-    expect(bytes).toBeLessThan(JE_EREIGNIS_HOECHSTENS);
+  const laengste: Record<AufgabenTyp, Ereignis> = {
+    wahl: e({ ...lang, typ: 'wahl', antwort: langerText, merkmal: langerText }),
+    reihenfolge: e({ ...lang, typ: 'reihenfolge', antwort: '1,3,2,4,5,7,6', merkmal: '1,3,2,4,5,7,6' }),
+    zuordnen: e({ ...lang, typ: 'zuordnen', antwort: sechsPaare, merkmal: sechsPaare }),
+    // Zweitausend Umlaute: die Hoechstlaenge des Textfelds, im teuersten Zeichen.
+    fall: e({ ...lang, typ: 'fall', antwort: 'ä'.repeat(2000), merkmal: 'fehlt:1,2,3,4,5,6,7,8' }),
+  };
+
+  it.each(AUFGABENTYPEN)('bleibt beim Typ %s auch im längsten Fall unter der Schranke', (typ) => {
+    const bytes = new TextEncoder().encode(JSON.stringify(laengste[typ])).length;
+    expect(bytes).toBeLessThan(HOECHSTENS[typ]);
   });
 
-  it('hält 10 000 Bewertungen unter vier Megabyte', () => {
-    // Zum Vergleich: Chrome raeumt einem Ursprung rund sechzig Prozent des
-    // freien Plattenplatzes ein. 10 000 Bewertungen sind bei zwanzig Antworten
-    // am Tag die Ernte von anderthalb Jahren. Es wird nicht eng.
-    expect(10_000 * JE_EREIGNIS_HOECHSTENS).toBeLessThan(4 * 1024 * 1024);
+  it('hält 10 000 Wahl-Ereignisse unter acht Megabyte', () => {
+    expect(10_000 * HOECHSTENS.wahl).toBeLessThan(8 * 1024 * 1024);
+  });
+});
+
+/**
+ * Der echte Aufstieg, nicht der erfundene.
+ *
+ * Die Beschreibung oben faehrt die Leiter mit einer Fassung, die es nicht
+ * gibt. Hier laeuft der Schritt, der wirklich ausgeliefert wird: Ein Bestand,
+ * der mit `gewaehlt` geschrieben wurde, muss vollstaendig in der neuen Form
+ * ankommen — sonst steht in einem halben Jahr eine Landkarte da, die die
+ * ersten Wochen nicht kennt.
+ */
+describe('Aufstieg auf Fassung 2: Ereignisse bekommen den Aufgabentyp', () => {
+  const NUR_FASSUNG_1 = SCHRITTE.slice(0, 1);
+
+  const alterTreffer = {
+    lektion: 'rvp',
+    frage: 'rvp-2',
+    zuversicht: 'eher',
+    richtig: true,
+    gewaehlt: 'Die Kandidatenmenge',
+    dauerMs: 700,
+    zeitpunkt: '2026-09-16T09:01:00.000Z',
+  };
+  const alterFehlgriff = {
+    lektion: 'rvp',
+    frage: 'rvp-1',
+    zuversicht: 'sicher',
+    richtig: false,
+    gewaehlt: 'Ein Reranker dahinter',
+    dauerMs: 900,
+    zeitpunkt: '2026-09-16T09:00:00.000Z',
+  };
+
+  it('hebt einen Bestand aus Fassung 1 vollstaendig in die neue Form', async () => {
+    const name = neuerName();
+    // Von Hand und untypisiert: Der heutige Typ kennt `gewaehlt` nicht mehr,
+    // der alte Bestand auf fremden Festplatten schon.
+    const alt = await idbOeffner(name, NUR_FASSUNG_1)();
+    const roh = alt as unknown as IDBPDatabase;
+    await roh.add('ereignisse', alterFehlgriff);
+    await roh.add('ereignisse', alterTreffer);
+    alt.close();
+
+    const neu = speicher(idbOeffner(name, SCHRITTE));
+    expect(await neu.ereignisse()).toEqual([
+      {
+        lektion: 'rvp',
+        frage: 'rvp-1',
+        typ: 'wahl',
+        zuversicht: 'sicher',
+        richtig: false,
+        anteil: 0,
+        antwort: 'Ein Reranker dahinter',
+        merkmal: 'Ein Reranker dahinter',
+        dauerMs: 900,
+        zeitpunkt: '2026-09-16T09:00:00.000Z',
+      },
+      {
+        lektion: 'rvp',
+        frage: 'rvp-2',
+        typ: 'wahl',
+        zuversicht: 'eher',
+        richtig: true,
+        anteil: 1,
+        antwort: 'Die Kandidatenmenge',
+        merkmal: '',
+        dauerMs: 700,
+        zeitpunkt: '2026-09-16T09:01:00.000Z',
+      },
+    ]);
+    await neu.schliessen();
+  });
+
+  it('laesst Karten und Einstellungen beim Aufstieg stehen', async () => {
+    const name = neuerName();
+    const alt = await idbOeffner(name, NUR_FASSUNG_1)();
+    const roh = alt as unknown as IDBPDatabase;
+    const termin = naechsterTermin(neueKarte(JETZT), 'eher', true, JETZT);
+    await roh.put('karten', { lektion: 'rvp', frage: 'rvp-1', karte: termin.karte });
+    await roh.put('einstellungen', 'dunkel', 'modus');
+    alt.close();
+
+    const neu = speicher(idbOeffner(name, SCHRITTE));
+    expect(await neu.karten()).toHaveLength(1);
+    expect(await neu.einstellung('modus')).toBe('dunkel');
+    await neu.schliessen();
+  });
+
+  it('ist wiederholbar: ein schon gehobener Satz bleibt, wie er ist', () => {
+    const schonNeu = e();
+    expect(hebeAufV2(schonNeu)).toBe(schonNeu);
+  });
+
+  /**
+   * Nachtrag: die Wiederholbarkeit am echten Speicher, nicht nur an der
+   * reinen Funktion.
+   *
+   * Der Test oben ("ist wiederholbar") prueft `hebeAufV2` isoliert. Er sagt
+   * nichts darueber, ob ein zweites Oeffnen mit `SCHRITTE` am echten Speicher
+   * etwas doppelt heben oder verlieren kann. Deshalb hier zweimal hintereinander
+   * mit derselben Fassungsliste geoeffnet: Die zweite Lesung muss Wort fuer
+   * Wort der ersten entsprechen, und es darf immer noch genau ein Ereignis sein.
+   */
+  it('ist wiederholbar am echten Speicher: ein zweites Öffnen mit SCHRITTE hebt nichts doppelt', async () => {
+    const name = neuerName();
+    const alt = await idbOeffner(name, NUR_FASSUNG_1)();
+    const roh = alt as unknown as IDBPDatabase;
+    await roh.add('ereignisse', alterTreffer);
+    alt.close();
+
+    const ersterZugriff = speicher(idbOeffner(name, SCHRITTE));
+    const ersteLesung = await ersterZugriff.ereignisse();
+    await ersterZugriff.schliessen();
+
+    const zweiterZugriff = speicher(idbOeffner(name, SCHRITTE));
+    const zweiteLesung = await zweiterZugriff.ereignisse();
+    await zweiterZugriff.schliessen();
+
+    expect(zweiteLesung).toHaveLength(1);
+    expect(zweiteLesung).toEqual(ersteLesung);
+  });
+});
+
+/**
+ * Nachtrag: der Abbruchpfad.
+ *
+ * Der Kommentar im Schritt behauptet: Scheitert der Aufstieg, wird die
+ * Umbau-Transaktion abgebrochen, „mit unveraendertem Bestand". Ausgeloest wird
+ * das hier ueber einen Satz, an dem `hebeAufV2` selbst wirft — eine blanke
+ * Zeichenkette hat kein `typ`-Feld, und `'typ' in <string>` wirft einen
+ * TypeError, bevor irgendetwas geschrieben wird. Der `ereignisse`-Speicher
+ * erlaubt das: `SCHRITTE[0]` legt ihn ohne `keyPath` an, mit `autoIncrement`
+ * als einziger Schluesselquelle — jeder strukturiert kopierbare Wert geht
+ * hinein, nicht nur Objekte, die wie ein `Ereignis` aussehen.
+ */
+describe('Aufstieg auf Fassung 2: Abbruchpfad', () => {
+  const NUR_FASSUNG_1 = SCHRITTE.slice(0, 1);
+
+  it('bricht den Umbau ab und laesst Fassung 1 unveraendert, wenn ein Satz beim Aufstieg wirft', async () => {
+    const name = neuerName();
+    const alt = await idbOeffner(name, NUR_FASSUNG_1)();
+    const roh = alt as unknown as IDBPDatabase;
+    await roh.add('ereignisse', 'ein Satz ohne Form');
+    alt.close();
+
+    // Das Oeffnen scheitert: Die Umbau-Transaktion wird abgebrochen, sobald
+    // der Cursor auf den kaputten Satz trifft, und `openDB` loest dann ab statt
+    // auf. Der Speicher faengt das — siehe `verbinde()` in speicher.ts — und
+    // laeuft im speicherlosen Notbetrieb weiter.
+    const kaputt = speicher(idbOeffner(name, SCHRITTE));
+    expect(await kaputt.ereignisse()).toEqual([]);
+    await kaputt.schliessen();
+
+    // Ein anschliessendes Oeffnen mit NUR Fassung 1 beweist, dass der Abbruch
+    // wirklich nichts hinterlassen hat: Der Bestand steht noch bei Fassung 1,
+    // der alte Satz unveraendert.
+    const geprueft = await idbOeffner(name, NUR_FASSUNG_1)();
+    const rohGeprueft = geprueft as unknown as IDBPDatabase;
+    expect(await rohGeprueft.getAll('ereignisse')).toEqual(['ein Satz ohne Form']);
+    geprueft.close();
   });
 });

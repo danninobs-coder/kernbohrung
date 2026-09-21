@@ -170,9 +170,12 @@ export default function Frage({
     const ereignis: Ereignis = {
       lektion,
       frage: id,
+      typ: 'wahl',
       zuversicht: gewaehlteStufe,
       richtig: antwort.richtig,
-      gewaehlt: antwort.text,
+      anteil: antwort.richtig ? 1 : 0,
+      antwort: antwort.text,
+      merkmal: antwort.richtig ? '' : antwort.text,
       dauerMs,
       zeitpunkt: jetzt.toISOString(),
     };

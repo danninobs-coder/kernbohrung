@@ -81,7 +81,7 @@ function leereStufen(): Record<Zuversicht, StufenBefund> {
 export type Fehlvorstellung = {
   readonly lektion: string;
   readonly frage: string;
-  readonly gewaehlt: string;
+  readonly merkmal: string;
   readonly anzahl: number;
 };
 
@@ -90,20 +90,20 @@ export type Fehlvorstellung = {
  *
  * Wer weiss, dass er es nicht weiss, schlaegt nach. Wer sicher ist und
  * danebenliegt, tut es nicht — dort sitzt eine Fehlvorstellung, die von selbst
- * nicht verschwindet. Gruppiert wird nach der GEWAEHLTEN Antwort, nicht nur
- * nach der Frage: Welche Gegenposition jemanden faengt, ist die eigentliche
- * Auskunft.
+ * nicht verschwindet. Gruppiert wird nach dem MERKMAL des Fehlgriffs, nicht
+ * nur nach der Frage — bei einer Wahl ist das die gewaehlte Antwort, bei einem
+ * Fall der fehlende Pruefpunkt:
  */
 export function sicherUndFalsch(ereignisse: readonly Ereignis[]): Fehlvorstellung[] {
   const zaehler = new Map<string, Fehlvorstellung>();
   for (const ev of ereignisse) {
     if (ev.zuversicht !== 'sicher' || ev.richtig) continue;
-    const schluessel = `${ev.lektion} ${ev.frage} ${ev.gewaehlt}`;
+    const schluessel = `${ev.lektion} ${ev.frage} ${ev.merkmal}`;
     const bisher = zaehler.get(schluessel);
     zaehler.set(schluessel, {
       lektion: ev.lektion,
       frage: ev.frage,
-      gewaehlt: ev.gewaehlt,
+      merkmal: ev.merkmal,
       anzahl: (bisher?.anzahl ?? 0) + 1,
     });
   }
@@ -114,6 +114,6 @@ export function sicherUndFalsch(ereignisse: readonly Ereignis[]): Fehlvorstellun
     (a, b) =>
       b.anzahl - a.anzahl ||
       a.frage.localeCompare(b.frage) ||
-      a.gewaehlt.localeCompare(b.gewaehlt),
+      a.merkmal.localeCompare(b.merkmal),
   );
 }

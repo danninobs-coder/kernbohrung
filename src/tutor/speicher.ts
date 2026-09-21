@@ -7,7 +7,7 @@ import {
 } from 'idb';
 import type { Card } from 'ts-fsrs';
 import type { Termin } from './planung';
-import type { Ereignis } from './typen';
+import type { Ereignis, Zuversicht } from './typen';
 
 /**
  * Die Speicherschicht. Die einzige Datei im Tutor mit Nebenwirkungen.
@@ -92,6 +92,37 @@ export type Schritt = (datenbank: IDBPDatabase<TutorDb>, umbau: Umbau) => void;
  * neu angelegt wird, waere genau der Datenverlust, gegen den diese Liste
  * gebaut ist.
  */
+/** Ein Ereignis, wie es Fassung 1 geschrieben hat. Nur fuer den Aufstieg. */
+export type EreignisV1 = {
+  readonly lektion: string;
+  readonly frage: string;
+  readonly zuversicht: Zuversicht;
+  readonly richtig: boolean;
+  readonly gewaehlt: string;
+  readonly dauerMs: number;
+  readonly zeitpunkt: string;
+};
+
+/**
+ * Hebt ein Ereignis aus Fassung 1 in die heutige Form.
+ *
+ * Bis zur Aufgabenfamilie gab es nur Wahlfragen: `typ` ist also 'wahl', der
+ * Anteil folgt aus `richtig`, und das Merkmal ist der gewaehlte Text, wenn er
+ * falsch war. Ein Satz, der schon `typ` traegt, bleibt unveraendert — der
+ * Schritt ist damit wiederholbar.
+ */
+export function hebeAufV2(satz: Ereignis | EreignisV1): Ereignis {
+  if ('typ' in satz) return satz;
+  const { gewaehlt, ...rest } = satz;
+  return {
+    ...rest,
+    typ: 'wahl',
+    anteil: satz.richtig ? 1 : 0,
+    antwort: gewaehlt,
+    merkmal: satz.richtig ? '' : gewaehlt,
+  };
+}
+
 export const SCHRITTE: readonly Schritt[] = [
   // Fassung 1: die drei Speicher.
   (datenbank) => {
@@ -110,6 +141,39 @@ export const SCHRITTE: readonly Schritt[] = [
     // Schluessel von aussen, Werte beliebig: heute eine Zeichenkette fuer den
     // Modus, spaeter einundzwanzig Zahlen fuer die FSRS-Parameter.
     datenbank.createObjectStore('einstellungen');
+  },
+
+  // Fassung 2: Ereignisse tragen den Aufgabentyp (siehe `hebeAufV2`).
+  //
+  // Additiv wie verlangt: kein Speicher wird geloescht oder neu angelegt, jeder
+  // Satz wird an Ort und Stelle fortgeschrieben. Gewartet wird ausschliesslich
+  // auf IndexedDB-Anfragen — ein anderes `await` hier liesse die
+  // Umbau-Transaktion schliessen, bevor der Zeiger durch ist.
+  (_datenbank, umbau) => {
+    const ablage = umbau.objectStore('ereignisse');
+    const hebeAlle = async (): Promise<void> => {
+      let zeiger = await ablage.openCursor();
+      while (zeiger) {
+        await zeiger.update(hebeAufV2(zeiger.value as Ereignis | EreignisV1));
+        zeiger = await zeiger.continue();
+      }
+    };
+    void hebeAlle().catch((fehler) => {
+      melde('Aufstieg auf Fassung 2', fehler);
+      try {
+        umbau.abort();
+      } catch {
+        // Schon abgebrochen. Das Oeffnen scheitert dann, und die Seite laeuft
+        // im speicherlosen Notbetrieb — mit unveraendertem Bestand.
+      }
+    });
+    // `idb` legt fuer jede Transaktion ein `done`-Versprechen an, sobald sie
+    // gewrappt wird — auch wenn niemand danach fragt. Bricht die Transaktion
+    // ab, lehnt dieses Versprechen ab, und ohne einen Abnehmer meldet die
+    // Laufzeitumgebung eine unbehandelte Ablehnung, obwohl der Abbruch hier
+    // gewollt ist und schon oben gemeldet wurde. Der leere Fang nimmt nur
+    // dieses zweite, ungefragte Echo entgegen.
+    umbau.done.catch(() => {});
   },
 ];
 
@@ -192,23 +256,21 @@ const LEERE_AUSFUHR = {
 /**
  * Wie viel Platz das kostet — gemessen, nicht geschaetzt.
  *
- * Ein `Ereignis` mit den echten Texten dieser App: 218 Byte als JSON, 204 Byte
- * in der strukturierten Kopie, die IndexedDB tatsaechlich ablegt. Den Ausschlag
- * gibt `gewaehlt`, der Text der gewaehlten Antwort — im Bestand zwischen 12 und
- * 122 Byte, im Mittel 52. Mit dem Schluessel und dem Satzkopf der Datenbank
- * sind es rund 255 Byte je Ereignis, auf der Platte etwa das Doppelte.
+ * Ein Wahl-Ereignis mit den echten Texten dieser App: als JSON 221 Byte bei
+ * einem Treffer und 252 bei einem Fehlgriff, weil `merkmal` dann den
+ * gewaehlten Text wiederholt. Mit Schluessel und Satzkopf der Datenbank rund
+ * 300 Byte, auf der Platte etwa das Doppelte.
  *
- * Hochgerechnet: 400 Bewertungen, ab denen eigene FSRS-Parameter tragen
- * (`BEWERTUNGEN_FUER_EIGENE_PARAMETER`), sind rund 100 kB — 200 kB auf der
- * Platte. 10 000 Bewertungen sind 2,5 MB, auf der Platte 5 MB. Ein Kartensatz
- * liegt bei 240 Byte, und davon gibt es genau so viele wie Fragen: heute
- * sechzehn.
+ * Die anderen Typen sind groesser, und das ist gewollt: `antwort` haelt fest,
+ * was jemand getan hat. Bei `zuordnen` sind das alle Paare (bis rund 1,5 kB),
+ * bei `fall` der geschriebene Text (bis 2 000 Zeichen, also bis rund 4,3 kB).
+ * Die Schranken je Typ stehen in `tests/speicher.test.ts`.
  *
- * Zum Vergleich: Chrome raeumt einem Ursprung rund sechzig Prozent des freien
- * Plattenplatzes ein, Firefox zehn Prozent. 10 000 Bewertungen sind bei
- * taeglich zwanzig Antworten die Ernte von anderthalb Jahren. Der Speicher
- * wird also nicht knapp — nicht bei dieser Groessenordnung und nicht in der
- * naechsten.
+ * Hochgerechnet: 10 000 Wahl-Ereignisse bleiben unter 6 MB, selbst 10 000
+ * Faelle unter 50 MB. Chrome raeumt einem Ursprung rund sechzig Prozent des
+ * freien Plattenplatzes ein, Firefox zehn. 10 000 Bewertungen sind bei
+ * taeglich zwanzig Antworten die Ernte von anderthalb Jahren. Es wird nicht
+ * eng.
  */
 export function speicher(oeffnen: Oeffner = idbOeffner()): Speicher {
   /**

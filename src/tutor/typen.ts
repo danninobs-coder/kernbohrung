@@ -6,6 +6,10 @@
  * Haengt hier etwas an ts-fsrs oder an idb, zieht das die ganze Kette mit.
  */
 
+// Ein Typ, kein Wert: Die Zeile wird beim Uebersetzen geloescht. Diese Datei
+// bleibt damit frei von Laufzeitabhaengigkeiten, wie ihr Kopfkommentar verlangt.
+import type { AufgabenTyp } from '../aufgaben/schema';
+
 /**
  * Drei Stufen, nicht fuenf.
  *
@@ -33,18 +37,35 @@ export const ZUVERSICHT_TEXT: Record<Zuversicht, string> = {
 export const ZUVERSICHT_STUFEN: readonly Zuversicht[] = ['sicher', 'eher', 'geraten'];
 
 /**
- * Ein Ereignis je beantworteter Frage. Unveraenderlich, nur angehaengt.
+ * Ein Ereignis je beantworteter Aufgabe. Unveraenderlich, nur angehaengt.
  *
- * `gewaehlt` haelt den Text der gewaehlten Antwort fest, nicht nur richtig oder
- * falsch. Ohne ihn laesst sich nicht sagen, WELCHE Gegenposition jemanden
- * faengt — und genau das ist das Fehlermuster, auf das der Tutor reagiert.
+ * `frage` ist die Kennung der Aufgabe. Der Name stammt aus der Zeit, als es
+ * nur Wahlfragen gab, und bleibt: Er ist der Schluessel in `reife.ts`, in
+ * `auswahl.ts` und im keyPath des Kartenspeichers. Ihn umzubenennen waere ein
+ * Umbau des Speichers ohne Gewinn.
+ *
+ * `antwort` haelt fest, WAS jemand getan hat — den gewaehlten Text, die
+ * geschriebene Loesung, die gebildeten Paare, die abgegebene Folge. `merkmal`
+ * ist der Schluessel, unter dem sich Fehlgriffe gruppieren lassen, und bei
+ * einem Treffer leer. Beides zu trennen ist kein Luxus: Bei einem Fall ist die
+ * Antwort ein freier Text, den niemand zweimal gleich schreibt — gruppieren
+ * laesst sich nur nach dem Pruefpunkt, der fehlte. Ohne `merkmal` liesse sich
+ * nicht sagen, WELCHE Gegenposition jemanden faengt, und genau das ist das
+ * Fehlermuster, auf das der Tutor reagiert.
+ *
+ * `anteil` wird gespeichert, aber noch nicht in die Terminplanung
+ * eingerechnet. Ob drei von vier Paaren ein „Hard" oder ein „Again" sind, ist
+ * mit Daten zu beantworten, nicht mit einer Annahme. Der Wert liegt dann vor.
  */
 export type Ereignis = {
   readonly lektion: string;
   readonly frage: string;
+  readonly typ: AufgabenTyp;
   readonly zuversicht: Zuversicht;
   readonly richtig: boolean;
-  readonly gewaehlt: string;
+  readonly anteil: number;
+  readonly antwort: string;
+  readonly merkmal: string;
   readonly dauerMs: number;
   readonly zeitpunkt: string;
 };

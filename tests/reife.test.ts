@@ -10,13 +10,16 @@ function tage(n: number): Date {
   return new Date(JETZT.getTime() + n * TAG);
 }
 
-function e(zuversicht: Zuversicht, richtig: boolean, gewaehlt = 'x'): Ereignis {
+function e(zuversicht: Zuversicht, richtig: boolean, merkmal = 'x'): Ereignis {
   return {
     lektion: 'rvp',
     frage: 'rvp-1',
     zuversicht,
     richtig,
-    gewaehlt,
+    typ: 'wahl',
+    anteil: richtig ? 1 : 0,
+    antwort: merkmal,
+    merkmal: richtig ? '' : merkmal,
     dauerMs: 1000,
     zeitpunkt: '2026-09-16T09:00:00Z',
   };

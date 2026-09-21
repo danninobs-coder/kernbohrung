@@ -2,8 +2,19 @@ import { describe, it, expect } from 'vitest';
 import { kalibrierung, sicherUndFalsch } from '../src/tutor/kalibrierung';
 import type { Ereignis } from '../src/tutor/typen';
 
-function e(zuversicht: Ereignis['zuversicht'], richtig: boolean, frage = 'f1', gewaehlt = 'x'): Ereignis {
-  return { lektion: 'l', frage, zuversicht, richtig, gewaehlt, dauerMs: 1000, zeitpunkt: '2026-09-16T10:00:00Z' };
+function e(zuversicht: Ereignis['zuversicht'], richtig: boolean, frage = 'f1', merkmal = 'x'): Ereignis {
+  return {
+    lektion: 'l',
+    frage,
+    typ: 'wahl',
+    zuversicht,
+    richtig,
+    anteil: richtig ? 1 : 0,
+    antwort: merkmal,
+    merkmal: richtig ? '' : merkmal,
+    dauerMs: 1000,
+    zeitpunkt: '2026-09-16T10:00:00Z',
+  };
 }
 
 describe('kalibrierung', () => {
@@ -112,7 +123,7 @@ describe('sicherUndFalsch', () => {
     ];
     const treffer = sicherUndFalsch(ereignisse);
     expect(treffer).toHaveLength(1);
-    expect(treffer[0]).toMatchObject({ frage: 'f1', gewaehlt: 'Reranker dahinter', anzahl: 2 });
+    expect(treffer[0]).toMatchObject({ frage: 'f1', merkmal: 'Reranker dahinter', anzahl: 2 });
   });
 
   it('gibt nichts zurück, wenn niemand sicher danebenlag', () => {
@@ -131,7 +142,7 @@ describe('sicherUndFalsch', () => {
     // Der eigentliche Zweck der Gruppierung: nicht DASS jemand bei f1 sicher
     // danebenlag, sondern WELCHE Gegenposition ihn fängt. Wer nur nach der Frage
     // gruppiert, addiert zwei verschiedene Fehlvorstellungen zu einer Zahl und
-    // verliert genau die Auskunft, für die `gewaehlt` überhaupt erhoben wird.
+    // verliert genau die Auskunft, für die `merkmal` überhaupt erhoben wird.
     const ereignisse = [
       e('sicher', false, 'f1', 'Reranker dahinter'),
       e('sicher', false, 'f1', 'Reranker dahinter'),
@@ -139,7 +150,7 @@ describe('sicherUndFalsch', () => {
     ];
     const treffer = sicherUndFalsch(ereignisse);
     expect(treffer).toHaveLength(2);
-    expect(treffer.map((t) => [t.gewaehlt, t.anzahl])).toEqual([
+    expect(treffer.map((t) => [t.merkmal, t.anzahl])).toEqual([
       ['Reranker dahinter', 2],
       ['Chunks kleiner schneiden', 1],
     ]);
@@ -157,7 +168,28 @@ describe('sicherUndFalsch', () => {
       e('sicher', false, 'f1', 'Anker'),
       e('sicher', false, 'f1', 'Zebra'),
     ]);
-    expect(vorwaerts.map((t) => t.gewaehlt)).toEqual(['Anker', 'Zebra']);
-    expect(rueckwaerts.map((t) => t.gewaehlt)).toEqual(['Anker', 'Zebra']);
+    expect(vorwaerts.map((t) => t.merkmal)).toEqual(['Anker', 'Zebra']);
+    expect(rueckwaerts.map((t) => t.merkmal)).toEqual(['Anker', 'Zebra']);
+  });
+
+  it('gruppiert bei einem Fall nach dem fehlenden Prüfpunkt, nicht nach dem geschriebenen Text', () => {
+    // Der Grund, warum `merkmal` neben `antwort` steht: Niemand schreibt eine
+    // Loesung zweimal gleich. Gruppiert nach dem Text waeren das zwei
+    // Fehlvorstellungen mit je einem Vorkommen — und keine faellt auf.
+    const fall = (antwort: string): Ereignis => ({
+      lektion: 'l',
+      frage: 'f9',
+      typ: 'fall',
+      zuversicht: 'sicher',
+      richtig: false,
+      anteil: 0.5,
+      antwort,
+      merkmal: 'fehlt:2',
+      dauerMs: 1000,
+      zeitpunkt: '2026-09-16T10:00:00Z',
+    });
+    expect(sicherUndFalsch([fall('Erste Fassung der Lösung'), fall('Ganz anders formuliert')])).toEqual([
+      { lektion: 'l', frage: 'f9', merkmal: 'fehlt:2', anzahl: 2 },
+    ]);
   });
 });

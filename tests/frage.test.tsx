@@ -194,7 +194,7 @@ describe('Frage', () => {
 
       await nutzer.click(stufenKnopf('sicher'));
       await waitFor(() => expect(auf.ereignisse).toHaveLength(1));
-      expect(auf.ereignisse[0].gewaehlt).toBe('Die Kandidaten');
+      expect(auf.ereignisse[0].antwort).toBe('Die Kandidaten');
       expect(auf.ereignisse[0].richtig).toBe(true);
     });
 
@@ -291,7 +291,10 @@ describe('Frage', () => {
       expect(ereignis.frage).toBe('f-test');
       expect(ereignis.zuversicht).toBe('eher');
       expect(ereignis.richtig).toBe(false);
-      expect(ereignis.gewaehlt).toBe('Den Index');
+      expect(ereignis.typ).toBe('wahl');
+      expect(ereignis.anteil).toBe(0);
+      expect(ereignis.antwort).toBe('Den Index');
+      expect(ereignis.merkmal).toBe('Den Index');
       expect(new Date(ereignis.zeitpunkt).getTime()).toBeGreaterThanOrEqual(vorher);
 
       await waitFor(() => expect(auf.karten).toHaveLength(1));

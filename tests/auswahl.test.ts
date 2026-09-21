@@ -29,14 +29,17 @@ function e(
   frage: string,
   zuversicht: Zuversicht,
   richtig: boolean,
-  gewaehlt = 'x',
+  merkmal = 'x',
 ): Ereignis {
   return {
     lektion,
     frage,
     zuversicht,
     richtig,
-    gewaehlt,
+    typ: 'wahl',
+    anteil: richtig ? 1 : 0,
+    antwort: merkmal,
+    merkmal: richtig ? '' : merkmal,
     dauerMs: 1000,
     zeitpunkt: '2026-09-16T09:00:00Z',
   };
