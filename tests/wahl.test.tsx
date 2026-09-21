@@ -154,6 +154,12 @@ describe('Wahl', () => {
         'richtig · deine Wahl',
       );
       expect(richtigeGewaehlte.textContent).toBe('Die Kandidaten');
+      // Vertauscht man in zustandVon die Reihenfolge der beiden Bedingungen
+      // (`if (antwort.richtig)` vs. `if (antwort === gewaehlt)`), bleibt die
+      // Textmarke unveraendert richtig - der Datenzustand faellt aber auf
+      // "falsch", weil die gewaehlte Antwort dann zuerst als "die eigene"
+      // erkannt wird. Die Marke allein deckt diesen Fehlgriff nicht ab.
+      expect(richtigeGewaehlte.dataset.zustand).toBe('richtig');
     });
   });
 
@@ -204,6 +210,36 @@ describe('Wahl', () => {
       render(<Wahl aufgabe={aufgabe} phase="offen" onAbgegeben={vi.fn()} onErgebnis={vi.fn()} />);
       const zweite = screen.getAllByRole('button').map((b) => b.textContent);
       expect(zweite).toEqual(erste);
+    });
+
+    /**
+     * Die Mischung haengt an der `id`, nicht an einer festen Zeichenkette.
+     * Ersetzt man `aufgabe.id` im Aufruf von `mischen` durch eine Konstante,
+     * mischen zwei verschiedene Aufgaben mit denselben Antworten trotzdem
+     * IMMER gleich - und der Test oben ("zweimal rendern") sieht das nicht,
+     * weil dort beide Male dieselbe id vorliegt.
+     *
+     * 'w-test-2' ist keine beliebige zweite id: Bei drei Antworten gibt es nur
+     * sechs moegliche Reihenfolgen, und ein kurzer Node-Versuch mit der
+     * Mischfunktion aus src/lib/mischen.ts hat nachgewiesen, dass sie fuer
+     * dieselben drei Antworten tatsaechlich eine andere Reihenfolge liefert
+     * als 'w-test':
+     *   mischen([...], 'w-test')   -> ['Den Index', 'Die Kandidaten', 'Die Anfrage']
+     *   mischen([...], 'w-test-2') -> ['Die Kandidaten', 'Den Index', 'Die Anfrage']
+     */
+    it('mischt anhand der id: zwei Aufgaben mit derselben Antwortmenge muessen nicht gleich gemischt sein', () => {
+      const andereAufgabe: WahlAufgabe = { ...aufgabe, id: 'w-test-2' };
+
+      const { unmount } = render(
+        <Wahl aufgabe={aufgabe} phase="offen" onAbgegeben={vi.fn()} onErgebnis={vi.fn()} />,
+      );
+      const erste = screen.getAllByRole('button').map((b) => b.textContent);
+      unmount();
+
+      render(<Wahl aufgabe={andereAufgabe} phase="offen" onAbgegeben={vi.fn()} onErgebnis={vi.fn()} />);
+      const zweite = screen.getAllByRole('button').map((b) => b.textContent);
+
+      expect(zweite).not.toEqual(erste);
     });
   });
 });

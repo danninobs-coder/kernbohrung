@@ -45,34 +45,35 @@ export default function Wahl({ aufgabe, phase, onAbgegeben, ergebnissatz }: TypP
       <p className="frage-text">{aufgabe.frage}</p>
       {ergebnissatz}
       <ul className="antworten">
-        {gemischt.map((antwort) => (
-          // Der Text taugt als key, weil das Schema doppelte Antworttexte
-          // innerhalb einer Aufgabe zurueckweist (normalisiert verglichen).
-          // Faellt diese Regel, faellt auch dieser key.
-          <li key={antwort.text}>
-            <button
-              type="button"
-              className="antwort"
-              data-zustand={zustandVon(antwort)}
-              // Die Wahl ist bis zur Zuversicht widerruflich, also ist sie ein
-              // Schaltzustand und kein abgeschickter Wert. `aria-pressed` sagt
-              // ihn genau dort an, wo der Fokus in diesem Moment steht.
-              aria-pressed={antwort === gewaehlt}
-              disabled={aufgeloest}
-              onClick={() => waehle(antwort)}
-            >
-              {antwort.text}
-            </button>
-            {/* Farbe allein traegt die Aufloesung nicht (WCAG 1.4.1). Die
-                Marke steht ausserhalb des Knopfes: In ihm wuerde sie seinen
-                zugaenglichen Namen aendern, und dieselbe Antwort hiesse vor
-                und nach der Aufloesung anders. */}
-            {aufgeloest && markeZu(antwort, gewaehlt) !== null && (
-              <p className="antwort-marke">{markeZu(antwort, gewaehlt)}</p>
-            )}
-            {aufgeloest && <p className="begruendung">{antwort.begruendung}</p>}
-          </li>
-        ))}
+        {gemischt.map((antwort) => {
+          const marke = markeZu(antwort, gewaehlt);
+          return (
+            // Der Text taugt als key, weil das Schema doppelte Antworttexte
+            // innerhalb einer Aufgabe zurueckweist (normalisiert verglichen).
+            // Faellt diese Regel, faellt auch dieser key.
+            <li key={antwort.text}>
+              <button
+                type="button"
+                className="antwort"
+                data-zustand={zustandVon(antwort)}
+                // Die Wahl ist bis zur Zuversicht widerruflich, also ist sie ein
+                // Schaltzustand und kein abgeschickter Wert. `aria-pressed` sagt
+                // ihn genau dort an, wo der Fokus in diesem Moment steht.
+                aria-pressed={antwort === gewaehlt}
+                disabled={aufgeloest}
+                onClick={() => waehle(antwort)}
+              >
+                {antwort.text}
+              </button>
+              {/* Farbe allein traegt die Aufloesung nicht (WCAG 1.4.1). Die
+                  Marke steht ausserhalb des Knopfes: In ihm wuerde sie seinen
+                  zugaenglichen Namen aendern, und dieselbe Antwort hiesse vor
+                  und nach der Aufloesung anders. */}
+              {aufgeloest && marke !== null && <p className="antwort-marke">{marke}</p>}
+              {aufgeloest && <p className="begruendung">{antwort.begruendung}</p>}
+            </li>
+          );
+        })}
       </ul>
     </>
   );
