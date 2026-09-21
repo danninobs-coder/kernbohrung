@@ -3,7 +3,12 @@ import type { TypProps } from '../vertrag';
 import { bewerteFall } from './bewerten';
 import type { Fall as FallAufgabe } from './schema';
 
-/** Hoechstlaenge der geschriebenen Loesung. Der Groessenwaechter im Speichertest rechnet damit. */
+/**
+ * Hoechstlaenge der geschriebenen Loesung. Der Groessenwaechter im
+ * Speichertest rechnet damit — gezaehlt werden UTF-16-Einheiten (wie
+ * `maxLength` es tut), der Waechter selbst mit drei Byte je Einheit im
+ * teuersten Fall.
+ */
 export const HOECHSTLAENGE = 2000;
 
 /** Absaetze, durch Leerzeile getrennt. Kein Markdown — siehe `schema.ts`. */
@@ -27,6 +32,11 @@ export default function Fall({ aufgabe, phase, onAbgegeben, onErgebnis, ergebnis
   const [text, setText] = useState('');
   const [haken, setHaken] = useState<boolean[]>(() => aufgabe.pruefpunkte.map(() => false));
   const legende = useRef<HTMLLegendElement>(null);
+  // Ref statt State: Zwischen den beiden Klicks eines Doppelklicks liegt kein
+  // Render-Zyklus, in dem ein aktualisierter State-Wert schon gelesen werden
+  // koennte — ein `useState`-Flag waere beim zweiten Klick noch auf dem alten
+  // Stand. Der Ref gilt sofort und synchron mit der ersten Zuweisung.
+  const gemeldet = useRef(false);
 
   const eingabeId = `${aufgabe.id}-loesung`;
   const pruefen = phase === 'zuversicht';
@@ -50,7 +60,11 @@ export default function Fall({ aufgabe, phase, onAbgegeben, onErgebnis, ergebnis
   }
 
   function fertig(): void {
-    if (!pruefen) return;
+    // `gemeldet` sperrt einen zweiten Aufruf, z. B. durch einen Doppelklick:
+    // Die Phase aendert sich zwischen den beiden Klicks nicht, die Huelle
+    // wuerde das Ergebnis sonst zweimal aufzeichnen.
+    if (!pruefen || gemeldet.current) return;
+    gemeldet.current = true;
     onErgebnis(bewerteFall(aufgabe, text, haken));
   }
 

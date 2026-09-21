@@ -274,4 +274,65 @@ describe('Fall', () => {
   it('legt die Höchstlänge auf 2000 fest', () => {
     expect(HOECHSTLAENGE).toBe(2000);
   });
+
+  /**
+   * Nachschärfung 1 (Qualitäts-Review): Ein Doppelklick auf „Fertig" ändert
+   * die Phase zwischen den beiden Klicks nicht — ohne eine eigene Sperre in
+   * `Fall.tsx` würde die Hülle das Ergebnis zweimal aufzeichnen.
+   */
+  it('meldet bei einem Doppelklick auf „Fertig" nur einmal', async () => {
+    const nutzer = userEvent.setup();
+    const { onErgebnis, inPhase } = stelleDar();
+    await nutzer.type(screen.getByLabelText('Deine Lösung'), loesung);
+    inPhase('zuversicht');
+
+    await nutzer.dblClick(screen.getByRole('button', { name: 'Fertig' }));
+
+    expect(onErgebnis).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Nachschärfung 2 (Qualitäts-Review): Die Musterlösung darf vor der
+   * Auflösung nicht im Dokument stehen — weder ihre Überschrift noch ihr
+   * Text. `loesung` beginnt mit denselben Worten wie die Musterlösung ("Der
+   * Unternehmer hat recht…"): deshalb hier mit dem exakten Text und der
+   * Rolle heading statt einer laxen Teilstring-Suche, die auch im Textfeld
+   * anschlüge.
+   */
+  it('zeigt die Musterlösung weder in „abgegeben" noch in „zuversicht"', async () => {
+    const nutzer = userEvent.setup();
+    const { inPhase } = stelleDar();
+    await nutzer.type(screen.getByLabelText('Deine Lösung'), loesung);
+
+    inPhase('abgegeben');
+    expect(screen.queryByRole('heading', { name: 'Musterlösung' })).toBeNull();
+    expect(screen.queryByText('Der Unternehmer hat recht.')).toBeNull();
+
+    inPhase('zuversicht');
+    expect(screen.queryByRole('heading', { name: 'Musterlösung' })).toBeNull();
+    expect(screen.queryByText('Der Unternehmer hat recht.')).toBeNull();
+  });
+
+  /**
+   * Nachschärfung 3 (Qualitäts-Review): Wie bei `Wahl` steht der
+   * Ergebnissatz zwischen Aufgabentext und Bedienfläche — unmittelbar nach
+   * `.frage-text` und vor dem Prüfpunkte-Fieldset.
+   */
+  it('stellt den Ergebnissatz zwischen Frage und Bedienfläche', () => {
+    render(
+      <Fall
+        aufgabe={aufgabe}
+        phase="aufgeloest"
+        onAbgegeben={vi.fn()}
+        onErgebnis={vi.fn()}
+        ergebnissatz={<p data-testid="satz">Richtig.</p>}
+      />,
+    );
+    const satz = screen.getByTestId('satz');
+    const fieldset = document.querySelector('fieldset.pruefpunkte');
+
+    expect(satz.previousElementSibling?.className).toBe('frage-text');
+    expect(fieldset).not.toBeNull();
+    expect(satz.compareDocumentPosition(fieldset as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

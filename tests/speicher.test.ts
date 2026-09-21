@@ -466,7 +466,7 @@ describe('Größe eines Ereignisses', () => {
     wahl: 600,
     reihenfolge: 400,
     zuordnen: 1600,
-    fall: 4500,
+    fall: 6500,
   };
 
   const langerText =
@@ -481,8 +481,15 @@ describe('Größe eines Ereignisses', () => {
     wahl: e({ ...lang, typ: 'wahl', antwort: langerText, merkmal: langerText }),
     reihenfolge: e({ ...lang, typ: 'reihenfolge', antwort: '1,3,2,4,5,7,6', merkmal: '1,3,2,4,5,7,6' }),
     zuordnen: e({ ...lang, typ: 'zuordnen', antwort: sechsPaare, merkmal: sechsPaare }),
-    // Zweitausend Umlaute: die Hoechstlaenge des Textfelds, im teuersten Zeichen.
-    fall: e({ ...lang, typ: 'fall', antwort: 'ä'.repeat(2000), merkmal: 'fehlt:1,2,3,4,5,6,7,8' }),
+    // Zweitausend Eurozeichen: die Hoechstlaenge des Textfelds, im teuersten
+    // Zeichen. `maxLength` zaehlt UTF-16-Einheiten, nicht Byte. Ein Zeichen
+    // aus der Basic Multilingual Plane ausserhalb der ersten 2048 Codepunkte
+    // (etwa '€') braucht in UTF-8 drei Byte je Einheit — mehr als 'ä' (zwei
+    // Byte je Einheit) und mehr als ein Zeichen jenseits der BMP (vier Byte
+    // auf zwei UTF-16-Einheiten, also nur zwei Byte je Einheit). Drei Byte je
+    // Einheit ist damit das teuerste Verhaeltnis, das eine einzelne
+    // UTF-16-Einheit erreichen kann.
+    fall: e({ ...lang, typ: 'fall', antwort: '€'.repeat(2000), merkmal: 'fehlt:1,2,3,4,5,6,7,8' }),
   };
 
   it.each(AUFGABENTYPEN)('bleibt beim Typ %s auch im längsten Fall unter der Schranke', (typ) => {
@@ -491,7 +498,7 @@ describe('Größe eines Ereignisses', () => {
     // Die Schranke braucht selbst einen Waechter nach unten: Ohne diese Zeile
     // faengt keine Mutation eine grosszuegig angehobene HOECHSTENS ab — der
     // Test oben wird dann einfach mit angehoben und bleibt gruen. Ist-Werte
-    // (gemessen): wahl 430, reihenfolge 245, zuordnen 1390, fall 4233 Byte —
+    // (gemessen): wahl 430, reihenfolge 245, zuordnen 1390, fall 6233 Byte —
     // alle liegen ueber der halben Schranke.
     expect(bytes).toBeGreaterThan(HOECHSTENS[typ] / 2);
   });
@@ -499,7 +506,7 @@ describe('Größe eines Ereignisses', () => {
   // Die Schranke selbst braucht einen Waechter gegen Aufweichung: Wer sie
   // grosszuegig anhebt, damit der Test oben wieder gruen wird, sprengt hier
   // das Budget.
-  const BUDGET_MB: Record<AufgabenTyp, number> = { wahl: 8, reihenfolge: 8, zuordnen: 20, fall: 50 };
+  const BUDGET_MB: Record<AufgabenTyp, number> = { wahl: 8, reihenfolge: 8, zuordnen: 20, fall: 80 };
 
   it.each(AUFGABENTYPEN)('hält 10 000 Ereignisse vom Typ %s im Budget', (typ) => {
     expect(10_000 * HOECHSTENS[typ]).toBeLessThan(BUDGET_MB[typ] * 1024 * 1024);
