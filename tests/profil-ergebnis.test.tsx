@@ -162,6 +162,20 @@ describe('Ergebnisansicht', () => {
     expect(screen.getByRole('link', { name: 'Neu erheben' })).toBeTruthy();
   });
 
+  it('nennt das Datum der Erhebung, ohne fuehrende Nullen', () => {
+    // Mittags UTC: In jeder bewohnten Zeitzone ist das derselbe Kalendertag,
+    // der Test haengt also nicht an der Zeitzone des Rechners.
+    render(<Ergebnisansicht auswertung={auswertung()} erhoben="2026-09-05T12:00:00.000Z" />);
+    expect(screen.getByText('Erhoben am 5.9.2026.')).toBeTruthy();
+  });
+
+  it('gibt dem Lernmuster eine Ueberschrift wie den anderen Abschnitten', () => {
+    // Wer per Ueberschrift springt, darf den wichtigsten Abschnitt nicht
+    // ueberspringen.
+    render(<Ergebnisansicht auswertung={auswertung()} erhoben={ERHOBEN} />);
+    expect(screen.getByRole('heading', { name: 'Dein Lernmuster' })).toBeTruthy();
+  });
+
   it('zeigt NIE ein Muster ohne den Beipackzettel', () => {
     // Sechzig Antwortsaetze, stumpf durchgezaehlt: volle, halbe und leere,
     // eindeutige und unentschiedene. Die Regel ist nicht „der Beipackzettel

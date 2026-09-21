@@ -94,6 +94,7 @@ export function Ergebnisansicht({ auswertung, erhoben, jetzt, nichtBehalten = fa
 
       <section className="karte profil-muster">
         <p className="augenbraue">Lernmuster nach Vermunt</p>
+        <h2>Dein Lernmuster</h2>
         <p className="muster-satz" data-muster={lernmuster === null ? 'keins' : lernmuster.art}>
           {mustersatz(lernmuster)}
         </p>
