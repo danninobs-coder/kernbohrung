@@ -75,6 +75,10 @@ describe('ZuordnenSchema', () => {
     expect(ZuordnenSchema.safeParse(ohne).success).toBe(false);
   });
 
+  it('weist einen falschen typ zurueck', () => {
+    expect(ZuordnenSchema.safeParse(zuordnen({ typ: 'wahl' })).success).toBe(false);
+  });
+
   it('nimmt hoechstens sechs Paare', () => {
     const paare = (n: number) =>
       Array.from({ length: n }, (_, i) => ({ links: `Links ${i + 1}`, rechts: `Rechts ${i + 1}` }));

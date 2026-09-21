@@ -42,6 +42,10 @@ describe('ReihenfolgeSchema', () => {
     const { typ: _typ, ...ohne } = reihenfolge();
     expect(ReihenfolgeSchema.safeParse(ohne).success).toBe(false);
   });
+
+  it('weist einen falschen typ zurueck', () => {
+    expect(ReihenfolgeSchema.safeParse(reihenfolge({ typ: 'wahl' })).success).toBe(false);
+  });
 });
 
 describe('startfolge', () => {

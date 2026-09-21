@@ -89,6 +89,10 @@ describe('FallSchema', () => {
     const { typ: _typ, ...ohne } = fall();
     expect(FallSchema.safeParse(ohne).success).toBe(false);
   });
+
+  it('weist einen falschen typ zurueck', () => {
+    expect(FallSchema.safeParse(fall({ typ: 'wahl' })).success).toBe(false);
+  });
 });
 
 describe('bewerteFall', () => {

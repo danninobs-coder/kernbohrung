@@ -40,6 +40,10 @@ describe('WahlSchema', () => {
     expect(WahlSchema.safeParse(ohne).success).toBe(false);
   });
 
+  it('weist einen falschen typ zurueck', () => {
+    expect(WahlSchema.safeParse(wahl({ typ: 'fall' })).success).toBe(false);
+  });
+
   it('weist ein fremdes Feld zurueck, statt es zu verschlucken', () => {
     // Das wahrscheinlichste Symptom eines Generators, der zwei Typen vermischt.
     expect(WahlSchema.safeParse(wahl({ paare: [] })).success).toBe(false);
