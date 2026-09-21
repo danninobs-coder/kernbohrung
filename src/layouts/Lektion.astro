@@ -2,7 +2,7 @@
 import type { CollectionEntry } from 'astro:content';
 import { render } from 'astro:content';
 import Seite from './Seite.astro';
-import Frage from '../components/Frage.tsx';
+import Aufgabe from '../components/Aufgabe.tsx';
 import Herkunft from '../components/Herkunft.astro';
 import { widgets } from '../widgets';
 
@@ -46,7 +46,7 @@ const daten = eintrag.data;
     </section>
 
     {/*
-      client:idle statt client:visible, gemessen begruendet: Frage.js ist
+      client:idle statt client:visible, gemessen begruendet: Aufgabe.js ist
       30 KB (10 KB gepackt) — seit der Zuversichtsschritt Planer und Speicher
       mitzieht —, waehrend die React-Laufzeit mit 184 KB (57 KB gepackt)
       ohnehin geladen wird, weil das Pipeline-Widget in Takt 2 hydriert.
@@ -62,26 +62,14 @@ const daten = eintrag.data;
       <p class="augenbraue">Takt 4 · Die Probe</p>
       <h2>Die Probe</h2>
       {daten.fragen.map((frage) => (
-        <Frage
-          client:idle
-          lektion={eintrag.id}
-          id={frage.id}
-          frage={frage.frage}
-          antworten={frage.antworten}
-        />
+        <Aufgabe client:idle lektion={eintrag.id} aufgabe={{ typ: 'wahl' as const, ...frage }} />
       ))}
     </section>
 
     <section class="takt" data-takt="transfer">
       <p class="augenbraue">Takt 5 · Der Transfer</p>
       <h2>Der Transfer</h2>
-      <Frage
-        client:idle
-        lektion={eintrag.id}
-        id={daten.transfer.id}
-        frage={daten.transfer.frage}
-        antworten={daten.transfer.antworten}
-      />
+      <Aufgabe client:idle lektion={eintrag.id} aufgabe={{ typ: 'wahl' as const, ...daten.transfer }} />
     </section>
 
     <section class="takt" data-takt="herkunft">

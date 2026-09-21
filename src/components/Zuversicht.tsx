@@ -14,7 +14,7 @@ import {
  * vierte Stufe waere dort eine Zeile — und hier keine.
  *
  * Die Komponente kennt weder die Frage noch die Antwort. Sie meldet nur, was
- * gedrueckt wurde; was daraus folgt, entscheidet `Frage.tsx`. Deshalb laesst
+ * gedrueckt wurde; was daraus folgt, entscheidet `Aufgabe.tsx`. Deshalb laesst
  * sie sich allein pruefen, und deshalb kann sie nichts kaputtmachen, was mit
  * dem Speicher zu tun hat.
  */
