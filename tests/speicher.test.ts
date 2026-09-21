@@ -488,10 +488,21 @@ describe('Größe eines Ereignisses', () => {
   it.each(AUFGABENTYPEN)('bleibt beim Typ %s auch im längsten Fall unter der Schranke', (typ) => {
     const bytes = new TextEncoder().encode(JSON.stringify(laengste[typ])).length;
     expect(bytes).toBeLessThan(HOECHSTENS[typ]);
+    // Die Schranke braucht selbst einen Waechter nach unten: Ohne diese Zeile
+    // faengt keine Mutation eine grosszuegig angehobene HOECHSTENS ab — der
+    // Test oben wird dann einfach mit angehoben und bleibt gruen. Ist-Werte
+    // (gemessen): wahl 430, reihenfolge 245, zuordnen 1390, fall 4233 Byte —
+    // alle liegen ueber der halben Schranke.
+    expect(bytes).toBeGreaterThan(HOECHSTENS[typ] / 2);
   });
 
-  it('hält 10 000 Wahl-Ereignisse unter acht Megabyte', () => {
-    expect(10_000 * HOECHSTENS.wahl).toBeLessThan(8 * 1024 * 1024);
+  // Die Schranke selbst braucht einen Waechter gegen Aufweichung: Wer sie
+  // grosszuegig anhebt, damit der Test oben wieder gruen wird, sprengt hier
+  // das Budget.
+  const BUDGET_MB: Record<AufgabenTyp, number> = { wahl: 8, reihenfolge: 8, zuordnen: 20, fall: 50 };
+
+  it.each(AUFGABENTYPEN)('hält 10 000 Ereignisse vom Typ %s im Budget', (typ) => {
+    expect(10_000 * HOECHSTENS[typ]).toBeLessThan(BUDGET_MB[typ] * 1024 * 1024);
   });
 });
 
@@ -653,5 +664,57 @@ describe('Aufstieg auf Fassung 2: Abbruchpfad', () => {
     const rohGeprueft = geprueft as unknown as IDBPDatabase;
     expect(await rohGeprueft.getAll('ereignisse')).toEqual(['ein Satz ohne Form']);
     geprueft.close();
+  });
+});
+
+/**
+ * Der Sicherheitsgurt beim Lesen.
+ *
+ * Nach Spezifikation ist eine Versionchange-Transaktion atomar: Entweder
+ * laufen alle Cursor-Updates aus Schritt 2 durch, oder keins — ein Bestand aus
+ * halb gehobenen und halb alten Saetzen ist demnach unerreichbar. Dieser Test
+ * schreibt trotzdem von Hand einen Satz in alter Form direkt in eine
+ * Datenbank, die schon bei Fassung 2 steht — der Fall, den ein Browser
+ * erzeugt, der sich nicht an die Spezifikation haelt, oder eine kuenftige
+ * Fassung, die einen Satz beim Aufstieg uebersieht. `ereignisse()` schickt
+ * jeden gelesenen Satz durch `hebeAufV2`: Der Gurt kostet eine Zeile, und es
+ * geht um Lerndaten.
+ */
+describe('ereignisse() hebt auch dann, wenn ein Satz die Migration umgangen hat', () => {
+  it('gibt einen von Hand nachtraeglich eingelegten Satz in alter Form gehoben zurueck', async () => {
+    const name = neuerName();
+    // Die Datenbank steht schon bei Fassung 2 — der Aufstieg ist gelaufen und
+    // hatte nichts zu heben. Erst DANACH landet der alte Satz im Speicher.
+    const alt = await idbOeffner(name, SCHRITTE)();
+    const roh = alt as unknown as IDBPDatabase;
+    await roh.add('ereignisse', {
+      lektion: 'rvp',
+      frage: 'rvp-1',
+      zuversicht: 'sicher',
+      richtig: false,
+      gewaehlt: 'Ein Reranker dahinter',
+      dauerMs: 900,
+      zeitpunkt: '2026-09-16T09:00:00.000Z',
+    });
+    alt.close();
+
+    const s = speicher(idbOeffner(name, SCHRITTE));
+    const gelesen = await s.ereignisse();
+    expect(gelesen).toEqual([
+      {
+        lektion: 'rvp',
+        frage: 'rvp-1',
+        typ: 'wahl',
+        zuversicht: 'sicher',
+        richtig: false,
+        anteil: 0,
+        antwort: 'Ein Reranker dahinter',
+        merkmal: 'Ein Reranker dahinter',
+        dauerMs: 900,
+        zeitpunkt: '2026-09-16T09:00:00.000Z',
+      },
+    ]);
+    expect(gelesen[0] && 'gewaehlt' in gelesen[0]).toBe(false);
+    await s.schliessen();
   });
 });

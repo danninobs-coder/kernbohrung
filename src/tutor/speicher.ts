@@ -266,11 +266,12 @@ const LEERE_AUSFUHR = {
  * bei `fall` der geschriebene Text (bis 2 000 Zeichen, also bis rund 4,3 kB).
  * Die Schranken je Typ stehen in `tests/speicher.test.ts`.
  *
- * Hochgerechnet: 10 000 Wahl-Ereignisse bleiben unter 6 MB, selbst 10 000
- * Faelle unter 50 MB. Chrome raeumt einem Ursprung rund sechzig Prozent des
- * freien Plattenplatzes ein, Firefox zehn. 10 000 Bewertungen sind bei
- * taeglich zwanzig Antworten die Ernte von anderthalb Jahren. Es wird nicht
- * eng.
+ * Hochgerechnet: 10 000 Wahl-Ereignisse liegen bei rund 6 MB (10 000 × 600
+ * Byte), 10 000 Faelle bei rund 45 MB (10 000 × 4500 Byte) — beide mit
+ * Reserve unter den Budgets aus `tests/speicher.test.ts` (8 MB bzw. 50 MB).
+ * Chrome raeumt einem Ursprung rund sechzig Prozent des freien Plattenplatzes
+ * ein, Firefox zehn. 10 000 Bewertungen sind bei taeglich zwanzig Antworten
+ * die Ernte von anderthalb Jahren. Es wird nicht eng.
  */
 export function speicher(oeffnen: Oeffner = idbOeffner()): Speicher {
   /**
@@ -344,7 +345,17 @@ export function speicher(oeffnen: Oeffner = idbOeffner()): Speicher {
       // Zeitzone oder Zeitabgleich zurueckspringt, wuerde die Historie sonst
       // umstellen — und `reife.ts` liest „die letzte Antwort" schlicht als
       // letztes Element.
-      return lies('ereignisse', [] as readonly Ereignis[], (db) => db.getAll('ereignisse'));
+      //
+      // Der Sicherheitsgurt: `.map(hebeAufV2)` hebt jeden gelesenen Satz, auch
+      // wenn er das nicht braeuchte. Nach Spezifikation ist die Umbau-
+      // Transaktion aus Schritt 2 atomar, ein Bestand aus halb gehobenen und
+      // halb alten Saetzen also unerreichbar — der Gurt kostet trotzdem nur
+      // eine Zeile und schuetzt vor Browsern, die sich nicht daran halten. Es
+      // geht um Lerndaten.
+      return lies('ereignisse', [] as readonly Ereignis[], async (db) => {
+        const saetze = (await db.getAll('ereignisse')) as (Ereignis | EreignisV1)[];
+        return saetze.map(hebeAufV2);
+      });
     },
 
     merkeKarte(lektion, frage, termin) {
