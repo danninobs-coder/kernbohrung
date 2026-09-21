@@ -76,6 +76,11 @@ const lektionen = (await getCollection('lektionen')).sort(
       // Erst verstecken, dann merken: Scheitert das Schreiben, ist die Karte
       // fuer diesen Besuch trotzdem weg und kommt beim naechsten wieder.
       karte.hidden = true;
+      // Der Knopf, auf dem der Fokus stand, ist mit der Karte verschwunden.
+      // Ohne diesen Sprung fiele der Fokus auf <body>, und die Tastatur finge
+      // oben auf der Seite neu an. Weiter geht es dort, wo die Karte stand:
+      // bei der ersten Lektion.
+      document.querySelector<HTMLElement>('.uebersicht a')?.focus();
       void ablage.merkeEinstellung(SCHLUESSEL_SPAETER, new Date().toISOString());
     });
   }
