@@ -101,7 +101,7 @@ export function strukturhinweisAus(mittel: Readonly<Record<Muster, number | null
  * Die zwei niedrigsten Strategie-Skalen UNTER der Schwelle, die niedrigste
  * zuerst. Gibt es keine, gibt es keine — das Profil erfindet keinen Mangel.
  * Eine nicht erhobene Skala ist nie eine Schwachstelle. Bei gleichem Mittel
- * entscheidet die Reihenfolge in `SKALEN`.
+ * entscheidet die Reihenfolge in `SKALEN` (`sort` ist stabil).
  */
 export function schwachstellenAus(skalen: Readonly<Record<Skala, number | null>>): Skala[] {
   return SKALEN.flatMap((skala) => {
