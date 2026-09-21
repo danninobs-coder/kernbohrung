@@ -6,11 +6,23 @@ interface Props {
 }
 
 const { titel } = Astro.props;
+
+// Lokal `/`, auf GitHub Pages `/kernbohrung/` — siehe astro.config.mjs.
+// Astro liefert BASE_URL ohne Schlussstrich, ausser fuer `/` selbst.
+const basis = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 <html lang="de">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#EFF2F0" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0F1214" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href={`${basis}favicon.svg`} type="image/svg+xml" />
+    <link rel="apple-touch-icon" href={`${basis}symbole/kernbohrung-192.png`} />
+    {/* Das Manifest macht die Seite auf Android zur installierbaren App
+        („Zum Startbildschirm hinzufuegen"). Seine Pfade sind relativ zum
+        Manifest selbst und funktionieren so mit jedem Basispfad. */}
+    <link rel="manifest" href={`${basis}manifest.webmanifest`} />
     <title>{titel} — Kernbohrung</title>
 
     <!-- Schriften: Syne (Ueberschriften), Atkinson Hyperlegible
@@ -50,7 +62,7 @@ const { titel } = Astro.props;
   <body>
     <header class="leiste">
       <div class="leiste-inhalt">
-        <a class="marke" href="/">Kern<span>bohrung</span></a>
+        <a class="marke" href={basis}>Kern<span>bohrung</span></a>
         <div class="schalter" role="group" aria-label="Darstellungsmodus">
           <button type="button" data-modus="system" aria-pressed="true">System</button>
           <button type="button" data-modus="light" aria-pressed="false">Hell</button>

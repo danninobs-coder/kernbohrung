@@ -1,6 +1,9 @@
 ---
 import Seite from '../../layouts/Seite.astro';
 import Ergebnis from '../../profil/Ergebnis.tsx';
+
+// Lokal `/`, auf GitHub Pages `/kernbohrung/` — siehe astro.config.mjs.
+const basis = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 <Seite titel="Lernprofil">
   <p class="augenbraue">Kernbohrung · Lernprofil</p>
@@ -27,9 +30,9 @@ import Ergebnis from '../../profil/Ergebnis.tsx';
     mit „wird geladen".
   */}
   <Ergebnis client:idle>
-    <a slot="anlegen" class="abgeben knopf-verweis" href="/profil/audit/">Lernprofil anlegen</a>
-    <a slot="erneut" class="abgeben knopf-verweis" href="/profil/audit/">Neu erheben</a>
+    <a slot="anlegen" class="abgeben knopf-verweis" href={`${basis}profil/audit/`}>Lernprofil anlegen</a>
+    <a slot="erneut" class="abgeben knopf-verweis" href={`${basis}profil/audit/`}>Neu erheben</a>
   </Ergebnis>
 
-  <p class="profil-verweis"><a href="/">Zur Übersicht</a></p>
+  <p class="profil-verweis"><a href={basis}>Zur Übersicht</a></p>
 </Seite>

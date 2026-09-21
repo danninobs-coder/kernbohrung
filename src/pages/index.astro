@@ -5,6 +5,9 @@ import Seite from '../layouts/Seite.astro';
 const lektionen = (await getCollection('lektionen')).sort(
   (a, b) => a.data.reihenfolge - b.data.reihenfolge,
 );
+
+// Lokal `/`, auf GitHub Pages `/kernbohrung/` — siehe astro.config.mjs.
+const basis = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 <Seite titel="Übersicht">
   <p class="augenbraue">Kernbohrung · Übersicht</p>
@@ -31,7 +34,7 @@ const lektionen = (await getCollection('lektionen')).sort(
       </p>
     </div>
     <div class="einladung-knoepfe">
-      <a class="abgeben knopf-verweis" href="/profil/audit/">Lernprofil anlegen</a>
+      <a class="abgeben knopf-verweis" href={`${basis}profil/audit/`}>Lernprofil anlegen</a>
       <button type="button" class="zurueck" data-spaeter>Später</button>
     </div>
   </section>
@@ -39,7 +42,7 @@ const lektionen = (await getCollection('lektionen')).sort(
   <ol class="uebersicht">
     {lektionen.map((eintrag) => (
       <li>
-        <a href={`/lektion/${eintrag.id}/`}>{eintrag.data.titel}</a>
+        <a href={`${basis}lektion/${eintrag.id}/`}>{eintrag.data.titel}</a>
         <p>{eintrag.data.prinzip}</p>
       </li>
     ))}
@@ -47,7 +50,7 @@ const lektionen = (await getCollection('lektionen')).sort(
 
   {/* Der feste Weg zum Profil, ohne Skript: Die Karte oben verschwindet,
       sobald ein Profil da ist — dieser Verweis bleibt. */}
-  <p class="profil-verweis"><a href="/profil/">Dein Lernprofil</a></p>
+  <p class="profil-verweis"><a href={`${basis}profil/`}>Dein Lernprofil</a></p>
 </Seite>
 
 <script>

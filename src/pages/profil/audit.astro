@@ -1,6 +1,9 @@
 ---
 import Seite from '../../layouts/Seite.astro';
 import Audit from '../../profil/Audit.tsx';
+
+// Lokal `/`, auf GitHub Pages `/kernbohrung/` — siehe astro.config.mjs.
+const basis = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 <Seite titel="Lernprofil anlegen">
   <p class="augenbraue">Kernbohrung · Lernprofil</p>
@@ -17,5 +20,5 @@ import Audit from '../../profil/Audit.tsx';
       Insel: Nur hier erreicht ihn `werkzeug/relative-verweise.mjs`. Er heisst
       in jeder Phase gleich — waehrend des Audits ist er der Abbruch, nach dem
       Ergebnis der Weg weiter. */}
-  <p class="profil-verweis"><a href="/">Zur Übersicht</a></p>
+  <p class="profil-verweis"><a href={basis}>Zur Übersicht</a></p>
 </Seite>

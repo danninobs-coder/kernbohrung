@@ -7,8 +7,10 @@
   },
   "scripts": {
     "dev": "astro dev",
+    "dev:handy": "astro dev --host",
     "build": "astro build",
     "preview": "astro preview",
+    "preview:handy": "astro preview --host",
     "check": "astro check",
     "ingest": "node werkzeug/ingest.mjs",
     "pruefe-lektion": "node werkzeug/pruefe-lektion.mjs",
