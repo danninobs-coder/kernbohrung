@@ -37,11 +37,13 @@ export const WIEDERHOLUNG_NACH_TAGEN = 56;
  *
  * Muster aendern sich mit Stoff und Uebung — ein Profil von vor einem halben
  * Jahr beschreibt jemanden, den es so nicht mehr gibt. Ein unlesbarer
- * Zeitpunkt ergibt `false`: lieber kein Hinweis als einer ohne Grundlage.
+ * Zeitpunkt ergibt `false`: lieber kein Hinweis als einer ohne Grundlage. Das
+ * leistet der Vergleich selbst — `getTime()` liefert dann NaN, und jeder
+ * Vergleich mit NaN ist falsch.
  */
 export function wiederholungLohnt(erhoben: string, jetzt: Date): boolean {
   const seit = jetzt.getTime() - new Date(erhoben).getTime();
-  return Number.isFinite(seit) && seit >= WIEDERHOLUNG_NACH_TAGEN * TAG_MS;
+  return seit >= WIEDERHOLUNG_NACH_TAGEN * TAG_MS;
 }
 
 /** So viele Tage bleibt die Einladung weg, nachdem jemand sie auf spaeter verschoben hat. */
@@ -65,7 +67,9 @@ export function einladungZeigen(profilErhoben: boolean, spaeterSeit: unknown, je
 }
 
 /** Was gilt, solange niemand etwas anderes gesagt hat. */
-export const NEUTRALE_VORLIEBEN: Vorlieben = { einstieg: 'egal', minuten: 10, text: 'egal' };
+// Eingefroren: `voreinstellungen(null)` gibt genau dieses Objekt heraus. Wer
+// es veraendern wollte, veraenderte sonst die Voreinstellung fuer alle.
+export const NEUTRALE_VORLIEBEN: Vorlieben = Object.freeze({ einstieg: 'egal', minuten: 10, text: 'egal' });
 
 /**
  * Profil -> Voreinstellungen.

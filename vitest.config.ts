@@ -10,5 +10,10 @@ export default getViteConfig({
     // finden Elemente aus vorherigen Tests wieder.
     globals: true,
     include: ['tests/**/*.test.{ts,tsx}'],
+    // Im vollen Lauf starten zwei Dutzend Dateien je ihr eigenes jsdom. Unter
+    // Windows hat das wechselnde Komponententests ueber die voreingestellten
+    // fuenf Sekunden geschoben, die allein in unter einer Sekunde laufen. Die
+    // Frist faengt haengende Tests weiterhin; sie misst nur keine Last mehr.
+    testTimeout: 20_000,
   },
 });

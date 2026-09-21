@@ -45,14 +45,6 @@ describe('wiederholungLohnt', () => {
     expect(wiederholungLohnt('gestern', nach(200))).toBe(false);
   });
 
-  it('meldet nichts, wenn die Uhr selbst keinen endlichen Zeitpunkt liefert', () => {
-    // Haelt die Wache `Number.isFinite(seit)`. Ueber ein echtes Date-Objekt
-    // ist das nicht auszuloesen: new Date(...).getTime() liefert laut
-    // Spezifikation nur eine endliche Zahl oder NaN, nie Infinity - deshalb
-    // hier ein Date-Ersatz mit absichtlich kaputtem getTime().
-    const kaputteUhr = { getTime: () => Infinity } as unknown as Date;
-    expect(wiederholungLohnt(ERHOBEN, kaputteUhr)).toBe(false);
-  });
 });
 
 describe('einladungZeigen', () => {
@@ -106,6 +98,8 @@ describe('voreinstellungen', () => {
   it('gibt ohne Profil die neutralen Vorlieben', () => {
     expect(voreinstellungen(null)).toEqual({ einstieg: 'egal', minuten: 10, text: 'egal' });
     expect(voreinstellungen(null)).toBe(NEUTRALE_VORLIEBEN);
+    // Dieselbe Referenz fuer alle: Sie darf sich nicht veraendern lassen.
+    expect(Object.isFrozen(NEUTRALE_VORLIEBEN)).toBe(true);
   });
 
   it('gibt mit Profil genau dessen Vorlieben', () => {
