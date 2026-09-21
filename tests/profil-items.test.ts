@@ -50,6 +50,11 @@ describe('die Aussagen', () => {
     // diesen Aussagen: ITEMSATZ in items.ts erhoehen UND die beiden Zahlen hier
     // nachziehen. Wer nur die Pruefsumme nachzieht, verrechnet alte Antworten
     // mit neuen Fragen.
+    //
+    // Er schlaegt auch an, wenn nur die Reihenfolge der Aussagen in items.ts
+    // umgestellt wurde. Das ist gewollt: Die Deklarationsreihenfolge geht ueber
+    // `mischen` in REIHENFOLGE ein und damit in die Gruppen eines laufenden
+    // Zwischenstands. Deshalb die Pruefsumme NICHT nach Id sortiert bilden.
     expect(ITEMSATZ).toBe(1);
     expect(pruefsumme(ITEMS.map((i) => `${i.id}|${i.dimension}|${i.text}`).join('\n'))).toBe(1787064221);
   });
@@ -70,6 +75,11 @@ describe('die Reihenfolge im Audit', () => {
   it('stellt nie zwei Aussagen derselben Skala oder desselben Musters nebeneinander', () => {
     // Das ist der Zweck des Mischens: Wer drei Aussagen zum Zeiteinteilen
     // hintereinander liest, beantwortet ab der zweiten die Skala.
+    //
+    // Die Eigenschaft haelt durch die Saat, nicht durch Konstruktion: `mischen`
+    // kennt die Skalen nicht. Wird der Test nach einer Erhoehung von ITEMSATZ
+    // rot, in items.ts die Saat um einen Zusatz ergaenzen (etwa
+    // `profil-itemsatz-2-b`) und probieren, bis er wieder gruen ist.
     for (let i = 1; i < REIHENFOLGE.length; i++) {
       expect(REIHENFOLGE[i]?.dimension).not.toBe(REIHENFOLGE[i - 1]?.dimension);
     }
