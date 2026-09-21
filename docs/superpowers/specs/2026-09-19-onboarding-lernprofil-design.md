@@ -95,9 +95,9 @@ Rein und ohne Speicherzugriff (`src/profil/auswertung.ts`):
 | Ordnen | „Schreib nach jeder Lektion den Satz des Prinzips in eigenen Worten auf — ein Satz reicht." |
 | Verknüpfen | „Nimm dir bei jedem Transfer eine Minute: Wo ist dir das im eigenen Projekt begegnet?" |
 | Abrufen | „Lass die App fragen, bevor du nachliest. Es fühlt sich schwerer an und wirkt besser." |
-| Steuern | „Leg vor der Sitzung fest, was danach sitzen soll. Die App fragt dich am Ende danach." |
-| Dranbleiben | „Stell die Sitzung auf fünf Minuten. Kurz und täglich schlägt lang und selten." |
-| Zeit einteilen | „Trag deine Lerntage ein. Die App plant die Wiederholungen darum herum." |
+| Steuern | „Leg vor der Sitzung fest, was danach sitzen soll — ein Satz reicht. Prüf am Ende selbst, ob er stimmt." |
+| Dranbleiben | „Nimm dir fünf Minuten vor, nicht eine Stunde. Kurz und täglich schlägt lang und selten." |
+| Zeit einteilen | „Leg deine Lerntage für die Woche fest, bevor sie anfängt. Ein fester Termin wird eher eingehalten als ein guter Vorsatz." |
 
 ### Daten
 
