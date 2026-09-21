@@ -1,0 +1,63 @@
+# Baut die App und veroeffentlicht sie auf GitHub Pages — NUR von Hand
+# (Reiter „Actions" → „Auf GitHub Pages veroeffentlichen" → „Run workflow").
+# Danach ist der Stand unter
+#   https://<konto>.github.io/<repo>/
+# erreichbar — auf dem Android-Handy einfach im Browser oeffnen.
+#
+# Warum nicht bei jedem Push: Eine Pages-Seite ist oeffentlich, auch wenn das
+# Repository privat ist. Lektionen, die aus Vorlesungsstoff entstehen, sollen
+# nicht nebenbei veroeffentlicht werden. Entschieden am 2026-09-21; bis dahin
+# laeuft der Handy-Test ueber ein privates Artifact.
+#
+# Einmalige Vorbereitung im Repository: Settings → Pages → „Build and
+# deployment" → Source auf „GitHub Actions" stellen. Ohne diesen Schalter
+# schlaegt der Schritt „deploy" fehl.
+name: Auf GitHub Pages veroeffentlichen
+
+on:
+  # Nur von Hand, siehe Kopf. Fuer automatisches Veroeffentlichen bei jedem
+  # Push hier wieder `push: branches: [master]` eintragen.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Nie zwei Veroeffentlichungen gleichzeitig; eine laufende wird nicht
+# abgebrochen, damit kein halber Stand online liegt.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  bauen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Bauen mit Basispfad des Repositories
+        run: npm run build
+        env:
+          # Der Repo-Name ist der Basispfad, das GitHub-Konto der Host.
+          ASTRO_BASE: /${{ github.event.repository.name }}
+          ASTRO_SITE: https://${{ github.repository_owner }}.github.io
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  veroeffentlichen:
+    needs: bauen
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

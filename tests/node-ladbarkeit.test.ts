@@ -57,6 +57,9 @@ function inNodeAusfuehren(): {
 }
 
 describe('pruefung.ts aus einem reinen Node-Prozess', () => {
+  // Ein echter Node-Unterprozess: Im vollen Lauf, neben zwei Dutzend anderen
+  // Testdateien, braucht allein sein Start mehr als die voreingestellten fuenf
+  // Sekunden.
   it('laesst sich ohne Astro, Vite und Vitest laden und benutzen', () => {
     const ergebnis = inNodeAusfuehren();
 
@@ -71,5 +74,5 @@ describe('pruefung.ts aus einem reinen Node-Prozess', () => {
     // erzeugt den Widget-Namen selbst und kann sich vertippen.
     expect(ergebnis.unbekannt.ok).toBe(false);
     expect(ergebnis.unbekannt.maengel.join(' ')).toMatch(/GibtEsNicht/);
-  });
+  }, 30_000);
 });

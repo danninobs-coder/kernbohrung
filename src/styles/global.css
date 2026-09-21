@@ -777,3 +777,418 @@ h3 {
     animation: none !important;
   }
 }
+
+/* Der Knopf, mit dem man sich festlegt. Gefuellt, weil er der eine
+   Hauptschritt der Karte ist; gesperrt faellt er auf die Flaeche
+   zurueck, statt blass zu werden — Transparenz kostet Kontrast. */
+.abgeben {
+  margin-top: 16px;
+  min-height: 48px;
+  padding: 11px 22px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--auf-fill);
+  background: var(--akzent-fill);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pille);
+}
+
+.abgeben:disabled {
+  cursor: default;
+  color: var(--ink-2);
+  background: var(--flaeche-2);
+  border-color: var(--rand-bedien);
+}
+
+/* ---------------------------------------------------------------
+   Lernprofil (Teilprojekt 3a)
+
+   Dieselben drei Regeln wie bei der Aufgabenfamilie:
+   - Jede Bedienflaeche mindestens 44 x 44 Pixel, die grossen 48.
+   - Umrisse bedienbarer Elemente ueber --rand-bedien (3:1, WCAG
+     1.4.11), nie ueber --rand.
+   - Kein neues Farbtoken. Ein Zustand, der nur Farbe traegt, ist
+     keiner (WCAG 1.4.1): Die gewaehlte Stufe hat einen dickeren,
+     dunklen Rand und fette Schrift, jeder Balken seine Zahl.
+   --------------------------------------------------------------- */
+
+/* Ein Verweis, der wie der Hauptknopf aussieht. `.abgeben` stammt
+   aus der Aufgabenfamilie und ist fuer <button> gebaut; ein <a>
+   braucht dazu nur die Anordnung und keinen Unterstrich. */
+.knopf-verweis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+/* Der zweite Knopf neben dem Hauptknopf — im Audit der Weg zurueck,
+   auf der Uebersicht das Verschieben auf spaeter. */
+.zurueck {
+  min-height: 48px;
+  padding: 11px 22px;
+  font: inherit;
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--flaeche-2);
+  border: 1px solid var(--rand-bedien);
+  border-radius: var(--radius-pille);
+}
+
+.zurueck:hover {
+  background: var(--flaeche);
+}
+
+/* --- die Einladung auf der Uebersicht --------------------------- */
+
+.einladung {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 22px;
+  margin: 0 0 28px;
+  border-left: 3px solid var(--akzent-fill);
+}
+
+/* `display: flex` schluege das hidden-Attribut sonst aus dem Feld:
+   Die Karte stuende da, bevor das Skript entschieden hat. */
+.einladung[hidden] {
+  display: none;
+}
+
+.einladung-text {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.einladung-text h2 {
+  margin: 0 0 4px;
+  font-size: 19px;
+}
+
+.einladung-text p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.einladung-knoepfe,
+.audit-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.einladung-knoepfe .abgeben,
+.audit-knoepfe .abgeben {
+  margin-top: 0;
+}
+
+.profil-verweis {
+  margin: 28px 0 0;
+  font-size: 15px;
+}
+
+.profil-verweis a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+/* --- das Audit --------------------------------------------------- */
+
+.audit-fortschritt {
+  margin: 0 0 6px;
+  font-family: var(--schrift-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Die Ueberschrift nimmt beim Schrittwechsel den Fokus auf. Die
+   klebende Leiste darf sie dabei nicht verdecken. */
+.audit-kopf {
+  scroll-margin-top: 96px;
+  margin-bottom: 18px;
+}
+
+.wahlfrage {
+  min-width: 0;
+  margin: 0;
+  padding: 18px 0 0;
+  border: 0;
+  border-top: 1px solid var(--rand);
+}
+
+.wahlfrage + .wahlfrage {
+  margin-top: 18px;
+}
+
+.wahlfrage legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 12px;
+  font-size: 17px;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+
+.wahlfelder {
+  clear: both;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Fuenf Stufen nebeneinander. Gerechnet fuer 375 Pixel: In der Karte
+   bleiben mit dem schmalen Innenrand von unten rund 300 Pixel,
+   abzueglich vier Luecken sind das rund 55 je Feld — ueber den 44,
+   die eine Tippflaeche braucht. Gemessen wird in der Abnahme. */
+.skala .wahlfelder {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+/* Das ganze Feld ist die Tippflaeche. Das Radiofeld selbst liegt
+   unsichtbar darueber: Es nimmt Klick, Fokus und Tastatur an, die
+   Flaeche zeigt den Zustand. */
+.wahlfeld {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 11px 14px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  background: var(--flaeche-2);
+  border: 1px solid var(--rand-bedien);
+  border-radius: var(--radius-antwort);
+}
+
+.skala .wahlfeld {
+  justify-content: center;
+  padding: 0;
+  font-family: var(--schrift-mono);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.wahlfeld input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.wahlfeld:hover {
+  background: var(--flaeche);
+}
+
+/* Nicht nur Farbe: fette Schrift und ein doppelt so kraeftiger,
+   dunkler Rand. Der zweite Pixel kommt als Schatten nach innen —
+   ein breiterer Rand liesse das Feld beim Antippen springen. */
+.wahlfeld[data-gewaehlt='true'] {
+  font-weight: 700;
+  color: var(--auf-fill);
+  background: var(--akzent-fill);
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+/* Der Fokus sitzt auf dem unsichtbaren Feld; zeigen muss ihn die
+   Flaeche. */
+.wahlfeld:has(input:focus-visible) {
+  outline: 2px solid var(--akzent);
+  outline-offset: 2px;
+}
+
+.skala-enden {
+  clear: both;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 0;
+  font-family: var(--schrift-mono);
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.audit-knoepfe {
+  margin-top: 24px;
+}
+
+.audit-offen {
+  margin: 10px 0 0;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+
+/* --- die Ergebnisseite ------------------------------------------- */
+
+.profil {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.profil-laden,
+.profil-erhoben {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.profil-leer-satz,
+.muster-satz {
+  margin: 0 0 12px;
+  font-family: var(--schrift-kopf);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+
+.muster-erklaerung {
+  margin: 0 0 10px;
+}
+
+.momentaufnahme {
+  margin: 12px 0 0;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.strukturhinweis,
+.profil-hinweis {
+  margin: 0;
+  padding: 12px 15px;
+  font-size: 15.5px;
+  background: var(--flaeche-2);
+  border-left: 3px solid var(--akzent-fill);
+  border-radius: 0 var(--radius-antwort) var(--radius-antwort) 0;
+}
+
+.strukturhinweis {
+  margin-top: 14px;
+}
+
+.balken,
+.vorschlaege {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Name links, Zahl rechts, Balken darunter ueber die ganze Breite —
+   bei 375 Pixeln bliebe neben Name und Zahl sonst kein Balken. */
+.balken-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 12px;
+  align-items: baseline;
+}
+
+.balken-name {
+  font-weight: 700;
+}
+
+.balken-zahl {
+  font-family: var(--schrift-mono);
+  font-size: 13px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.balken-spur {
+  grid-column: 1 / -1;
+  display: block;
+  height: 10px;
+  overflow: hidden;
+  background: var(--flaeche-2);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-pille);
+}
+
+.balken-fuellung {
+  display: block;
+  height: 100%;
+  background: var(--teal);
+  border-radius: var(--radius-pille);
+}
+
+.balken-marke {
+  grid-column: 1 / -1;
+  font-family: var(--schrift-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--akzent);
+}
+
+.vorschlag {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 15px;
+  background: var(--teal-weich);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-antwort);
+}
+
+.kein-vorschlag {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+/* Der Beipackzettel: immer sichtbar, in Lesegroesse und in der
+   Textfarbe — nicht im Kleingedruckten. */
+.beipackzettel {
+  padding: 18px 20px;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--flaeche);
+  border: 1px solid var(--rand-stark);
+  border-left: 3px solid var(--akzent-fill);
+  border-radius: var(--radius-antwort);
+}
+
+.beipackzettel h2 {
+  margin: 0 0 6px;
+  font-size: 16.5px;
+}
+
+.beipackzettel p {
+  margin: 0;
+}
+
+.profil-erneut {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.profil-erneut .abgeben,
+.profil-leer .abgeben {
+  margin-top: 0;
+}
+
+/* Am Handy zaehlt jeder Pixel der Skala: schmalerer Innenrand. */
+@media (max-width: 480px) {
+  .audit.karte {
+    padding: 22px 16px;
+  }
+}

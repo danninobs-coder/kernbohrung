@@ -10,7 +10,21 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-19-onboarding-lernprofil-design.md`, Abschnitt „Teil 3a — Audit und Profil". **Nicht Teil dieses Plans:** Teil 3b (was das Profil steuert), die Lernziele je Quelle und die Standortbestimmung.
 
-**Voraussetzung:** Die Aufgabenfamilie (`docs/superpowers/plans/2026-09-19-aufgabenfamilie.md`) ist abgeschlossen. Dieser Plan benutzt ihre Klasse `.abgeben` und verweist auf `Aufgabe.tsx` als Muster. Aufgabe 0 prüft das und hält sonst an.
+**Voraussetzung:** ~~Die Aufgabenfamilie ist abgeschlossen.~~ Überholt — siehe den Nachtrag direkt darunter.
+
+## Nachtrag vom 2026-09-21: vorgezogen, gebaut auf dem Stand von `master`
+
+Entschieden am 2026-09-21: Teil 3a wird **vor** dem Abschluss der Aufgabenfamilie gebaut, auf dem Zweig `onboarding-3a`, abgezweigt von `master` (`6f4c0b5`). So kommt das Onboarding auf das Handy, ohne auf die sechs offenen Schritte der Aufgabenfamilie zu warten. Geprüft am 2026-09-21: `master` hat alles, was dieser Plan braucht — `einstellung()` und `merkeEinstellung()` im Speicher, die Speicher-Naht in `Frage.tsx`, alle Farbtoken, `werkzeug/relative-verweise.mjs`, eine `index.astro` ohne `<script>`. Die Aufgabenfamilie ändert weder `src/pages/` noch `global.css` noch `Seite.astro`. Es fehlt nur die Klasse `.abgeben`.
+
+Wo der Plan unten die Aufgabenfamilie voraussetzt, gilt stattdessen:
+
+1. **Aufgabe 0, Schritt 1** prüft: sauberer Baum · Zweig `onboarding-3a` · `grep -c "^\.abgeben {" src/styles/global.css` ergibt `0` · `ls src/components/Frage.tsx tests/frage.test.tsx` findet beide · `<script` in `src/pages/index.astro` ergibt `0`. **Schritt 2 entfällt**, der Zweig besteht schon.
+2. **`Aufgabe.tsx` als Muster** heißt hier `src/components/Frage.tsx` (dieselbe Naht: `speicher?: Speicher`, voreingestellt ein geteilter Speicher; erst die Anzeige, dann das Schreiben). `tests/aufgabe.test.tsx` heißt `tests/frage.test.tsx`. Die Testdateien dieses Plans definieren ihr eigenes `spion()` und importieren nichts von dort.
+3. **`.abgeben`** legt Aufgabe 9 selbst an — am Ende von `global.css`, **vor** dem Block „Lernprofil", wortgleich mit Aufgabe 13 der Aufgabenfamilie (Regel `.abgeben` und `.abgeben:disabled`, samt ihrem Kommentar). „Hinter dem Block der Aufgabenfamilie" heißt hier: am Ende der Datei. Wird die Aufgabenfamilie später mit `master` zusammengeführt, lässt ihre Aufgabe 13 den Block weg, weil er schon steht.
+4. **Abnahme (Aufgabe 10):** `dist/astro/Aufgabe.*.js` heißt `dist/astro/Frage.*.js`. Die Aussage bleibt: Die Insel der Lektionsseiten kommt ohne Zod aus.
+5. **Präzisierung 15 ist überholt.** Die drei Vorschläge wurden am 2026-09-19 umformuliert (siehe Spec) und greifen 3b nicht mehr voraus.
+6. **Regel 5** nennt `src/aufgaben/` — das gibt es auf `master` noch nicht; für `src/profil/` gilt die Regel unverändert.
+7. **Nacharbeit aus dem Abschluss-Review (2026-09-21, zwei Commits):** Ein Lernmuster wird nur noch genannt, wenn sein Mittel `MUSTER_AB` (3,5) erreicht — sonst „undeutlich" statt des schwächsten Maximums. Der Vorschläge-Abschnitt unterscheidet „keine Antworten" von „erhoben, aber keine Schwachstelle". Die vier Mustererklärungen beginnen einheitlich mit „Nach deinen Antworten" und ohne die Behauptung „am meisten hilft". Der Beipackzettel verweist nicht mehr auf die Kalibrierungsansicht, die es noch nicht gibt.
 
 ---
 

@@ -31,6 +31,8 @@ src/layouts/            Seite.astro (HTML-Hülle), Lektion.astro (die Taktfolge)
 src/lib/mischen.ts      Deterministisches Mischen der Antworten, seed-basiert.
 src/pages/              Übersicht und Lektionsroute.
 tests/                  Vitest, jsdom, @testing-library/react.
+public/manifest.webmanifest, public/symbole/   Macht die Seite auf Android installierbar.
+.github/workflows/pages.yml   Veröffentlicht auf GitHub Pages — nur von Hand gestartet.
 docs/superpowers/plans/ Der Implementierungsplan zu Abschnitt 1.
 ```
 
@@ -56,6 +58,84 @@ erklären. Wer beide tauscht, kippt die Didaktik.
 | `npm run build` | Produktionsbau nach `dist/` |
 
 Node ≥ 22.12 erforderlich.
+
+`npm run dev:handy` und `npm run preview:handy` sind dieselben Server, nur ins
+lokale Netz geöffnet — siehe „Auf Android testen und weiterentwickeln".
+
+## Auf Android testen und weiterentwickeln
+
+Die App ist eine statische Website. Ein Android-Handy braucht deshalb nichts
+weiter als einen Browser, um sie zu testen; für die Entwicklung gibt es drei
+Wege, je nachdem, was gerade zur Hand ist.
+
+### Weg A: ohne Rechner — die veröffentlichte App
+
+Von Hand gestartet (Reiter **Actions** → „Auf GitHub Pages veroeffentlichen"
+→ **Run workflow**) baut `.github/workflows/pages.yml` die App und
+veröffentlicht sie auf GitHub Pages. Nicht mehr bei jedem Push: Eine
+Pages-Seite ist öffentlich, auch wenn das Repository privat ist, und Lektionen
+aus Vorlesungsstoff sollen nicht nebenbei veröffentlicht werden (entschieden am
+2026-09-21). Danach ist der Stand unter
+
+    https://danninobs-coder.github.io/kernbohrung/
+
+erreichbar. Auf dem Handy öffnen, fertig. Über das Browser-Menü „Zum
+Startbildschirm hinzufügen" landet sie als eigene App mit Symbol auf dem
+Startbildschirm (`public/manifest.webmanifest` macht das möglich).
+
+Einmalig einzurichten, im Browser: Repository → **Settings** → **Pages** →
+unter „Build and deployment" die **Source** auf **GitHub Actions** stellen.
+Ohne diesen Schalter bricht der Workflow beim Schritt „veroeffentlichen" ab.
+Ob ein Bau gelaufen ist, zeigt der Reiter **Actions**; er dauert etwa ein bis
+zwei Minuten.
+
+Das ist der Weg für Vibecoding vom Handy aus: Änderung in Claude Code
+beschreiben, mergen lassen, den Workflow starten, kurz warten, Seite neu laden.
+Solange nichts veröffentlicht werden soll, läuft der Handy-Test über ein
+privates Artifact aus `handy/` (gebaut mit `werkzeug/relative-verweise.mjs`).
+
+### Weg B: Rechner und Handy im selben WLAN
+
+    npm run dev:handy
+
+startet den Entwicklungsserver und zeigt zusätzlich zu `localhost` eine
+`Network:`-Adresse wie `http://192.168.1.23:4321/`. Die auf dem Handy öffnen.
+Jede gespeicherte Änderung erscheint dort sofort, ohne Neuladen. Kommt nichts
+an, blockiert meist die Firewall des Rechners den Port 4321.
+
+`npm run preview:handy` macht dasselbe mit dem fertigen Bau aus `dist/`, also
+mit dem, was auch auf GitHub Pages läuft.
+
+### Weg C: direkt auf dem Handy — Termux
+
+Termux ist ein Linux-Terminal für Android. Die Version aus dem Play Store ist
+veraltet; die aus [F-Droid](https://f-droid.org/packages/com.termux/) oder von
+GitHub nehmen. Dann:
+
+    pkg install nodejs git
+    git clone https://github.com/danninobs-coder/kernbohrung.git
+    cd kernbohrung
+    npm ci
+    npm run dev
+
+Anschließend `http://localhost:4321/` im Handy-Browser öffnen. Tests, Bau und
+Typprüfung laufen wie am Rechner (`npm test`, `npm run build`, `npm run check`).
+Änderungen holt `git pull` aus dem Repository. Zum Bearbeiten reicht `nano`
+(`pkg install nano`); bequemer ist Claude Code im Browser, das Ergebnis dann
+per `git pull` nachziehen.
+
+### Was beim Entwickeln zu beachten ist
+
+**Interne Links immer über `import.meta.env.BASE_URL` bilden**, nie als
+nacktes `href="/…"`. Lokal liegt die App unter `/`, auf GitHub Pages unter
+`/kernbohrung/`; ein absoluter Link funktioniert lokal und führt dort ins
+Leere, ohne dass Build oder Tests etwas melden. `tests/basis-pfad.test.ts`
+prüft Seiten, Layouts und Komponenten darauf. `astro.config.mjs` liest den
+Pfad aus `ASTRO_BASE`, was nur der Workflow setzt.
+
+**Schaltflächen sind mindestens 44px hoch** (`src/styles/global.css`), damit
+sie sich mit dem Finger treffen lassen. Wer ein neues Widget baut, erbt das
+über `button`; eigene klickbare Elemente sollten die Regel übernehmen.
 
 ## Ein Widget hinzufügen
 
