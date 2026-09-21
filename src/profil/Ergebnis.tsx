@@ -21,26 +21,28 @@ import { speicher as neuerSpeicher, type Speicher } from '../tutor/speicher';
 
 /** Wortlaut aus dem Spec. Steht IMMER da, wenn die Ansicht dasteht — nicht im Kleingedruckten. */
 export const BEIPACKZETTEL =
-  'Dieses Profil beruht auf eigenen Aussagen nach veröffentlichten Modellen der Lernstrategien (LIST, MSLQ) und den Lernmustern nach Vermunt. Es ist keine geprüfte Skala. Was die App über dein Lernen wirklich weiß, stammt aus deinen Antworten auf Aufgaben — siehe Kalibrierung.';
+  'Dieses Profil beruht auf eigenen Aussagen nach veröffentlichten Modellen der Lernstrategien (LIST, MSLQ) und den Lernmustern nach Vermunt. Es ist keine geprüfte Skala. Was die App über dein Lernen wirklich weiß, stammt aus deinen Antworten auf Aufgaben.';
 
 /** Wortlaut aus dem Spec. */
 export const MOMENTAUFNAHME =
   'Muster ändern sich mit Stoff und Übung. Das ist eine Momentaufnahme, keine Diagnose.';
 
 /**
- * Je Muster zwei Saetze, was es heisst. Beschrieben wird eine Gewohnheit, nie
- * ein Typ — und nirgends steht, man lerne besser, wenn der Stoff zum Muster
- * passt. Das ist nicht belegt und wird nicht versprochen.
+ * Je Muster ein bis zwei Saetze, was es heisst. Jeder Satz beginnt mit "Nach
+ * deinen Antworten": Die Herkunft ist immer die eigene Selbstauskunft, nie
+ * eine Diagnose. Beschrieben wird eine Gewohnheit, nie ein Typ — und
+ * nirgends steht, man lerne besser, wenn der Stoff zum Muster passt. Das ist
+ * nicht belegt und wird nicht versprochen.
  */
 export const MUSTER_ERKLAERUNG: Readonly<Record<Muster, string>> = {
   bedeutungsorientiert:
-    'Du suchst nach Zusammenhängen und willst wissen, warum etwas gilt. Was du liest, prüfst du, statt es nur zu übernehmen.',
+    'Nach deinen Antworten suchst du nach Zusammenhängen und willst wissen, warum etwas gilt. Was du liest, prüfst du, statt es nur zu übernehmen.',
   reproduktionsorientiert:
-    'Du richtest dich danach, was abgefragt wird, und prägst dir den Stoff möglichst genau ein. Die Transferaufgaben der App verlangen mehr als das — dort zeigt sich, ob es trägt.',
+    'Nach deinen Antworten richtest du dich danach, was abgefragt wird, und prägst dir den Stoff möglichst genau ein. Die Transferaufgaben der App verlangen mehr als das — dort zeigt sich, ob es trägt.',
   anwendungsorientiert:
-    'Du fragst zuerst, was du mit dem Stoff praktisch anfangen kannst. Nach eigener Auskunft merkst du dir Dinge am besten an einem echten Fall.',
+    'Nach deinen Antworten fragst du zuerst, was du mit dem Stoff praktisch anfangen kannst, und merkst dir Dinge am besten an einem echten Fall.',
   ungerichtet:
-    'Du bist dir oft unsicher, womit du anfangen sollst und ob deine Art zu lernen die richtige ist. Das ist kein Urteil über dich — es ist das Muster, bei dem eine feste Struktur am meisten hilft.',
+    'Nach deinen Antworten bist du dir oft unsicher, womit du anfangen sollst und ob deine Art zu lernen die richtige ist. Das ist kein Urteil über dich, sondern eine Gewohnheit — und Gewohnheiten lassen sich ändern.',
 };
 
 export const STRUKTURHINWEIS =
@@ -49,6 +51,7 @@ export const STRUKTURHINWEIS =
 /** Der Satz zum Muster. Wo ein Muster steht, steht „derzeit". */
 export function mustersatz(lernmuster: Lernmuster | null): string {
   if (lernmuster === null) return 'Dein Lernmuster ist nicht erhoben — dafür fehlen Antworten.';
+  if (lernmuster.art === 'undeutlich') return 'Nach deinen Antworten trifft derzeit keines der vier Muster deutlich zu.';
   if (lernmuster.art === 'zwischen') {
     return `Dein Lernmuster liegt derzeit zwischen ${lernmuster.a} und ${lernmuster.b}.`;
   }
@@ -80,8 +83,15 @@ export type ErgebnisansichtProps = {
 
 export function Ergebnisansicht({ auswertung, erhoben, jetzt, nichtBehalten = false, erneut }: ErgebnisansichtProps) {
   const { lernmuster, strukturhinweis, skalen, schwachstellen } = auswertung;
+  // Kein erhobenes Muster UND ein undeutliches teilen sich das leere Feld:
+  // Im ersten Fall fehlen die Antworten, im zweiten stimmen sie keinem
+  // Muster deutlich genug zu — in beiden Faellen gibt es nichts zu erklaeren.
   const genannt: readonly Muster[] =
-    lernmuster === null ? [] : lernmuster.art === 'zwischen' ? [lernmuster.a, lernmuster.b] : [lernmuster.muster];
+    lernmuster === null || lernmuster.art === 'undeutlich'
+      ? []
+      : lernmuster.art === 'zwischen'
+        ? [lernmuster.a, lernmuster.b]
+        : [lernmuster.muster];
 
   return (
     <div className="profil">
@@ -134,8 +144,14 @@ export function Ergebnisansicht({ auswertung, erhoben, jetzt, nichtBehalten = fa
       <section className="karte profil-vorschlaege">
         <h2>Vorschläge</h2>
         {schwachstellen.length === 0 ? (
-          // Das Profil erfindet keinen Mangel.
-          <p className="kein-vorschlag">Keine deiner Strategien liegt unter 3 von 5 — dann gibt es hier auch keinen Vorschlag.</p>
+          // Das Profil erfindet keinen Mangel — und unterscheidet, WARUM es
+          // keinen gibt: zu wenige Antworten ist ein anderer Befund als
+          // erhoben und unauffaellig.
+          <p className="kein-vorschlag">
+            {SKALEN.every((skala) => skalen[skala] === null)
+              ? 'Zu deinen Lernstrategien liegen zu wenige Antworten vor — dann gibt es hier auch keinen Vorschlag.'
+              : 'Keine der erhobenen Strategien liegt unter 3 von 5 — dann gibt es hier auch keinen Vorschlag.'}
+          </p>
         ) : (
           <ul className="vorschlaege">
             {schwachstellen.map((skala) => (

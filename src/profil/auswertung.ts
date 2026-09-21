@@ -17,6 +17,8 @@ import type { Profilstand } from './schema';
 export const MINDESTANTWORTEN = 2;
 /** Liegen die beiden hoechsten Muster WENIGER als so weit auseinander: „zwischen A und B". */
 export const GLEICHSTAND_UNTER = 0.5;
+/** AB diesem Mittel stimmt ein Muster den Antworten genug zu, um genannt zu werden — mindestens „trifft eher zu". Gleiche Schwelle wie STRUKTUR_AB. */
+export const MUSTER_AB = 3.5;
 /** AB diesem Mittel bei „ungerichtet" gibt es den Strukturhinweis. */
 export const STRUKTUR_AB = 3.5;
 /** UNTER diesem Mittel gilt eine Strategie-Skala als Schwachstelle. */
@@ -29,14 +31,15 @@ export type Antworten = Readonly<Partial<Record<string, Wert>>>;
 
 export type Lernmuster =
   | { readonly art: 'eindeutig'; readonly muster: Muster }
-  | { readonly art: 'zwischen'; readonly a: Muster; readonly b: Muster };
+  | { readonly art: 'zwischen'; readonly a: Muster; readonly b: Muster }
+  | { readonly art: 'undeutlich' };
 
 export type Auswertung = {
   /** Mittel je Skala, 1 bis 5 — oder `null`, wenn nicht erhoben. */
   readonly skalen: Readonly<Record<Skala, number | null>>;
   /** Mittel je Muster — oder `null`, wenn nicht erhoben. */
   readonly muster: Readonly<Record<Muster, number | null>>;
-  /** `null`, wenn kein einziges Muster erhoben ist. */
+  /** `null`, wenn kein einziges Muster erhoben ist — `{ art: 'undeutlich' }`, wenn welche erhoben sind, aber keines MUSTER_AB erreicht. */
   readonly lernmuster: Lernmuster | null;
   readonly strukturhinweis: boolean;
   /** Hoechstens zwei, die niedrigste zuerst. Leer, wenn nichts unter der Schwelle liegt. */
@@ -61,13 +64,21 @@ export function mittelwert(antworten: Antworten, dimension: Dimension): number |
 }
 
 /**
- * Das Lernmuster: das mit dem hoechsten Mittel — oder „zwischen A und B".
+ * Das Lernmuster: das mit dem hoechsten Mittel — aber nur, wenn die
+ * Antworten ihm auch zustimmen. Sonst „zwischen A und B" oder „undeutlich".
  *
- * Bei zwei Aussagen je Muster waere eine scharfe Grenze vorgetaeuschte
- * Genauigkeit. Liegen die beiden hoechsten weniger als `GLEICHSTAND_UNTER`
- * auseinander, werden beide genannt. Bei gleichem Mittel entscheidet die
- * Reihenfolge in `MUSTER`, damit dasselbe Profil nicht einmal so und einmal
- * anders heisst (`sort` ist stabil).
+ * Am Wettbewerb nehmen nur erhobene Muster mit einem Mittel ab `MUSTER_AB`
+ * teil — ein niedriges Mittel ist kein Befund, den man nennen sollte, nur
+ * weil es das hoechste ist. Ist kein Muster erhoben, gibt es `null`. Sind
+ * welche erhoben, erreicht aber keines `MUSTER_AB`, gibt es `{ art:
+ * 'undeutlich' }`.
+ *
+ * Unter den verbleibenden gilt wie bisher: Bei zwei Aussagen je Muster waere
+ * eine scharfe Grenze vorgetaeuschte Genauigkeit. Liegen die beiden
+ * hoechsten weniger als `GLEICHSTAND_UNTER` auseinander, werden beide
+ * genannt. Bei gleichem Mittel entscheidet die Reihenfolge in `MUSTER`,
+ * damit dasselbe Profil nicht einmal so und einmal anders heisst (`sort`
+ * ist stabil).
  *
  * Nicht erhobene Muster nehmen nicht teil — sie sind keine Null, sie fehlen.
  */
@@ -76,8 +87,11 @@ export function lernmusterAus(mittel: Readonly<Record<Muster, number | null>>): 
     const wert = mittel[muster];
     return wert === null ? [] : [{ muster, wert }];
   });
-  const [erstes, zweites] = [...erhoben].sort((x, y) => y.wert - x.wert);
-  if (erstes === undefined) return null;
+  if (erhoben.length === 0) return null;
+
+  const imRennen = erhoben.filter((eintrag) => eintrag.wert >= MUSTER_AB);
+  const [erstes, zweites] = [...imRennen].sort((x, y) => y.wert - x.wert);
+  if (erstes === undefined) return { art: 'undeutlich' };
   if (zweites !== undefined && erstes.wert - zweites.wert < GLEICHSTAND_UNTER) {
     return { art: 'zwischen', a: erstes.muster, b: zweites.muster };
   }

@@ -116,10 +116,14 @@ describe('lernmusterAus', () => {
   });
 
   it('nennt bei gleichem Mittel die Muster in fester Reihenfolge', () => {
-    // Dasselbe Profil darf nicht einmal so und einmal anders heissen.
+    // Dasselbe Profil darf nicht einmal so und einmal anders heissen. Werte
+    // ab 4 statt vormals 3 (Nachtrag 2026-09-21): Bei 3,0 waere seit der
+    // Zustimmungsschwelle MUSTER_AB keines der vier Muster mehr im Rennen,
+    // und der Test pruefte nur noch "undeutlich" statt der Gleichstandsregel,
+    // um die es hier eigentlich geht.
     expect(
       lernmusterAus(
-        muster({ bedeutungsorientiert: 3, reproduktionsorientiert: 3, anwendungsorientiert: 3, ungerichtet: 3 }),
+        muster({ bedeutungsorientiert: 4, reproduktionsorientiert: 4, anwendungsorientiert: 4, ungerichtet: 4 }),
       ),
     ).toEqual({ art: 'zwischen', a: 'bedeutungsorientiert', b: 'reproduktionsorientiert' });
     expect(
@@ -129,12 +133,58 @@ describe('lernmusterAus', () => {
     ).toEqual({ art: 'zwischen', a: 'anwendungsorientiert', b: 'ungerichtet' });
   });
 
-  it('kommt mit einem einzigen erhobenen Muster aus', () => {
-    expect(lernmusterAus(muster({ ungerichtet: 2 }))).toEqual({ art: 'eindeutig', muster: 'ungerichtet' });
+  it('bleibt undeutlich, wenn das einzige erhobene Muster die Schwelle nicht erreicht', () => {
+    // Bis 2026-09-21 waere das "eindeutig ungerichtet" gewesen - obwohl beide
+    // Aussagen dazu im Mittel eher NICHT zutreffen. Ohne Zustimmung kein Befund.
+    expect(lernmusterAus(muster({ ungerichtet: 2 }))).toEqual({ art: 'undeutlich' });
   });
 
   it('gibt null, wenn kein Muster erhoben ist', () => {
     expect(lernmusterAus(muster({}))).toBeNull();
+  });
+});
+
+/**
+ * Ergaenzt im Nachtrag vom 2026-09-21 aus dem Abschluss-Review: Ein Muster
+ * wird nur genannt, wenn ihm die Antworten im Mittel auch zustimmen (ab
+ * MUSTER_AB). Sonst waere "Dein Lernmuster ist derzeit ungerichtet." schon
+ * bei zwei Kreuzen mit 2 zu lesen - obwohl beide Aussagen dazu eher NICHT
+ * zutreffen. Eigener describe-Block HINTER dem obigen, damit der bestehende
+ * Block bis auf die zwei angepassten Stellen unveraendert bleibt.
+ */
+describe('lernmusterAus - Zustimmungsschwelle MUSTER_AB', () => {
+  it('meldet undeutlich, wenn ALLE erhobenen Muster unter der Schwelle bleiben', () => {
+    expect(
+      lernmusterAus(
+        muster({ bedeutungsorientiert: 1, reproduktionsorientiert: 1, anwendungsorientiert: 1, ungerichtet: 1 }),
+      ),
+    ).toEqual({ art: 'undeutlich' });
+  });
+
+  it('bleibt bei GENAU MUSTER_AB eindeutig — die Grenze ist inklusiv', () => {
+    expect(lernmusterAus(muster({ anwendungsorientiert: 3.5 }))).toEqual({
+      art: 'eindeutig',
+      muster: 'anwendungsorientiert',
+    });
+  });
+
+  it('sagt „zwischen A und B", wenn BEIDE bei gleichem Mittel die Schwelle erreichen', () => {
+    expect(lernmusterAus(muster({ bedeutungsorientiert: 3.5, anwendungsorientiert: 3.5 }))).toEqual({
+      art: 'zwischen',
+      a: 'bedeutungsorientiert',
+      b: 'anwendungsorientiert',
+    });
+  });
+
+  it('bleibt eindeutig, wenn nur EINES die Schwelle erreicht — der Abstand allein entscheidet nicht', () => {
+    // A und B liegen genau 0,5 auseinander - an der Gleichstandsregel waere
+    // das ohnehin "eindeutig". Der Test haelt trotzdem fest, dass der
+    // eigentliche Grund hier ein anderer ist: B liegt unter MUSTER_AB und ist
+    // damit gar nicht erst im Rennen.
+    expect(lernmusterAus(muster({ bedeutungsorientiert: 3.5, anwendungsorientiert: 3 }))).toEqual({
+      art: 'eindeutig',
+      muster: 'bedeutungsorientiert',
+    });
   });
 });
 
