@@ -24,6 +24,7 @@ Wo der Plan unten die Aufgabenfamilie voraussetzt, gilt stattdessen:
 4. **Abnahme (Aufgabe 10):** `dist/astro/Aufgabe.*.js` heißt `dist/astro/Frage.*.js`. Die Aussage bleibt: Die Insel der Lektionsseiten kommt ohne Zod aus.
 5. **Präzisierung 15 ist überholt.** Die drei Vorschläge wurden am 2026-09-19 umformuliert (siehe Spec) und greifen 3b nicht mehr voraus.
 6. **Regel 5** nennt `src/aufgaben/` — das gibt es auf `master` noch nicht; für `src/profil/` gilt die Regel unverändert.
+7. **Nacharbeit aus dem Abschluss-Review (2026-09-21, zwei Commits):** Ein Lernmuster wird nur noch genannt, wenn sein Mittel `MUSTER_AB` (3,5) erreicht — sonst „undeutlich" statt des schwächsten Maximums. Der Vorschläge-Abschnitt unterscheidet „keine Antworten" von „erhoben, aber keine Schwachstelle". Die vier Mustererklärungen beginnen einheitlich mit „Nach deinen Antworten" und ohne die Behauptung „am meisten hilft". Der Beipackzettel verweist nicht mehr auf die Kalibrierungsansicht, die es noch nicht gibt.
 
 ---
 

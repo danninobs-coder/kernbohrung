@@ -75,7 +75,7 @@ Verhaltensnah und auf diese App zugeschnitten (Lernen neben dem Beruf, aus Unter
 Rein und ohne Speicherzugriff (`src/profil/auswertung.ts`):
 
 - **Skalenwert** = Mittel der beantworteten Aussagen der Skala, 1–5. Eine Skala mit weniger als zwei Antworten gilt als **nicht erhoben** (`null`, nicht 0 — das wäre eine Aussage).
-- **Lernmuster** = das Muster mit dem höchsten Mittel. Liegen die beiden höchsten weniger als 0,5 auseinander, heißt das Ergebnis **„zwischen A und B"** — eine scharfe Grenze bei zwei Items je Muster wäre vorgetäuschte Genauigkeit.
+- **Lernmuster** = das Muster mit dem höchsten Mittel, sofern es mindestens 3,5 erreicht. Liegen die beiden höchsten dabei weniger als 0,5 auseinander, heißt das Ergebnis **„zwischen A und B"** — eine scharfe Grenze bei zwei Items je Muster wäre vorgetäuschte Genauigkeit. Erreicht keines der erhobenen Muster 3,5, gilt keines als deutlich — das Profil sagt das offen, statt das schwächste als Befund auszugeben. (geändert am 2026-09-21 nach dem Abschluss-Review)
 - **Strukturhinweis**: Liegt „ungerichtet" bei 3,5 oder höher, wird das unabhängig vom führenden Muster gemeldet. Das ist das Muster mit dem klarsten Befund (durchgehend negativer Zusammenhang mit Leistung) und das, bei dem die App am meisten helfen kann.
 - **Schwachstellen** = die zwei niedrigsten Strategie-Skalen unter 3,0. Gibt es keine, gibt es keinen Vorschlag — das Profil erfindet keinen Mangel.
 
@@ -85,7 +85,7 @@ Rein und ohne Speicherzugriff (`src/profil/auswertung.ts`):
 2. **Sechs Balken** für die Strategien, mit Zahl, nicht nur Farbe.
 3. **Je Schwachstelle ein Vorschlag** — konkret, klein, an die App gebunden (Tabelle unten).
 4. **Der Beipackzettel**, immer sichtbar, nicht im Kleingedruckten:
-   *„Dieses Profil beruht auf eigenen Aussagen nach veröffentlichten Modellen der Lernstrategien (LIST, MSLQ) und den Lernmustern nach Vermunt. Es ist keine geprüfte Skala. Was die App über dein Lernen wirklich weiß, stammt aus deinen Antworten auf Aufgaben — siehe Kalibrierung."*
+   *„Dieses Profil beruht auf eigenen Aussagen nach veröffentlichten Modellen der Lernstrategien (LIST, MSLQ) und den Lernmustern nach Vermunt. Es ist keine geprüfte Skala. Was die App über dein Lernen wirklich weiß, stammt aus deinen Antworten auf Aufgaben."* (geändert am 2026-09-21 nach dem Abschluss-Review: der Verweis „— siehe Kalibrierung" ist entfallen, weil es diese Ansicht noch nicht gibt)
 5. **„Neu erheben"** — und ab acht Wochen nach der Erhebung der Hinweis, dass sich eine Wiederholung lohnt.
 
 ### Was eine Schwachstelle vorschlägt
@@ -131,7 +131,7 @@ src/pages/profil/audit.astro    Fragebogen
 ### Nachweis 3a
 
 - `items.ts`: jede Skala genau drei, jedes Muster genau zwei Aussagen; Ids eindeutig; keine Aussage doppelt.
-- `auswertung.ts`: Mittelwerte; `null` bei zu wenig Antworten statt 0; „zwischen A und B" unter 0,5 Abstand; Strukturhinweis ab 3,5 unabhängig vom führenden Muster; keine Schwachstelle ohne Skala unter 3,0; fremder `itemsatz` → Profil gilt als nicht erhoben. Mutationsprobe an der Gleichstandsregel.
+- `auswertung.ts`: Mittelwerte; `null` bei zu wenig Antworten statt 0; ein Muster gilt erst ab 3,5 Mittel als deutlich, sonst „undeutlich" (geändert am 2026-09-21 nach dem Abschluss-Review); „zwischen A und B" unter 0,5 Abstand; Strukturhinweis ab 3,5 unabhängig vom führenden Muster; keine Schwachstelle ohne Skala unter 3,0; fremder `itemsatz` → Profil gilt als nicht erhoben. Mutationsprobe an der Gleichstandsregel.
 - `schema.ts`: weist Werte außerhalb 1–5, unbekannte Vorlieben und Fremdfelder zurück; ein unlesbarer Stand führt zu „kein Profil", nicht zu einem Absturz.
 - `Audit.tsx`: ganzer Ablauf per Tastatur; Zwischenstand überlebt ein Neuladen; Speicherfehler hält den Ablauf nicht auf (Ergebnis wird gezeigt, nur nicht behalten — mit Hinweis).
 - `Ergebnis.tsx`: Der Beipackzettel steht im Dokument, wann immer ein Muster dasteht — ein Test hält fest, dass das eine nie ohne das andere erscheint.
