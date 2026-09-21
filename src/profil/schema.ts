@@ -50,7 +50,8 @@ export const HalbeVorliebenSchema = VorliebenSchema.partial();
  */
 export const ProfilstandSchema = z.strictObject({
   itemsatz: z.number().int().min(1),
-  erhoben: z.iso.datetime(),
+  // Mit Zeitzone erlaubt: `+02:00` ist derselbe Zeitpunkt wie `Z` (siehe Test).
+  erhoben: z.iso.datetime({ offset: true }),
   antworten: z.record(z.string(), WertSchema),
   vorlieben: VorliebenSchema,
 });

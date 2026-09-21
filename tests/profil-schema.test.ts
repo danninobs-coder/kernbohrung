@@ -89,6 +89,22 @@ describe('ProfilstandSchema', () => {
     expect(gilt(stand({ erhoben: '2026-09-19' }))).toBe(false);
   });
 
+  it('nimmt einen Zeitpunkt mit Zeitzone an, nicht nur einen mit Z', () => {
+    // Die App schreibt `toISOString()`, also immer mit Z. Ein von Hand oder
+    // von einer anderen Fassung geschriebener Stand mit +02:00 ist aber
+    // derselbe Zeitpunkt. Ihn abzuweisen hiesse, wegen der Schreibweise eines
+    // Datums alle Antworten zu verwerfen.
+    expect(gilt(stand({ erhoben: '2026-09-19T12:00:00+02:00' }))).toBe(true);
+    // Ohne jede Zeitzone bleibt er mehrdeutig und faellt durch.
+    expect(gilt(stand({ erhoben: '2026-09-19T12:00:00' }))).toBe(false);
+  });
+
+  it('nimmt Antworten zu Ids an, die es heute nicht gibt', () => {
+    // Praezisierung 2 des Plans: Das Schema prueft die Form, nicht die
+    // heutige Liste der Aussagen. Die Auswertung liest nur, was sie kennt.
+    expect(gilt(stand({ antworten: { 'ord-1': 4, 'gibt-es-nicht': 3 } }))).toBe(true);
+  });
+
   it.each([0, -1, 1.5, '1'])('weist den itemsatz %s zurueck', (itemsatz) => {
     expect(gilt(stand({ itemsatz }))).toBe(false);
   });
