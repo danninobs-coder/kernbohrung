@@ -13,6 +13,29 @@ const lektionen = (await getCollection('lektionen')).sort(
     Jede Lektion läuft in sechs Takten: Widerspruch, Bild, Satz, Probe, Transfer, Herkunft.
     Erst spielen, dann erklären.
   </p>
+
+  {/*
+    Die Einladung zum Audit. Sie steht vollstaendig im gebauten HTML — samt
+    Verweis, den `werkzeug/relative-verweise.mjs` nur hier erreicht — und ist
+    zunaechst versteckt. Das Skript am Seitenende deckt sie auf, wenn kein
+    Profil erhoben ist. Andersherum (sichtbar bauen, bei vorhandenem Profil
+    verstecken) blitzte sie bei jedem Besuch kurz auf, ausgerechnet bei denen,
+    die sie nichts mehr angeht.
+  */}
+  <section class="karte einladung" data-einladung hidden>
+    <div class="einladung-text">
+      <h2>Lernprofil anlegen — etwa vier Minuten</h2>
+      <p>
+        26 Aussagen zu deinen Lerngewohnheiten und drei Vorlieben. Ein Angebot, keine Voraussetzung:
+        Jede Lektion steht dir auch ohne Profil offen.
+      </p>
+    </div>
+    <div class="einladung-knoepfe">
+      <a class="abgeben knopf-verweis" href="/profil/audit/">Lernprofil anlegen</a>
+      <button type="button" class="zurueck" data-spaeter>Später</button>
+    </div>
+  </section>
+
   <ol class="uebersicht">
     {lektionen.map((eintrag) => (
       <li>
@@ -21,4 +44,39 @@ const lektionen = (await getCollection('lektionen')).sort(
       </li>
     ))}
   </ol>
+
+  {/* Der feste Weg zum Profil, ohne Skript: Die Karte oben verschwindet,
+      sobald ein Profil da ist — dieser Verweis bleibt. */}
+  <p class="profil-verweis"><a href="/profil/">Dein Lernprofil</a></p>
 </Seite>
+
+<script>
+  // Astro buendelt dieses Skript; es laeuft als Modul nach dem Aufbau der
+  // Seite. Die Entscheidung selbst steht in `einladungZeigen` und ist dort
+  // getestet — hier wird nur gelesen, gefragt und umgeschaltet.
+  import { speicher } from '../tutor/speicher';
+  import { werteAus } from '../profil/auswertung';
+  import { SCHLUESSEL_PROFIL, SCHLUESSEL_SPAETER, liesProfil } from '../profil/schema';
+  import { einladungZeigen } from '../profil/vorschlag';
+
+  const karte = document.querySelector<HTMLElement>('[data-einladung]');
+  if (karte !== null) {
+    // `speicher()` wirft nie: Ohne IndexedDB liefert jedes Lesen `undefined`,
+    // und die Karte erscheint — das ist im privaten Fenster auch richtig so.
+    const ablage = speicher();
+
+    void (async () => {
+      const stand = liesProfil(await ablage.einstellung(SCHLUESSEL_PROFIL));
+      const erhoben = stand !== null && werteAus(stand) !== null;
+      const spaeter = await ablage.einstellung(SCHLUESSEL_SPAETER);
+      karte.hidden = !einladungZeigen(erhoben, spaeter, new Date());
+    })();
+
+    karte.querySelector('[data-spaeter]')?.addEventListener('click', () => {
+      // Erst verstecken, dann merken: Scheitert das Schreiben, ist die Karte
+      // fuer diesen Besuch trotzdem weg und kommt beim naechsten wieder.
+      karte.hidden = true;
+      void ablage.merkeEinstellung(SCHLUESSEL_SPAETER, new Date().toISOString());
+    });
+  }
+</script>

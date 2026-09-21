@@ -1,0 +1,35 @@
+---
+import Seite from '../../layouts/Seite.astro';
+import Ergebnis from '../../profil/Ergebnis.tsx';
+---
+<Seite titel="Lernprofil">
+  <p class="augenbraue">Kernbohrung · Lernprofil</p>
+  <h1>Dein Lernprofil</h1>
+
+  {/*
+    client:idle und nicht client:visible — der Grund steht in
+    `src/layouts/Lektion.astro`: client:visible haengt an einem
+    IntersectionObserver, und der feuert nicht, solange das Dokument als
+    versteckt gilt. Eine Profilseite, die „wird geladen" sagt und dabei
+    bleibt, waere genau dieser Ausfall.
+
+    Die beiden Verweise stehen HIER und nicht in der Insel. Nur was im
+    gebauten HTML steht, erreicht `werkzeug/relative-verweise.mjs`; ein
+    Verweis, den React erst im Browser zusammensetzt, zeigte in der
+    ortsunabhaengigen Kopie ins Leere. Die Insel bekommt sie als Slots
+    hereingereicht und entscheidet nur, welchen sie zeigt.
+
+    Die Slotnamen tragen mit Absicht keinen Bindestrich. Astro macht aus
+    `neu-erheben` beim Vorrendern die Eigenschaft `neuErheben`, reicht
+    einen beim Vorrendern NICHT gezeigten Slot im Browser aber unter dem
+    rohen Namen `neu-erheben` herein — die Insel faende ihn dann nicht.
+    Beide Slots hier sind beim Vorrendern nicht gezeigt: Die Insel beginnt
+    mit „wird geladen".
+  */}
+  <Ergebnis client:idle>
+    <a slot="anlegen" class="abgeben knopf-verweis" href="/profil/audit/">Lernprofil anlegen</a>
+    <a slot="erneut" class="abgeben knopf-verweis" href="/profil/audit/">Neu erheben</a>
+  </Ergebnis>
+
+  <p class="profil-verweis"><a href="/">Zur Übersicht</a></p>
+</Seite>
