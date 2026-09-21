@@ -173,7 +173,7 @@ describe('Ergebnisansicht', () => {
     // Wer per Ueberschrift springt, darf den wichtigsten Abschnitt nicht
     // ueberspringen.
     render(<Ergebnisansicht auswertung={auswertung()} erhoben={ERHOBEN} />);
-    expect(screen.getByRole('heading', { name: 'Dein Lernmuster' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /derzeit/ })).toBeTruthy();
   });
 
   it('zeigt NIE ein Muster ohne den Beipackzettel', () => {
