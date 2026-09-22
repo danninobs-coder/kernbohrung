@@ -53,12 +53,15 @@ describe('startfolge', () => {
     // Wer nur eine einzige Stufe des Ablaufs kennt - den Anfang oder das Ende -,
     // dreht sonst die ganze Liste um und hat sortiert, ohne etwas dazwischen zu
     // wissen. Die Umkehrung ist deshalb genauso ausgeschlossen wie die richtige
-    // Folge selbst (siehe startfolge.ts). 2000 Ids je Laenge, ueber jede vom
-    // Schema erlaubte Laenge (schema.ts: `.min(3).max(7)`).
+    // Folge selbst (siehe startfolge.ts). 500 Ids je Laenge, ueber jede vom
+    // Schema erlaubte Laenge (schema.ts: `.min(3).max(7)`). Mehr kostet im
+    // vollen Lauf unter Last Sekunden, ohne mehr zu zeigen: Das rohe Mischen
+    // trifft die Umkehrung bei drei Schritten in rund jedem sechsten Fall, ein
+    // Rueckfall faellt also schon nach wenigen Ids auf.
     for (let anzahl = 3; anzahl <= 7; anzahl++) {
       const identitaet = Array.from({ length: anzahl }, (_, i) => i);
       const umkehrung = [...identitaet].reverse();
-      for (let s = 0; s < 2000; s++) {
+      for (let s = 0; s < 500; s++) {
         const folge = startfolge(anzahl, `saat-${s}`);
         expect([...folge].sort((a, b) => a - b)).toEqual(identitaet);
         expect(folge).not.toEqual(identitaet);
