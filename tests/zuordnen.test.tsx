@@ -351,4 +351,21 @@ describe('Zuordnen', () => {
     expect(onAbgegeben).toHaveBeenCalledTimes(2);
     expect(onAbgegeben.mock.calls[0][0]).toEqual(onAbgegeben.mock.calls[1][0]);
   });
+
+  /**
+   * Nachtrag V: Die Optionsknoepfe sperrten bisher nur ueber `vergeben`, nicht
+   * ueber `offen`. War beim Phasenwechsel eine Auswahl aufgeklappt, blieb ein
+   * bedienbar wirkender Knopf stehen, der nichts mehr tut. Jetzt schliesst ein
+   * Effekt die Auswahl, sobald die Phase 'offen' verlassen wird.
+   */
+  it('V: schliesst eine aufgeklappte Auswahl, wenn die Phase „offen" verlassen wird', async () => {
+    const nutzer = userEvent.setup();
+    const { inPhase } = stelleDar();
+    await nutzer.click(links('Pauschalvertrag'));
+    expect(screen.getByRole('group')).toBeTruthy();
+
+    inPhase('abgegeben');
+
+    expect(screen.queryByRole('group')).toBeNull();
+  });
 });

@@ -28,6 +28,8 @@ export default function Zuordnen({ aufgabe, phase, onAbgegeben, ergebnissatz }: 
   const offen = phase === 'offen';
   const aufgeloest = phase === 'aufgeloest';
   const vollstaendig = zuordnung.every((eintrag) => eintrag !== null);
+  // Die erste noch freie rechte Seite bekommt beim Aufklappen den Fokus.
+  const ersteFreie = rechteSeite.find((rechts) => !zuordnung.includes(rechts));
 
   // Der Fokus folgt dem Aufklappen. Sonst laege die Auswahl fuer die Tastatur
   // hinter allen uebrigen linken Eintraegen.
@@ -35,6 +37,15 @@ export default function Zuordnen({ aufgabe, phase, onAbgegeben, ergebnissatz }: 
     if (aktiv !== null) ersteOption.current?.focus();
   }, [aktiv]);
 
+  // Verlaesst die Aufgabe die Phase 'offen' (Abgabe oder Aufloesung), klappt
+  // eine noch offene Auswahl zu - sonst bliebe ein bedienbar wirkender, aber
+  // wirkungsloser Knopf stehen.
+  useEffect(() => {
+    if (!offen) setAktiv(null);
+  }, [offen]);
+
+  // Invariante: Ist ein Eintrag aktiv, hat er kein Paar - aktiv wird nur, was
+  // gerade frei ist oder frei wird.
   function oeffne(stelle: number): void {
     if (!offen) return;
     // Ein bestehendes Paar antippen loest es und klappt die Auswahl wieder auf.
@@ -68,7 +79,6 @@ export default function Zuordnen({ aufgabe, phase, onAbgegeben, ergebnissatz }: 
         {aufgabe.paare.map((paar, stelle) => {
           const gewaehlt = zuordnung[stelle];
           const stimmt = gewaehlt === paar.rechts;
-          let ersteVergeben = false;
           return (
             <li
               key={paar.links}
@@ -93,15 +103,13 @@ export default function Zuordnen({ aufgabe, phase, onAbgegeben, ergebnissatz }: 
                 <ul className="zuordnen-optionen" role="group" aria-label={`Zuordnung für ${paar.links}`}>
                   {rechteSeite.map((rechts) => {
                     const vergeben = zuordnung.includes(rechts);
-                    const istErste = !vergeben && !ersteVergeben;
-                    if (istErste) ersteVergeben = true;
                     return (
                       <li key={rechts}>
                         <button
                           type="button"
                           className="zuordnen-option"
-                          disabled={vergeben}
-                          ref={istErste ? ersteOption : undefined}
+                          disabled={vergeben || !offen}
+                          ref={rechts === ersteFreie ? ersteOption : undefined}
                           onClick={() => ordneZu(stelle, rechts)}
                         >
                           {rechts}

@@ -22,6 +22,10 @@ function knopf(schritt: string, richtung: 'oben' | 'unten'): HTMLButtonElement {
   return screen.getByRole('button', { name: `${schritt} nach ${richtung}` }) as HTMLButtonElement;
 }
 
+function ansage(): HTMLElement | null {
+  return document.querySelector('.nur-vorlesen');
+}
+
 /** Sortiert ueber die Knoepfe, so wie ein Mensch es taete. */
 async function sortiere(nutzer: Nutzer, ziel: readonly string[]): Promise<void> {
   for (let stelle = 0; stelle < ziel.length; stelle++) {
@@ -253,5 +257,37 @@ describe('Reihenfolge', () => {
 
     expect(onAbgegeben).toHaveBeenCalledTimes(2);
     expect(onAbgegeben.mock.calls[0][0]).toEqual(onAbgegeben.mock.calls[1][0]);
+  });
+
+  /**
+   * Nachtrag AB: Nach einem Zug sagt heute nur der Screenreader-Knopfname
+   * wieder vor, nie die neue Position. Eine visuell versteckte Live-Region
+   * traegt die Stelle nach — leer vor dem ersten Zug, sonst „{Schritt} steht
+   * jetzt an Stelle {n} von {m}.“.
+   */
+  it('AB: die Live-Region ist vor dem ersten Zug leer und traegt aria-live="polite"', () => {
+    stelleDar();
+    expect(ansage()?.getAttribute('aria-live')).toBe('polite');
+    expect(ansage()?.textContent).toBe('');
+  });
+
+  it('AB: sagt nach "nach oben" die neue Stelle an', async () => {
+    const nutzer = userEvent.setup();
+    stelleDar();
+    const vorher = imBild();
+
+    await nutzer.click(knopf(vorher[2], 'oben'));
+
+    expect(ansage()?.textContent).toBe(`${vorher[2]} steht jetzt an Stelle 2 von 4.`);
+  });
+
+  it('AB: sagt nach "nach unten" die neue Stelle an', async () => {
+    const nutzer = userEvent.setup();
+    stelleDar();
+    const vorher = imBild();
+
+    await nutzer.click(knopf(vorher[1], 'unten'));
+
+    expect(ansage()?.textContent).toBe(`${vorher[1]} steht jetzt an Stelle 3 von 4.`);
   });
 });

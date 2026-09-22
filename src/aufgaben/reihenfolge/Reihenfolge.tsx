@@ -11,9 +11,10 @@ type Zug = { readonly schritt: number; readonly richtung: Richtung };
  * Reihenfolge: Schritte mit zwei Knoepfen je Zeile nach oben und unten
  * schieben. Kein Ziehen — siehe `Zuordnen.tsx`.
  *
- * `folge[i]` ist der Index des Schritts an Stelle i. Die Zeilen tragen diesen
- * Index als key: React bewegt dann das Element, statt es neu zu bauen, und der
- * Fokus wandert mit dem Schritt mit.
+ * `folge[i]` ist der Index des Schritts an Stelle i. `key={schritt}` haelt
+ * den DOM-Knoten eines Schritts stabil, statt ihn bei jedem Zug
+ * umzubeschriften. Dass der Fokus beim Schritt bleibt, stellt der Effekt
+ * unten sicher.
  */
 export default function Reihenfolge({ aufgabe, phase, onAbgegeben, ergebnissatz }: TypProps<ReihenfolgeAufgabe>) {
   const [folge, setFolge] = useState<number[]>(() => startfolge(aufgabe.schritte.length, aufgabe.id));
@@ -23,6 +24,14 @@ export default function Reihenfolge({ aufgabe, phase, onAbgegeben, ergebnissatz 
   const offen = phase === 'offen';
   const aufgeloest = phase === 'aufgeloest';
   const allesRichtig = folge.every((schritt, stelle) => schritt === stelle);
+
+  // Fuer die Live-Region unten: dieselbe Stelle, die der Fokus-Effekt auch
+  // ermittelt, nur als Text statt als Fokusziel. Leer vor dem ersten Zug,
+  // keine eigene Zustandsvariable noetig.
+  const ansage =
+    zug === null
+      ? ''
+      : `${aufgabe.schritte[zug.schritt]} steht jetzt an Stelle ${folge.indexOf(zug.schritt) + 1} von ${folge.length}.`;
 
   // Der Fokus bleibt beim bewegten Schritt. Steht er danach am Rand, ist der
   // eben gedrueckte Knopf gesperrt — und ein gesperrter Knopf haelt keinen
@@ -98,6 +107,10 @@ export default function Reihenfolge({ aufgabe, phase, onAbgegeben, ergebnissatz 
           );
         })}
       </ol>
+
+      <div aria-live="polite" className="nur-vorlesen">
+        {ansage}
+      </div>
 
       {offen && (
         <button type="button" className="abgeben" onClick={gibAb}>
