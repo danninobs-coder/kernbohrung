@@ -1,0 +1,110 @@
+---
+import type { Abdeckung } from '../lib/abdeckung';
+import type { Ungueltig } from '../lib/lehrplan';
+import {
+  STATUS_TEXT,
+  aufklapptext,
+  fundstelle,
+  kopfzeile,
+  lueckenzeile,
+  zahlenzeile,
+} from '../lib/bestandstext';
+
+/**
+ * Der Bestand: eine Karte je Quelle, darunter zwei Warnungen, wenn es etwas
+ * zu warnen gibt.
+ *
+ * Diese Datei rechnet nichts. Was abgedeckt ist, sagt `abdeckung`, wie es
+ * heisst, sagt `bestandstext`; hier wird nur angeordnet. Die Daten kommen als
+ * Props herein und nicht aus Dateien, damit die Darstellung im Test mit jedem
+ * Bestand gerendert werden kann — auch mit Buch und Folien, die es im echten
+ * Bestand noch nicht gibt.
+ *
+ * Aufgeklappt wird mit `details` und `summary`: Das geht ohne JavaScript, in
+ * jedem Bau und in der ortsunabhaengigen Kopie; Tastatur und Vorlesen bringt
+ * der Browser mit, samt dem Zustand auf und zu.
+ */
+interface Props {
+  abdeckung: Abdeckung;
+  ungueltig: readonly Ungueltig[];
+  /** Lektion-Id -> Titel, fuer die Verweise. */
+  lektionstitel: ReadonlyMap<string, string>;
+}
+
+const { abdeckung, ungueltig, lektionstitel } = Astro.props;
+
+// Lokal `/`, auf GitHub Pages `/kernbohrung/` — siehe astro.config.mjs.
+const basis = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const titelVon = (id: string) => lektionstitel.get(id) ?? id;
+---
+{abdeckung.bestand.length === 0 && ungueltig.length === 0 && (
+  <p class="bestand-leer">Es liegt kein Lehrplan vor.</p>
+)}
+
+{abdeckung.bestand.map((b) => (
+  <section class="karte quelle" data-quelle={b.quelle}>
+    <h2>{b.titel}</h2>
+    <p class="quelle-kopf">{kopfzeile(b)}</p>
+    <p class="quelle-zahlen">{zahlenzeile(b)}</p>
+    <p class="quelle-luecken"><strong>Lücken:</strong> {lueckenzeile(b.luecken)}</p>
+    <details class="quelle-liste">
+      <summary>{aufklapptext(b)}</summary>
+      <ol>
+        {b.zeilen.map((z) => (
+          <li class="zeile" data-status={z.status}>
+            <p class="zeile-titel">{z.titel}</p>
+            {fundstelle(b.art, z) !== null && <p class="zeile-fundstelle">{fundstelle(b.art, z)}</p>}
+            {/* Marke und Verweis auf einer Zeile im Quelltext: Astro loescht
+                Leerraum mit Zeilenumbruch zwischen zwei Elementen, und
+                vorgelesen hiesse es dann „mit LektionKein Boden…“. */}
+            <p class="zeile-status">
+              <span class="zeile-marke">{STATUS_TEXT[z.status]}</span>{z.lektion !== undefined && (
+                <> · <a href={`${basis}lektion/${z.lektion}/`}>{titelVon(z.lektion)}</a></>
+              )}
+            </p>
+            {z.grund !== undefined && (
+              <p class="zeile-grund"><strong>Grund:</strong> {z.grund}</p>
+            )}
+            {z.vorbehalte.map((v) => (
+              <p class="zeile-vorbehalt"><strong>Vorbehalt:</strong> {v}</p>
+            ))}
+          </li>
+        ))}
+      </ol>
+    </details>
+  </section>
+))}
+
+{ungueltig.length > 0 && (
+  <section class="karte bestand-warnung" data-warnung="ungueltig">
+    <h2>Lehrpläne, die die Prüfung nicht bestehen</h2>
+    <p>
+      Aus diesen Dateien zeigt die Seite keine Zahlen. Auch ein Lehrplan, der noch auf die
+      Freigabe wartet — geprueftVon ist leer —, steht hier.
+    </p>
+    {ungueltig.map((u) => (
+      <div class="ungueltig">
+        <h3>{u.datei}</h3>
+        <ul>
+          {u.maengel.map((m) => <li><code>{m}</code></li>)}
+        </ul>
+      </div>
+    ))}
+  </section>
+)}
+
+{abdeckung.ohneLehrplan.length > 0 && (
+  <section class="karte bestand-warnung" data-warnung="ohne-lehrplan">
+    <h2>Lektionen ohne Lehrplaneintrag</h2>
+    <p>
+      Auf diese Lektionen zeigt kein Prinzip und kein Abschnitt eines gültigen Lehrplans. Ihre
+      Herkunft ist damit nicht geprüft, und sie zählen hier nicht als Abdeckung. Ob sie
+      nachgetragen oder entfernt werden, entscheidest du.
+    </p>
+    <ul>
+      {abdeckung.ohneLehrplan.map((id) => (
+        <li><a href={`${basis}lektion/${id}/`}>{titelVon(id)}</a></li>
+      ))}
+    </ul>
+  </section>
+)}
