@@ -1207,3 +1207,339 @@ h3 {
   white-space: nowrap;
   border: 0;
 }
+
+/* ---------------------------------------------------------------
+   Aufgabenfamilie
+
+   Drei Regeln fuer alles hier:
+   - Jede Bedienflaeche mindestens 44 x 44 Pixel, die grossen 48.
+   - Umrisse bedienbarer Elemente ueber --rand-bedien (3:1, WCAG
+     1.4.11), nie ueber --rand.
+   - Kein neues Farbtoken. Ein Zustand, der nur Farbe traegt, ist
+     keiner (WCAG 1.4.1) — jede Aufloesung steht auch als Text da.
+
+   .abgeben steht weiter oben (Block Lernprofil) und gilt hier mit.
+   --------------------------------------------------------------- */
+
+/* --- fall ------------------------------------------------------ */
+
+.fall-sachverhalt {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  background: var(--flaeche-2);
+  border-left: 3px solid var(--rand-stark);
+  border-radius: 0 var(--radius-antwort) var(--radius-antwort) 0;
+}
+
+.fall-sachverhalt p {
+  margin: 0 0 10px;
+}
+
+.fall-sachverhalt p:last-child {
+  margin-bottom: 0;
+}
+
+.fall-beschriftung {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.fall-eingabe {
+  display: block;
+  width: 100%;
+  min-height: 9.5rem;
+  resize: vertical;
+  padding: 12px 14px;
+  font: inherit;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--flaeche-2);
+  border: 1px solid var(--rand-bedien);
+  border-radius: var(--radius-antwort);
+}
+
+.fall-eingabe:read-only {
+  background: var(--grund);
+}
+
+.fall-zaehler {
+  margin: 6px 0 0;
+  font-family: var(--schrift-mono);
+  font-size: 12px;
+  text-align: right;
+  color: var(--ink-2);
+}
+
+.pruefpunkte {
+  min-width: 0;
+  margin: 20px 0 0;
+  padding: 18px 0 0;
+  border: 0;
+  border-top: 1px dashed var(--rand-stark);
+}
+
+.pruefpunkte legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+/* Die ganze Zeile ist die Tippflaeche, nicht das Kaestchen. */
+.pruefpunkt {
+  clear: both;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  min-height: 48px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  cursor: pointer;
+  background: var(--flaeche-2);
+  border: 1px solid var(--rand-bedien);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-antwort);
+}
+
+.pruefpunkt input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 1px 0 0;
+  accent-color: var(--teal);
+}
+
+.pruefpunkt-text {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.pruefpunkt[data-zustand='gehabt'] {
+  border-left-color: var(--richtig);
+}
+
+.pruefpunkt[data-zustand='fehlt'] {
+  border-left-color: var(--falsch);
+}
+
+.pruefpunkt-marke {
+  flex-basis: 100%;
+  font-family: var(--schrift-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.pruefpunkt[data-zustand='fehlt'] .pruefpunkt-marke {
+  color: var(--falsch);
+}
+
+.musterloesung {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--teal-weich);
+  border-radius: var(--radius-antwort);
+}
+
+.musterloesung p {
+  margin: 0 0 10px;
+}
+
+.musterloesung p:last-child {
+  margin-bottom: 0;
+}
+
+/* --- zuordnen --------------------------------------------------- */
+
+.zuordnen-liste,
+.zuordnen-optionen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.zuordnen-liste {
+  gap: 8px;
+}
+
+.zuordnen-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 14px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  background: var(--flaeche-2);
+  border: 1px solid var(--rand-bedien);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-antwort);
+}
+
+.zuordnen-links:disabled {
+  cursor: default;
+}
+
+.zuordnen-links[aria-expanded='true'] {
+  background: var(--flaeche);
+  border-left-color: var(--akzent-fill);
+}
+
+.zuordnen-begriff {
+  font-weight: 700;
+}
+
+.zuordnen-wahl {
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+
+/* Eingerueckt unter dem linken Eintrag: Die Auswahl gehoert sichtbar
+   zu ihm, nicht zur naechsten Zeile. */
+.zuordnen-optionen {
+  gap: 6px;
+  margin: 6px 0 4px 14px;
+}
+
+.zuordnen-option {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 13px;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  background: var(--flaeche);
+  border: 1px solid var(--rand-bedien);
+  border-radius: var(--radius-antwort);
+}
+
+.zuordnen-option:disabled {
+  cursor: default;
+  color: var(--ink-2);
+  background: var(--grund);
+  border-style: dashed;
+}
+
+.zuordnen-zeile[data-zustand='richtig'] .zuordnen-links {
+  border-left-color: var(--richtig);
+}
+
+.zuordnen-zeile[data-zustand='falsch'] .zuordnen-links {
+  border-left-color: var(--falsch);
+}
+
+/* --- reihenfolge ------------------------------------------------ */
+
+.reihenfolge-liste {
+  list-style: none;
+  counter-reset: schritt;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reihenfolge-zeile {
+  counter-increment: schritt;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 6px 8px 6px 14px;
+  background: var(--flaeche-2);
+  border: 1px solid var(--rand-bedien);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-antwort);
+}
+
+.reihenfolge-zeile::before {
+  content: counter(schritt);
+  flex: none;
+  width: 1.4em;
+  font-family: var(--schrift-mono);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.reihenfolge-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reihenfolge-knoepfe {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+.reihenfolge-knopf {
+  width: 44px;
+  height: 44px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--flaeche);
+  border: 1px solid var(--rand-bedien);
+  border-radius: 10px;
+}
+
+.reihenfolge-knopf:disabled {
+  cursor: default;
+  color: var(--ink-2);
+  border-style: dashed;
+}
+
+.reihenfolge-zeile[data-zustand='richtig'] {
+  border-left-color: var(--richtig);
+}
+
+.reihenfolge-zeile[data-zustand='falsch'] {
+  border-left-color: var(--falsch);
+}
+
+.reihenfolge-loesung {
+  margin-top: 16px;
+}
+
+.reihenfolge-loesung ol {
+  margin: 6px 0 0;
+  padding-left: 1.4rem;
+  color: var(--ink-2);
+}
+
+/* Am Handy bleiben neben zwei 44er-Knoepfen rund 125 Pixel fuer den
+   Text. Dann wandern die Knoepfe unter den Text, statt ihn zu
+   zerquetschen. */
+@media (max-width: 480px) {
+  .reihenfolge-zeile {
+    flex-wrap: wrap;
+  }
+
+  .reihenfolge-text {
+    flex-basis: calc(100% - 2.4em);
+  }
+
+  .reihenfolge-knoepfe {
+    margin-left: auto;
+  }
+}
