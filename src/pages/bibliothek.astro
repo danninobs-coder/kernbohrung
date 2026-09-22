@@ -1,0 +1,54 @@
+---
+import { getCollection } from 'astro:content';
+import Seite from '../layouts/Seite.astro';
+import Bestand from '../components/Bestand.astro';
+import { abdeckung } from '../lib/abdeckung';
+import { lehrplaeneAusTexten } from '../lib/lehrplan';
+import { manifesteAusTexten } from '../lib/manifestauszug';
+
+/**
+ * Die Bibliothek: was eingelesen ist und wie weit es in Lektionen steckt.
+ *
+ * Alles hier geschieht zur Bauzeit. Die Seite liest die Lehrplaene und die
+ * Manifeste als Text, prueft und verrechnet sie und schreibt das Ergebnis
+ * ins HTML. Im Browser laeuft nichts davon — auch kein Rohtext kommt dort an.
+ *
+ * `import.meta.glob` statt `node:fs`: Vite findet die Dateien selbst, der
+ * Pfad beginnt an der Projektwurzel, und im Entwicklungsmodus baut die Seite
+ * neu, sobald sich ein Lehrplan aendert. Wo `quellen/` fehlt — auf GitHub,
+ * denn der Ordner ist gitignored —, liefert der zweite Glob nichts, und die
+ * Seite sagt, dass sie die Luecken nicht kennt.
+ */
+const lektionen = await getCollection('lektionen');
+const lektionsIds = new Set(lektionen.map((l) => l.id));
+const lektionstitel = new Map(lektionen.map((l) => [l.id, l.data.titel]));
+
+const lehrplantexte = import.meta.glob<string>('/lehrplan/*.yaml', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+const manifesttexte = import.meta.glob<string>('/quellen/*/manifest.json', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+
+const { gueltig, ungueltig } = lehrplaeneAusTexten(lehrplantexte, lektionsIds);
+const bestand = abdeckung(gueltig, manifesteAusTexten(manifesttexte), lektionsIds);
+
+// Lokal `/`, auf GitHub Pages `/kernbohrung/` — siehe astro.config.mjs.
+const basis = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+---
+<Seite titel="Bibliothek">
+  <p class="augenbraue">Kernbohrung · Bibliothek</p>
+  <h1>Bibliothek</h1>
+  <p class="vorspann">
+    Jede Quelle, aus der Lektionen entstehen: welcher Stand eingelesen ist, was davon schon
+    Lektion ist und wo das Eingelesene Lücken hat.
+  </p>
+
+  <Bestand abdeckung={bestand} ungueltig={ungueltig} lektionstitel={lektionstitel} />
+
+  <p class="profil-verweis"><a href={basis}>Zur Übersicht</a></p>
+</Seite>

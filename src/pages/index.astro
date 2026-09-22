@@ -48,9 +48,14 @@ const basis = import.meta.env.BASE_URL.replace(/\/?$/, '/');
     ))}
   </ol>
 
-  {/* Der feste Weg zum Profil, ohne Skript: Die Karte oben verschwindet,
-      sobald ein Profil da ist — dieser Verweis bleibt. */}
-  <p class="profil-verweis"><a href={`${basis}profil/`}>Dein Lernprofil</a></p>
+  {/* Die festen Wege, ohne Skript: Die Karte oben verschwindet, sobald ein
+      Profil da ist — dieser Verweis bleibt. Die Bibliothek steht daneben und
+      nicht in der Kopfleiste: Die klebt auf jeder Seite und ist bei 375 px
+      schon zweizeilig; ein Eintrag dort machte sie auf jeder Lektionsseite
+      hoeher. Beide Verweise stehen auf einer Zeile im Quelltext — Astro
+      loescht Leerraum mit Zeilenumbruch zwischen zwei Elementen, und das
+      Trennzeichen ginge mit. */}
+  <p class="profil-verweis"><a href={`${basis}profil/`}>Dein Lernprofil</a> · <a href={`${basis}bibliothek/`}>Bibliothek</a></p>
 </Seite>
 
 <script>
