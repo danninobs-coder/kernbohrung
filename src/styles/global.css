@@ -1624,7 +1624,8 @@ h3 {
 /* Der Knopf zum Aufklappen ist die ganze Zeile, mindestens 48 Pixel
    hoch. `display: list-item` behaelt das Dreieck des Browsers — mit
    `flex` verschwaende es in Chrome, und ein eigenes muesste man
-   nachbauen. */
+   nachbauen. Der Knopf nennt den Titel der Quelle; ein Titel ohne
+   Trennstelle bricht deshalb wie in der Ueberschrift ueberall um. */
 .quelle-liste > summary {
   display: list-item;
   min-height: 48px;
@@ -1632,6 +1633,7 @@ h3 {
   cursor: pointer;
   font-weight: 700;
   color: var(--ink);
+  overflow-wrap: anywhere;
 }
 
 .quelle-liste > summary:hover {
