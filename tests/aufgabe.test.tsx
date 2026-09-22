@@ -5,6 +5,9 @@ import Aufgabe from '../src/components/Aufgabe';
 import type { Wahl } from '../src/aufgaben/wahl/schema';
 import type { Fall } from '../src/aufgaben/fall/schema';
 import type { Zuordnen } from '../src/aufgaben/zuordnen/schema';
+import type { Reihenfolge } from '../src/aufgaben/reihenfolge/schema';
+import { startfolge } from '../src/aufgaben/reihenfolge/startfolge';
+import { bewerteReihenfolge } from '../src/aufgaben/reihenfolge/bewerten';
 import { naechsterTermin, neueKarte, type Termin } from '../src/tutor/planung';
 import type { Speicher } from '../src/tutor/speicher';
 import { ZUVERSICHT_TEXT, type Ereignis, type Zuversicht as Stufe } from '../src/tutor/typen';
@@ -501,6 +504,13 @@ describe('Aufgabe — die Hülle mit den übrigen Typen', () => {
     ablenker: [],
   };
 
+  const reihenfolge: Reihenfolge = {
+    typ: 'reihenfolge',
+    id: 'h-rf',
+    aufgabe: 'Bringe die Schritte in ihre Reihenfolge.',
+    schritte: ['Vorbereitung', 'Planung', 'Vergabe', 'Ausführung'],
+  };
+
   async function schreibeUndGibAb(nutzer: ReturnType<typeof userEvent.setup>): Promise<void> {
     await nutzer.type(screen.getByLabelText('Deine Lösung'), 'Der Unternehmer hat recht.');
     await nutzer.click(screen.getByRole('button', { name: 'Abgeben' }));
@@ -619,6 +629,36 @@ describe('Aufgabe — die Hülle mit den übrigen Typen', () => {
     expect(auf.ereignisse[0].typ).toBe('zuordnen');
     expect(auf.ereignisse[0].richtig).toBe(false);
     expect(auf.ereignisse[0].anteil).toBeCloseTo(1 / 3);
+  });
+
+  /**
+   * Wie beim Teilergebnis oben, nur bei reihenfolge: Abgegeben wird ohne zu
+   * sortieren - die Startfolge schliesst die richtige Folge und ihre
+   * Umkehrung aus (siehe startfolge.ts), ist bei einer frischen Aufgabe also
+   * nie zufaellig schon richtig. `antwort` und `merkmal` muessen exakt dem
+   * Format aus bewerten.ts folgen, der Anteil exakt dem, was
+   * `bewerteReihenfolge` dafuer rechnet - deshalb wird hier gegen deren
+   * echtes Ergebnis geprueft, nicht gegen eine von Hand ausgerechnete Zahl.
+   */
+  it('nennt ein Teilergebnis bei reihenfolge beim Namen, ohne zu sortieren', async () => {
+    const nutzer = userEvent.setup();
+    const { speicher, auf } = spion();
+    render(<Aufgabe lektion="l" aufgabe={reihenfolge} speicher={speicher} />);
+
+    await nutzer.click(screen.getByRole('button', { name: 'Abgeben' }));
+    await nutzer.click(stufenKnopf('eher'));
+
+    await waitFor(() => expect(auf.ereignisse).toHaveLength(1));
+    const folge = startfolge(reihenfolge.schritte.length, reihenfolge.id);
+    const erwartet = bewerteReihenfolge(reihenfolge, folge);
+    expect(erwartet.richtig).toBe(false);
+    expect(auf.ereignisse[0]).toMatchObject({
+      typ: 'reihenfolge',
+      richtig: false,
+      antwort: erwartet.antwort,
+      merkmal: erwartet.antwort,
+      anteil: erwartet.anteil,
+    });
   });
 
   /**
