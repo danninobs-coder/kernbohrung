@@ -1656,6 +1656,8 @@ h3 {
 .zeile-titel {
   font-size: 15.5px;
   line-height: 1.45;
+  /* Der Ersatztitel "<Dateiname>, Folien a-b" enthaelt Dateinamen ohne Leerzeichen. */
+  overflow-wrap: anywhere;
 }
 
 .zeile-fundstelle {
