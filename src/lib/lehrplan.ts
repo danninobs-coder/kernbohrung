@@ -23,9 +23,22 @@ import { widgetPruefungen } from '../widgets/pruefung.ts';
  * Obergrenze fuer Repos. Die Aufgabe von Durchgang A ist zu verdichten, nicht
  * zu katalogisieren: Vierundzwanzig Varianten sollen zu einer Handvoll
  * Prinzipien werden. Wer neunzehn findet, hat zusammengefasst statt
- * destilliert.
+ * destilliert. Fuer Lehrmaterial gilt sie nicht — dort tritt an ihre Stelle
+ * die Pflicht, jeden Abschnitt zu entscheiden.
  */
 export const HOECHSTZAHL = 8;
+
+/** Je Abschnitt aus Lehrmaterial. Ein Abschnitt mit zehn Prinzipien ist katalogisiert, nicht destilliert. */
+export const HOECHSTZAHL_JE_ABSCHNITT = 3;
+
+/**
+ * Der Weg eines Abschnitts: `offen` nach dem Einlesen, `beauftragt` fuer den
+ * naechsten Durchgang, danach `lektion` oder `abgelehnt` — nie beides, nie
+ * keines. Der Auftrag an den Compiler ist keine eigene Datei, sondern die
+ * Menge der Abschnitte mit `beauftragt`.
+ */
+export const STATUS = ['offen', 'beauftragt', 'lektion', 'abgelehnt'] as const;
+export type Status = (typeof STATUS)[number];
 
 const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const IdSchema = z.string().regex(ID, 'nur Kleinbuchstaben, Ziffern und Bindestrich.');
@@ -88,20 +101,125 @@ const RepoSchema = z
     'Zwei Prinzipien haben dieselbe id.',
   );
 
+/** Seitenzahlen zaehlen ab 1, wie im Original. */
+const SeiteSchema = z.number().int().min(1, 'Seiten zählen ab 1.');
+
+const AbschnittSchema = z
+  .strictObject({
+    /** Reihenfolge-Praefix und Slug, etwa `m07-2-vertragsarten`. */
+    id: IdSchema,
+    titel: z.string().trim().min(1),
+    /**
+     * Immer Pflicht, nicht erst bei mehreren Originalen: Wie viele Originale
+     * es gibt, steht im Manifest, und das kennt dieses Schema nicht. Und der
+     * Compiler muss fuer jede Bildseite wissen, welche Datei er oeffnet.
+     */
+    datei: z.string().trim().min(1),
+    seiten: z
+      .tuple([SeiteSchema, SeiteSchema])
+      .refine(([von, bis]) => von <= bis, 'seiten: erst die erste, dann die letzte Seite.'),
+    status: z.enum(STATUS),
+    grund: z.string().trim().min(1).optional(),
+    lektion: IdSchema.optional(),
+    prinzipien: z
+      .array(PrinzipSchema)
+      .max(
+        HOECHSTZAHL_JE_ABSCHNITT,
+        `höchstens ${HOECHSTZAHL_JE_ABSCHNITT} Prinzipien je Abschnitt — ein Abschnitt mit mehr ist katalogisiert, nicht destilliert.`,
+      )
+      .default([]),
+  })
+  // Beide Richtungen, je fuer grund und lektion: Ein Grund ohne Ablehnung
+  // waere eine Begruendung fuer nichts, eine Lektion neben `offen` eine
+  // Abdeckung, die niemand beschlossen hat.
+  .superRefine((a, ctx) => {
+    if (a.status === 'abgelehnt' && a.grund === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['grund'], message: 'Ein abgelehnter Abschnitt braucht einen Grund.' });
+    }
+    if (a.status !== 'abgelehnt' && a.grund !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['grund'], message: 'grund steht nur bei status abgelehnt.' });
+    }
+    if (a.status === 'lektion' && a.lektion === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['lektion'], message: 'Ein Abschnitt mit status lektion nennt seine Lektion.' });
+    }
+    if (a.status !== 'lektion' && a.lektion !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['lektion'], message: 'lektion steht nur bei status lektion.' });
+    }
+  });
+
+type AbschnittRoh = z.infer<typeof AbschnittSchema>;
+
+/**
+ * Regeln ueber mehrere Abschnitte: eindeutige Ids, und je Datei steigen die
+ * Seitenbereiche auf, ohne sich zu ueberschneiden. Sich beruehrende Bereiche
+ * ueberschneiden sich — `[1, 5]` und `[5, 9]` teilen Seite 5.
+ */
+function pruefeAbschnitte(l: { abschnitte: readonly AbschnittRoh[] }, ctx: z.RefinementCtx): void {
+  const ids = new Set<string>();
+  const ende = new Map<string, number>();
+  l.abschnitte.forEach((a, i) => {
+    if (ids.has(a.id)) {
+      ctx.addIssue({ code: 'custom', path: ['abschnitte', i, 'id'], message: `Zwei Abschnitte haben die id ${a.id}.` });
+    }
+    ids.add(a.id);
+
+    const bisher = ende.get(a.datei);
+    if (bisher !== undefined && a.seiten[0] <= bisher) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['abschnitte', i, 'seiten'],
+        message: `Seitenbereiche steigen je Datei auf und überschneiden sich nicht: ${a.id} beginnt auf Seite ${a.seiten[0]}, der Abschnitt davor in ${a.datei} endet auf Seite ${bisher}.`,
+      });
+    }
+    ende.set(a.datei, Math.max(bisher ?? 0, a.seiten[1]));
+  });
+}
+
+/** Was Buch und Folien teilen: eine Form, zwei Gliederer — die sind Sache des Adapters. */
+const lehrmaterial = {
+  quelle: z.string().trim().min(1),
+  titel: z.string().trim().min(1),
+  /** Der Hash ueber die Originale, aus dem Manifest. */
+  stand: z.string().trim().min(7),
+  geprueftVon: GeprueftVonSchema,
+  geprueftAm: z.string().trim().min(1),
+  abschnitte: z.array(AbschnittSchema).min(1, 'Ein Lehrplan aus Lehrmaterial hat mindestens einen Abschnitt.'),
+};
+
+const BuchSchema = z
+  .strictObject({
+    art: z.literal('buch'),
+    ...lehrmaterial,
+    isbn: z.string().trim().min(1).optional(),
+    auflage: z.string().trim().min(1).optional(),
+  })
+  .superRefine(pruefeAbschnitte);
+
+/** Wie das Buch, aber ohne ISBN und Auflage: `strictObject` weist beide zurueck. */
+const FolienSchema = z
+  .strictObject({
+    art: z.literal('folien'),
+    ...lehrmaterial,
+  })
+  .superRefine(pruefeAbschnitte);
+
 /**
  * Die Meldung fuer einen Lehrplan ohne oder mit unbekanntem `art`. Migration
  * statt stiller Voreinstellung: Wer einen Lehrplan aus Fassung 1 in die Hand
  * bekommt, erfaehrt, was einzutragen ist, statt Zods „Invalid discriminator".
  */
-export const ART_FEHLT = 'art fehlt oder ist unbekannt. Ein Lehrplan aus einem Git-Repo trägt art: repo.';
+export const ART_FEHLT =
+  'art fehlt oder ist unbekannt — erlaubt sind repo, buch und folien. Ein Lehrplan aus einem Git-Repo trägt art: repo.';
 
-export const LehrplanSchema = z.discriminatedUnion('art', [RepoSchema], {
+export const LehrplanSchema = z.discriminatedUnion('art', [RepoSchema, BuchSchema, FolienSchema], {
   // Nur der Diskriminator bekommt den eigenen Satz. Fuer alles andere —
   // etwa `null` statt eines Objekts — bleibt Zods eigene Meldung.
   error: (issue) => (issue.code === 'invalid_union' ? ART_FEHLT : undefined),
 });
 
 export type Lehrplan = z.infer<typeof LehrplanSchema>;
+type Lehrmaterial = Extract<Lehrplan, { art: 'buch' | 'folien' }>;
+export type Abschnitt = Lehrmaterial['abschnitte'][number];
 export type Prinzip = z.infer<typeof PrinzipSchema>;
 
 export type Befund = { ok: true; lehrplan: Lehrplan } | { ok: false; maengel: string[] };
@@ -109,16 +227,29 @@ export type Befund = { ok: true; lehrplan: Lehrplan } | { ok: false; maengel: st
 /**
  * Prueft einen geladenen Lehrplan. Wirft nie.
  *
- * `lektionsIds` sind die Lektionen, die es gibt. Ein Repo prueft sie nicht:
- * Ob ein Prinzip schon eine Lektion hat, ist Abdeckung, keine Gueltigkeit.
+ * `lektionsIds` sind die Lektionen, die es gibt. Ein Abschnitt mit
+ * `status: lektion` muss auf eine davon zeigen — das kann Zod allein nicht
+ * wissen, deshalb steht die Pruefung hier und nicht im Schema. Wer eine leere
+ * Menge hereinreicht, bekommt jeden solchen Abschnitt als Mangel: Die Pruefung
+ * faellt im Zweifel durch, nie durch.
  */
 export function pruefeLehrplan(daten: unknown, lektionsIds: ReadonlySet<string>): Befund {
   const geprueft = LehrplanSchema.safeParse(daten);
-  if (geprueft.success) return { ok: true, lehrplan: geprueft.data };
-  return {
-    ok: false,
-    maengel: geprueft.error.issues.map((m) => `${m.path.join('.') || '(Wurzel)'}: ${m.message}`),
-  };
+  if (!geprueft.success) {
+    return {
+      ok: false,
+      maengel: geprueft.error.issues.map((m) => `${m.path.join('.') || '(Wurzel)'}: ${m.message}`),
+    };
+  }
+  const lehrplan = geprueft.data;
+  if (lehrplan.art === 'repo') return { ok: true, lehrplan };
+
+  const maengel = lehrplan.abschnitte.flatMap((a, i) =>
+    a.lektion !== undefined && !lektionsIds.has(a.lektion)
+      ? [`abschnitte.${i}.lektion: Die Lektion ${a.lektion} gibt es nicht (inhalt/lektionen/${a.lektion}.mdx).`]
+      : [],
+  );
+  return maengel.length > 0 ? { ok: false, maengel } : { ok: true, lehrplan };
 }
 
 /**
