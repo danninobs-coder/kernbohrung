@@ -220,9 +220,11 @@ describe('Reihenfolge', () => {
    * Schrittliste.
    *
    * Node-Probe mit `startfolge()` aus reihenfolge/startfolge.ts, mit den
-   * vier Schritten dieser Testaufgabe:
+   * vier Schritten dieser Testaufgabe (Werte nach der Umkehrungs-Korrektur
+   * neu ermittelt - 'r-test' blieb dabei unveraendert, die rohe Mischung
+   * von 'r-test-2' traf die richtige Folge und wurde deshalb neu gemischt):
    *   startfolge(4, 'r-test')   -> [0,2,3,1]
-   *   startfolge(4, 'r-test-2') -> [1,2,3,0]
+   *   startfolge(4, 'r-test-2') -> [2,0,1,3]
    * Beide Folgen unterscheiden sich schon an erster Stelle - 'r-test-2' ist
    * eine nachweislich andere Mischung, keine beliebig gegriffene zweite id.
    */

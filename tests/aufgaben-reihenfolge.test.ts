@@ -49,34 +49,48 @@ describe('ReihenfolgeSchema', () => {
 });
 
 describe('startfolge', () => {
-  it('ist eine Permutation und gleicht NIE der richtigen Folge', () => {
-    // Die Zusage gilt per Konstruktion: Eine um eine Stelle rotierte Identitaet
-    // ist nie die Identitaet. Diese Stichprobe trifft den Rotationszweig nur
-    // bei kurzen Folgen sicher — den Nachweis je Laenge fuehrt der Test darunter.
+  it('ist eine Permutation und gleicht nie der richtigen Folge noch ihrer Umkehrung', () => {
+    // Wer nur eine einzige Stufe des Ablaufs kennt - den Anfang oder das Ende -,
+    // dreht sonst die ganze Liste um und hat sortiert, ohne etwas dazwischen zu
+    // wissen. Die Umkehrung ist deshalb genauso ausgeschlossen wie die richtige
+    // Folge selbst (siehe startfolge.ts). 2000 Ids je Laenge, ueber jede vom
+    // Schema erlaubte Laenge (schema.ts: `.min(3).max(7)`).
     for (let anzahl = 3; anzahl <= 7; anzahl++) {
-      for (let s = 0; s < 300; s++) {
+      const identitaet = Array.from({ length: anzahl }, (_, i) => i);
+      const umkehrung = [...identitaet].reverse();
+      for (let s = 0; s < 2000; s++) {
         const folge = startfolge(anzahl, `saat-${s}`);
-        expect([...folge].sort((a, b) => a - b)).toEqual(Array.from({ length: anzahl }, (_, i) => i));
-        expect(folge.every((wert, i) => wert === i)).toBe(false);
+        expect([...folge].sort((a, b) => a - b)).toEqual(identitaet);
+        expect(folge).not.toEqual(identitaet);
+        expect(folge).not.toEqual(umkehrung);
       }
     }
   });
 
-  it('durchlaeuft den Rotationszweig bei jeder Laenge nachweislich', () => {
-    // Nachgerechnet: Unter 300 Saaten trifft das Mischen bei sechs und sieben
-    // Schritten kein einziges Mal die richtige Folge. Hier wird je Laenge so
-    // lange gesucht, bis eine Saat sie trifft — und genau die wird geprueft.
+  it('durchlaeuft den Neumisch-Zweig bei jeder Laenge nachweislich', () => {
+    // Ersetzt den frueheren Rotationszweig-Test: Statt bei einem Treffer auf
+    // die richtige Folge um eine Stelle zu rotieren, mischt startfolge() jetzt
+    // mit einer abgeleiteten Folgesaat neu - bei einem Treffer auf die richtige
+    // Folge GENAUSO wie bei einem Treffer auf ihre Umkehrung. Gesucht wird je
+    // Laenge eine Saat, deren erste, unkorrigierte Mischung eine der beiden
+    // trifft; startfolge() darauf angewandt darf keine von beiden mehr sein.
     for (let anzahl = 3; anzahl <= 7; anzahl++) {
+      const identitaet = Array.from({ length: anzahl }, (_, i) => i);
+      const umkehrung = [...identitaet].reverse();
       let geprueft = false;
       for (let s = 0; s < 20000 && !geprueft; s++) {
         const saat = `saat-${s}`;
-        const roh = mischen(Array.from({ length: anzahl }, (_, i) => i), saat);
-        if (roh.every((wert, i) => wert === i)) {
-          expect(startfolge(anzahl, saat).every((wert, i) => wert === i)).toBe(false);
+        const roh = mischen(identitaet, saat);
+        const trifftRichtige = roh.every((wert, i) => wert === identitaet[i]);
+        const trifftUmkehrung = roh.every((wert, i) => wert === umkehrung[i]);
+        if (trifftRichtige || trifftUmkehrung) {
+          const folge = startfolge(anzahl, saat);
+          expect(folge).not.toEqual(identitaet);
+          expect(folge).not.toEqual(umkehrung);
           geprueft = true;
         }
       }
-      expect(geprueft, `keine Saat traf bei Laenge ${anzahl} die Loesung`).toBe(true);
+      expect(geprueft, `keine Saat traf bei Laenge ${anzahl} die richtige Folge oder ihre Umkehrung`).toBe(true);
     }
   });
 
