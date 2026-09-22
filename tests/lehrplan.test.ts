@@ -100,6 +100,12 @@ describe('pruefeLehrplan - Repo', () => {
     expect(pruefeLehrplan({ ...gut, prinzipien: [gut.prinzipien[0]] }, KEINE).ok).toBe(false);
   });
 
+  it('nennt bei nur einem Prinzip die Mindestzahl auf Deutsch', () => {
+    expect(maengelVon(pruefeLehrplan({ ...gut, prinzipien: [gut.prinzipien[0]] }, KEINE))).toEqual([
+      'prinzipien: braucht mindestens 2 Einträge.',
+    ]);
+  });
+
   it(`erlaubt hoechstens ${HOECHSTZAHL} Prinzipien — Verdichten ist die Aufgabe`, () => {
     const viele = Array.from({ length: HOECHSTZAHL + 1 }, (_, i) => ({
       ...gut.prinzipien[0],
@@ -149,6 +155,12 @@ describe('pruefeLehrplan - Repo', () => {
     // Ein Feld, das niemand liest, ist der wahrscheinlichste Ort fuer eine
     // Behauptung, die spaeter niemand belegt.
     expect(pruefeLehrplan({ ...gut, notizen: 'nebenbei' }, KEINE).ok).toBe(false);
+  });
+
+  it('nennt ein unbekanntes Feld auf Deutsch und beim Namen', () => {
+    expect(maengelVon(pruefeLehrplan({ ...gut, autor: 'X' }, KEINE))).toEqual([
+      '(Wurzel): unbekanntes Feld: autor.',
+    ]);
   });
 
   it('weist Titel und Abschnitte bei einem Repo zurueck — die gehoeren zu Buch und Folien', () => {
@@ -274,6 +286,22 @@ describe('lehrplaeneAusTexten', () => {
     expect(gueltig.map((l) => l.quelle)).toEqual(['awesome-llm-apps']);
     expect(ungueltig.map((u) => u.datei)).toEqual(['kaputt.yaml']);
     expect(ungueltig[0]?.maengel.join(' ')).toMatch(/^kaputt\.yaml ist kein gültiges YAML/);
+  });
+
+  it('meldet eine falsche Einrueckung einzeilig, mit Zeile und Spalte statt Quelltextausschnitt', () => {
+    // Js-yaml haengt an seine `.message` sonst den mehrzeiligen Ausschnitt an
+    // — auf der Seite /bibliothek, die Maengel wörtlich zeigt, unlesbar.
+    const { ungueltig } = lehrplaeneAusTexten(
+      { '/lehrplan/schief.yaml': 'art: repo\nquelle: x\n  stand: abc\n' },
+      KEINE,
+    );
+    expect(ungueltig).toEqual([
+      {
+        datei: 'schief.yaml',
+        maengel: ['schief.yaml ist kein gültiges YAML (Zeile 3, Spalte 8): bad indentation of a mapping entry'],
+      },
+    ]);
+    expect(ungueltig[0]?.maengel[0]).not.toContain('\n');
   });
 
   it('legt einen Lehrplan, der auf die Freigabe wartet, zu den ungueltigen — mit der Meldung des Gates', () => {

@@ -94,8 +94,24 @@ describe('Buch und Folien - die Form', () => {
     expect(gilt(folien({ auflage: '3. Auflage' }))).toBe(false);
   });
 
+  it('nennt bei ISBN auf Folien den Grund, statt den Schluessel nur unbekannt zu nennen', () => {
+    expect(maengelVon(folien({ isbn: '978-3-658-00000-0' }))).toBe(
+      '(Wurzel): isbn und auflage stehen nur bei art: buch.',
+    );
+  });
+
+  it('nennt bei Auflage auf Folien denselben Grund', () => {
+    expect(maengelVon(folien({ auflage: '3. Auflage' }))).toBe(
+      '(Wurzel): isbn und auflage stehen nur bei art: buch.',
+    );
+  });
+
   it.each(['quelle', 'titel', 'stand', 'geprueftVon', 'geprueftAm', 'abschnitte'])('verlangt das Feld %s', (feld) => {
     expect(gilt(ohneFeld(folien(), feld))).toBe(false);
+  });
+
+  it('meldet ein fehlendes titel auf Deutsch, ohne Zods englische Standardmeldung', () => {
+    expect(maengelVon(ohneFeld(folien(), 'titel'))).toBe('titel: fehlt.');
   });
 
   it('verlangt mindestens einen Abschnitt', () => {
@@ -125,6 +141,12 @@ describe('Abschnitte - Pflichtfelder und Form', () => {
     expect(gilt(mitAbschnitten(abschnitt({ status: 'fertig' })))).toBe(false);
   });
 
+  it('nennt bei einem unbekannten Status die erlaubten Werte auf Deutsch', () => {
+    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'fertig' })))).toBe(
+      'abschnitte.0.status: ist nicht erlaubt — erlaubt: offen, beauftragt, lektion, abgelehnt.',
+    );
+  });
+
   it('weist einen Seitenbereich zurueck, der rueckwaerts laeuft', () => {
     expect(maengelVon(mitAbschnitten(abschnitt({ seiten: [34, 28] })))).toMatch(
       /erst die erste, dann die letzte Seite/,
@@ -146,6 +168,10 @@ describe('Abschnitte - Pflichtfelder und Form', () => {
     if (e.lehrplan.art === 'repo') throw new Error('Erwartet waren Folien.');
     expect(e.lehrplan.abschnitte[0]?.prinzipien).toEqual([]);
   });
+
+  it('meldet prinzipien: null auf Deutsch — ein YAML-Feld ohne Wert, nicht die fehlende Liste', () => {
+    expect(maengelVon(mitAbschnitten(abschnitt({ prinzipien: null })))).toBe('abschnitte.0.prinzipien: ist leer.');
+  });
 });
 
 describe('Abschnitte - grund und lektion', () => {
@@ -157,6 +183,20 @@ describe('Abschnitte - grund und lektion', () => {
 
   it('nimmt einen abgelehnten Abschnitt mit Grund an', () => {
     expect(gilt(mitAbschnitten(abschnitt({ status: 'abgelehnt', grund: 'reine Titelfolien' })))).toBe(true);
+  });
+
+  it('meldet grund: null bei abgelehnt auf Deutsch — ein leeres YAML-Feld, nicht der fehlende Grund', () => {
+    // `grund:` ohne Wert liest YAML als null. Ohne eigene Meldung zeigte die
+    // Seite Zods englisches „expected string, received null".
+    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'abgelehnt', grund: null })))).toBe(
+      'abschnitte.0.grund: ist leer.',
+    );
+  });
+
+  it('meldet einen leeren Grund auf Deutsch', () => {
+    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'abgelehnt', grund: '' })))).toBe(
+      'abschnitte.0.grund: ist leer.',
+    );
   });
 
   it.each(['offen', 'beauftragt'])('weist einen Grund bei status %s zurueck', (status) => {
@@ -175,6 +215,12 @@ describe('Abschnitte - grund und lektion', () => {
     expect(
       maengelVon(mitAbschnitten(abschnitt({ status: 'offen', lektion: 'pauschal-heisst-nicht-komplett' }))),
     ).toMatch(/lektion steht nur bei status lektion\./);
+  });
+
+  it('meldet lektion: null bei status lektion auf Deutsch — ein leeres YAML-Feld, nicht die fehlende Lektion', () => {
+    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'lektion', lektion: null })))).toBe(
+      'abschnitte.0.lektion: ist leer.',
+    );
   });
 
   it('nimmt einen Abschnitt mit einer Lektion an, die es gibt', () => {
@@ -300,5 +346,40 @@ abschnitte:
       const e = liesLehrplan(datei, path.join(lektionen, 'gibt-es-nicht'));
       expect(e.ok).toBe(false);
     });
+  });
+});
+
+describe('keine englische Meldung', () => {
+  /** Ein fuer sich gueltiger Repo-Lehrplan, nur fuer diese Tabelle. */
+  const repoBasis = {
+    art: 'repo',
+    quelle: 'awesome-llm-apps',
+    stand: 'a13701eae315a81e1011a4304a6b5e741ea0a984',
+    geprueftVon: 'Daniel Nobs',
+    geprueftAm: '2026-09-02',
+    prinzipien: [
+      { id: 'p-1', satz: 'Satz.', warumNichtOffensichtlich: 'Weil.', belege: ['b'], widget: 'Pipeline' },
+      { id: 'p-2', satz: 'Satz.', warumNichtOffensichtlich: 'Weil.', belege: ['b'], widget: 'Pipeline' },
+    ],
+  };
+
+  // Jede Zeile ist fuer sich schon anderswo exakt geprueft; die Tabelle
+  // prueft nur den einen Belang: nie ein Wort aus Zods englischer Vorlage.
+  it.each<[string, unknown]>([
+    ['grund: null bei abgelehnt', mitAbschnitten(abschnitt({ status: 'abgelehnt', grund: null }))],
+    ['leerer grund bei abgelehnt', mitAbschnitten(abschnitt({ status: 'abgelehnt', grund: '' }))],
+    ['lektion: null bei status lektion', mitAbschnitten(abschnitt({ status: 'lektion', lektion: null }))],
+    ['prinzipien: null im Abschnitt', mitAbschnitten(abschnitt({ prinzipien: null }))],
+    ['unbekannter status', mitAbschnitten(abschnitt({ status: 'fertig' }))],
+    ['Folien mit isbn', folien({ isbn: '978-3-658-00000-0' })],
+    ['Repo mit Feld autor', { ...repoBasis, autor: 'X' }],
+    ['Folien ohne titel', ohneFeld(folien(), 'titel')],
+    ['Repo mit nur einem Prinzip', { ...repoBasis, prinzipien: [repoBasis.prinzipien[0]] }],
+    ['seiten als Text statt Liste', mitAbschnitten(abschnitt({ seiten: 'x' }))],
+    ['abschnitte: []', mitAbschnitten()],
+    ['datei als Zahl', mitAbschnitten(abschnitt({ datei: 3 }))],
+  ])('%s', (_name, daten) => {
+    const meldung = maengelVon(daten);
+    expect(meldung).not.toMatch(/Invalid|expected|received|Unrecognized|Too small|Too big/);
   });
 });

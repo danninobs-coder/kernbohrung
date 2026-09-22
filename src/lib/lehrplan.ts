@@ -1,7 +1,7 @@
 import { z } from 'astro/zod';
 // Namentlich, nicht als Vorgabe-Import: js-yaml 5 liefert unter `import` ein
 // ESM-Buendel ohne Default-Export. Siehe werkzeug/pruefe-lektion.mjs.
-import { load as yamlLesen } from 'js-yaml';
+import { load as yamlLesen, YAMLException } from 'js-yaml';
 import { widgetPruefungen } from '../widgets/pruefung.ts';
 
 /**
@@ -196,12 +196,24 @@ const BuchSchema = z
   })
   .superRefine(pruefeAbschnitte);
 
-/** Wie das Buch, aber ohne ISBN und Auflage: `strictObject` weist beide zurueck. */
+/**
+ * Wie das Buch, aber ohne ISBN und Auflage: `strictObject` weist beide zurueck
+ * — mit einem Hinweis statt der blossen Meldung „unbekanntes Feld": Wer aus
+ * einem Buch-Lehrplan kopiert, soll den Grund sofort sehen.
+ */
 const FolienSchema = z
-  .strictObject({
-    art: z.literal('folien'),
-    ...lehrmaterial,
-  })
+  .strictObject(
+    {
+      art: z.literal('folien'),
+      ...lehrmaterial,
+    },
+    {
+      error: (iss) =>
+        iss.code === 'unrecognized_keys' && (iss.keys.includes('isbn') || iss.keys.includes('auflage'))
+          ? 'isbn und auflage stehen nur bei art: buch.'
+          : undefined,
+    },
+  )
   .superRefine(pruefeAbschnitte);
 
 /**
@@ -225,6 +237,63 @@ export type Prinzip = z.infer<typeof PrinzipSchema>;
 
 export type Befund = { ok: true; lehrplan: Lehrplan } | { ok: false; maengel: string[] };
 
+/** Zods Typnamen auf Deutsch, fuer die Meldung bei falscher Form. */
+const ERWARTET: Readonly<Record<string, string>> = {
+  string: 'Text',
+  number: 'eine Zahl',
+  int: 'eine ganze Zahl',
+  array: 'eine Liste',
+  tuple: 'eine Liste',
+  object: 'einen Eintrag mit Feldern',
+};
+
+/** Zods eigene deutsche Uebersetzung — nur als Rueckfall, wenn unten keine Zeile greift. */
+const localeErrorDe = z.locales?.de?.().localeError;
+
+/**
+ * Deutsche Meldung je Pruefung, als Rueckfall fuer `LehrplanSchema.safeParse`.
+ *
+ * Greift nur, wo das Schema selbst keine eigene Meldung traegt: Eine
+ * Schema-Meldung (`.min(1, "…")`, ein eigenes `error` an Feld oder Objekt,
+ * `ctx.addIssue({ message })`) gewinnt bei Zod 4 immer zuerst — das ist hier
+ * mit einem kleinen Vorlauf-Test geprueft, nicht angenommen. Die Meldungen im
+ * Schema selbst (`vorbehalt`, `geprueftVon`, `ART_FEHLT`, die Obergrenzen,
+ * das Id-Muster, Seiten, `grund`/`lektion`, doppelte Ids, Ueberschneidung)
+ * bleiben deshalb unveraendert.
+ */
+const deutscheMeldung: z.core.$ZodErrorMap = (iss) => {
+  switch (iss.code) {
+    case 'invalid_type': {
+      if (iss.input === undefined) return 'fehlt.';
+      if (iss.input === null) return 'ist leer.';
+      return `hat die falsche Form — erwartet ${ERWARTET[iss.expected] ?? iss.expected}.`;
+    }
+    case 'too_small': {
+      if (iss.origin === 'string') {
+        return iss.minimum === 1 ? 'ist leer.' : `ist zu kurz — mindestens ${iss.minimum} Zeichen.`;
+      }
+      if (iss.origin === 'array') {
+        return iss.minimum === 1
+          ? 'braucht mindestens einen Eintrag.'
+          : `braucht mindestens ${iss.minimum} Einträge.`;
+      }
+      if (iss.origin === 'number') return `muss mindestens ${iss.minimum} sein.`;
+      break;
+    }
+    case 'too_big': {
+      if (iss.origin === 'string') return `ist zu lang — höchstens ${iss.maximum} Zeichen.`;
+      if (iss.origin === 'array') return `hat zu viele Einträge — höchstens ${iss.maximum}.`;
+      break;
+    }
+    case 'invalid_value':
+      return `ist nicht erlaubt — erlaubt: ${iss.values.join(', ')}.`;
+    case 'unrecognized_keys':
+      return iss.keys.length === 1 ? `unbekanntes Feld: ${iss.keys[0]}.` : `unbekannte Felder: ${iss.keys.join(', ')}.`;
+  }
+  // Kein globales z.config: Das stellte jede andere Pruefung im Prozess mit um.
+  return localeErrorDe?.(iss) ?? undefined;
+};
+
 /**
  * Prueft einen geladenen Lehrplan. Wirft nie.
  *
@@ -235,7 +304,7 @@ export type Befund = { ok: true; lehrplan: Lehrplan } | { ok: false; maengel: st
  * faellt im Zweifel durch, nie durch.
  */
 export function pruefeLehrplan(daten: unknown, lektionsIds: ReadonlySet<string>): Befund {
-  const geprueft = LehrplanSchema.safeParse(daten);
+  const geprueft = LehrplanSchema.safeParse(daten, { error: deutscheMeldung });
   if (!geprueft.success) {
     return {
       ok: false,
@@ -266,6 +335,16 @@ export function lehrplanAusYaml(text: string, lektionsIds: ReadonlySet<string>, 
   try {
     daten = yamlLesen(text);
   } catch (fehler) {
+    // `fehler.message` haengt bei js-yaml 5 einen mehrzeiligen Quelltextausschnitt
+    // an — auf der Seite, die Maengel woertlich zeigt, unlesbar. Mit Zeile und
+    // Spalte aus `mark` bleibt die Meldung eine Zeile.
+    if (fehler instanceof YAMLException && fehler.mark) {
+      const { line, column } = fehler.mark;
+      return {
+        ok: false,
+        maengel: [`${name} ist kein gültiges YAML (Zeile ${line + 1}, Spalte ${column + 1}): ${fehler.reason}`],
+      };
+    }
     const grund = fehler instanceof Error ? fehler.message : String(fehler);
     return { ok: false, maengel: [`${name} ist kein gültiges YAML: ${grund}`] };
   }
