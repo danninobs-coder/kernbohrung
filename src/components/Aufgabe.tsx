@@ -247,10 +247,10 @@ function urteil(ergebnis: Ergebnis): string {
  */
 function hinweisZu(richtig: boolean, stufe: Stufe): string | null {
   if (!richtig && stufe === 'sicher') {
-    return 'Sicher und daneben — solche Fragen kommen bevorzugt zurück.';
+    return 'Sicher und daneben — solche Aufgaben kommen bevorzugt zurück.';
   }
   if (richtig && stufe === 'geraten') {
-    return 'Getroffen, aber geraten — der Planer holt die Frage früh zurück.';
+    return 'Getroffen, aber geraten — der Planer holt die Aufgabe früh zurück.';
   }
   return null;
 }
