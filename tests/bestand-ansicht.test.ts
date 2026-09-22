@@ -98,7 +98,7 @@ describe('Bestand - die Karte einer Quelle', () => {
 
   it('klappt die Prinzipien mit details und summary auf — ohne ein Skript', async () => {
     const html = await rendere({ bestand: [repo], ohneLehrplan: [] });
-    expect(html).toContain('<details class="quelle-liste"><summary>Alle Prinzipien</summary>');
+    expect(html).toContain('<details class="quelle-liste"><summary>Alle Prinzipien von awesome-llm-apps</summary>');
     expect(html).not.toContain('<script');
   });
 
@@ -117,7 +117,7 @@ describe('Bestand - die Karte einer Quelle', () => {
 
   it('zeigt bei Folien Fundstelle, Grund und Vorbehalt', async () => {
     const html = await rendere({ bestand: [folien], ohneLehrplan: [] });
-    expect(html).toContain('<summary>Alle Abschnitte</summary>');
+    expect(html).toContain('<summary>Alle Abschnitte von Projektmanagement</summary>');
     expect(html).toContain('7 von 35 Folien nur Bild · 2 Tabellen vermutlich zerfallen');
     const lektion = zeileMit(html, 'lektion');
     expect(lektion).toContain('<p class="zeile-fundstelle">M7 Risikomanagement 26.pdf, Folien 28–34</p>');
@@ -157,6 +157,10 @@ describe('Bestand - Warnungen und leerer Bestand', () => {
     );
     expect(html).toContain('<h3>awesome-llm-apps.yaml</h3>');
     expect(html).toContain('<code>geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.</code>');
+    // Wie jede andere wiederholte Sammlung der Seite: eine Liste, kein nacktes div.
+    expect(html).toContain('<li class="ungueltig">');
+    expect(html.indexOf('<ul')).toBeGreaterThanOrEqual(0);
+    expect(html.indexOf('<ul')).toBeLessThan(html.indexOf('<li class="ungueltig">'));
   });
 
   it('warnt nicht, wo es nichts zu warnen gibt', async () => {

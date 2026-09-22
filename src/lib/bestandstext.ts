@@ -84,7 +84,7 @@ export function lueckenzeile(l: Luecken): string {
     case 'dokument': {
       const [eine, viele] = l.einheit === 'folien' ? ['Folie', 'Folien'] : ['Seite', 'Seiten'];
       const teile = [
-        ...(l.nurBild > 0 ? [`${l.nurBild} von ${l.seiten} ${viele} nur Bild`] : []),
+        ...(l.nurBild > 0 ? [`${l.nurBild} von ${anzahl(l.seiten, eine, viele)} nur Bild`] : []),
         ...(l.tabellenverdacht > 0
           ? [`${anzahl(l.tabellenverdacht, 'Tabelle', 'Tabellen')} vermutlich zerfallen`]
           : []),
@@ -108,7 +108,11 @@ export function fundstelle(art: Bestand['art'], z: Zeile): string | null {
   return `${z.datei}, ${von === bis ? `${eine} ${von}` : `${viele} ${von}–${bis}`}`;
 }
 
-/** Die Beschriftung des Knopfs, der die Liste aufklappt. */
+/**
+ * Die Beschriftung des Knopfs, der die Liste aufklappt — mit dem Titel der
+ * Quelle, sonst tragen mehrere `summary` derselben Art denselben Text und
+ * sind in der Elementliste eines Screenreaders nicht zu unterscheiden.
+ */
 export function aufklapptext(b: Bestand): string {
-  return b.art === 'repo' ? 'Alle Prinzipien' : 'Alle Abschnitte';
+  return `${b.art === 'repo' ? 'Alle Prinzipien' : 'Alle Abschnitte'} von ${b.titel}`;
 }

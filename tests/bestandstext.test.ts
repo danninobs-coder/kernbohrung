@@ -61,6 +61,18 @@ describe('kopfzeile', () => {
     );
     expect(kopfzeile(bestand({ art: 'buch', stand: HASH }))).toBe('Buch · Stand sha256:bbbbbbb');
   });
+
+  it('nennt beim Buch nur die ISBN, wenn es keine Auflage gibt', () => {
+    expect(kopfzeile(bestand({ art: 'buch', stand: HASH, isbn: '978-3-658-00000-0' }))).toBe(
+      'Buch · Stand sha256:bbbbbbb · ISBN 978-3-658-00000-0',
+    );
+  });
+
+  it('nennt beim Buch nur die Auflage, wenn es keine ISBN gibt', () => {
+    expect(kopfzeile(bestand({ art: 'buch', stand: HASH, auflage: '3. Auflage' }))).toBe(
+      'Buch · Stand sha256:bbbbbbb · 3. Auflage',
+    );
+  });
 });
 
 describe('zahlenzeile', () => {
@@ -79,6 +91,13 @@ describe('zahlenzeile', () => {
     const z = { gesamt: 38, mitLektion: 11, offen: 18, beauftragt: 4, abgelehnt: 5 };
     expect(zahlenzeile(bestand({ art: 'folien', zaehlung: z }))).toBe(
       '38 Abschnitte · 11 mit Lektion · 18 offen · 4 beauftragt · 5 abgelehnt',
+    );
+  });
+
+  it('nennt Beauftragte auch ohne Abgelehnte', () => {
+    const z = { gesamt: 10, mitLektion: 5, offen: 1, beauftragt: 4, abgelehnt: 0 };
+    expect(zahlenzeile(bestand({ art: 'folien', zaehlung: z }))).toBe(
+      '10 Abschnitte · 5 mit Lektion · 1 offen · 4 beauftragt',
     );
   });
 
@@ -114,6 +133,11 @@ describe('lueckenzeile', () => {
       'keine Folie nur Bild, keine zerfallene Tabelle erkannt',
     ],
     [
+      'genau eine Folie insgesamt, nur Bild',
+      { art: 'dokument', einheit: 'folien', seiten: 1, nurBild: 1, tabellenverdacht: 0 },
+      '1 von 1 Folie nur Bild',
+    ],
+    [
       'ein Buch ohne beides',
       { art: 'dokument', einheit: 'seiten', seiten: 20, nurBild: 0, tabellenverdacht: 0 },
       'keine Seite nur Bild, keine zerfallene Tabelle erkannt',
@@ -147,6 +171,14 @@ describe('fundstelle', () => {
   it('hat fuer ein Prinzip aus einem Repo keine Fundstelle', () => {
     expect(fundstelle('repo', zeile({ datei: undefined, seiten: undefined }))).toBeNull();
   });
+
+  it('hat keine Fundstelle, wenn nur die Datei fehlt', () => {
+    expect(fundstelle('folien', zeile({ datei: undefined }))).toBeNull();
+  });
+
+  it('hat keine Fundstelle, wenn nur die Seiten fehlen', () => {
+    expect(fundstelle('folien', zeile({ seiten: undefined }))).toBeNull();
+  });
 });
 
 describe('Status und Aufklappen', () => {
@@ -159,9 +191,17 @@ describe('Status und Aufklappen', () => {
     });
   });
 
-  it('beschriftet den Knopf nach dem, was die Liste enthaelt', () => {
-    expect(aufklapptext(bestand())).toBe('Alle Prinzipien');
-    expect(aufklapptext(bestand({ art: 'folien' }))).toBe('Alle Abschnitte');
-    expect(aufklapptext(bestand({ art: 'buch' }))).toBe('Alle Abschnitte');
+  it('beschriftet den Knopf nach dem, was die Liste enthaelt, und nennt den Titel der Quelle', () => {
+    expect(aufklapptext(bestand())).toBe('Alle Prinzipien von awesome-llm-apps');
+    expect(aufklapptext(bestand({ art: 'folien' }))).toBe('Alle Abschnitte von awesome-llm-apps');
+    expect(aufklapptext(bestand({ art: 'buch' }))).toBe('Alle Abschnitte von awesome-llm-apps');
+  });
+
+  it('unterscheidet zwei Quellen derselben Art am Knopftext, weil Screenreader sonst gleiche Eintraege lesen', () => {
+    const a = aufklapptext(bestand({ art: 'folien', titel: 'Projektmanagement' }));
+    const b = aufklapptext(bestand({ art: 'folien', titel: 'Bauvertragsrecht' }));
+    expect(a).toBe('Alle Abschnitte von Projektmanagement');
+    expect(b).toBe('Alle Abschnitte von Bauvertragsrecht');
+    expect(a).not.toBe(b);
   });
 });

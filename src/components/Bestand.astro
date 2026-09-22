@@ -82,14 +82,16 @@ const titelVon = (id: string) => lektionstitel.get(id) ?? id;
       Aus diesen Dateien zeigt die Seite keine Zahlen. Auch ein Lehrplan, der noch auf die
       Freigabe wartet — geprueftVon ist leer —, steht hier.
     </p>
-    {ungueltig.map((u) => (
-      <div class="ungueltig">
-        <h3>{u.datei}</h3>
-        <ul>
-          {u.maengel.map((m) => <li><code>{m}</code></li>)}
-        </ul>
-      </div>
-    ))}
+    <ul>
+      {ungueltig.map((u) => (
+        <li class="ungueltig">
+          <h3>{u.datei}</h3>
+          <ul>
+            {u.maengel.map((m) => <li><code>{m}</code></li>)}
+          </ul>
+        </li>
+      ))}
+    </ul>
   </section>
 )}
 
