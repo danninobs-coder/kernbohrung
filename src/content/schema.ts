@@ -39,8 +39,9 @@ export const LektionSchema = z
     // sich nicht belegen laesst oder dem Stand der Forschung widerspricht.
     // Die Lektion zeigt ihn unter dem Satz — Pruefungsstoff bleibt lernbar,
     // ohne dass die App ihn als gesichert ausgibt. Gemessen wie `prinzip`.
+    // Eigene Meldung fuer null: `vorbehalt:` ohne Wert liest YAML als null.
     vorbehalt: z
-      .string()
+      .string({ error: 'vorbehalt ist Text — ohne Vorbehalt das Feld weglassen.' })
       .trim()
       .min(1, 'vorbehalt braucht einen Satz — sonst das Feld weglassen.')
       .max(200, 'vorbehalt soll ein Satz sein, kein Absatz (max. 200 Zeichen).')

@@ -243,4 +243,11 @@ describe('LektionSchema - der Vorbehalt', () => {
     expect(befund.success).toBe(false);
     expect(JSON.stringify(befund.error?.issues)).toContain('vorbehalt braucht einen Satz');
   });
+
+  it('meldet ein leeres YAML-Feld vorbehalt auf Deutsch', () => {
+    // `vorbehalt:` ohne Wert liest YAML als null.
+    const befund = LektionSchema.safeParse(lektion({ vorbehalt: null }));
+    expect(befund.success).toBe(false);
+    expect(JSON.stringify(befund.error?.issues)).toContain('vorbehalt ist Text');
+  });
 });

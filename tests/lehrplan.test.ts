@@ -182,6 +182,14 @@ describe('pruefeLehrplan - Vorbehalt', () => {
       /Ein Vorbehalt braucht einen Satz/,
     );
   });
+
+  it('meldet ein leeres YAML-Feld vorbehalt auf Deutsch', () => {
+    // `vorbehalt:` ohne Wert liest YAML als null. Ohne eigene Meldung zeigte
+    // die Seite Zods englischen Standardtext.
+    expect(maengelVon(pruefeLehrplan(mitVorbehalt(null), KEINE)).join(' ')).toMatch(
+      /Ein Vorbehalt ist Text/,
+    );
+  });
 });
 
 describe('liesLehrplan', () => {

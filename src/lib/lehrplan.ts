@@ -76,8 +76,9 @@ const PrinzipSchema = z.strictObject({
    * als gesichert ausgibt. Nie stillschweigend lehren, nie stillschweigend
    * weglassen.
    */
+  // Eigene Meldung fuer null: `vorbehalt:` ohne Wert liest YAML als null.
   vorbehalt: z
-    .string()
+    .string({ error: 'Ein Vorbehalt ist Text — ohne Vorbehalt das Feld weglassen.' })
     .trim()
     .min(1, 'Ein Vorbehalt braucht einen Satz — sonst das Feld weglassen.')
     .max(200, 'Ein Vorbehalt ist ein Satz, kein Absatz.')
