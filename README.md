@@ -26,7 +26,7 @@ inhalt/lektionen/       Die Lektionen als MDX. Später vom Compiler erzeugt.
 src/content/schema.ts   Frontmatter-Schema. Die Qualitätsschranke, frei von astro:content.
 src/content.config.ts   Collection-Definition, dünn.
 src/widgets/            Widget-Schemas, Prüfstelle, React-Inseln, Astro-Hüllen, Registry.
-src/components/         Frage.tsx (Multiple Choice), Herkunft.astro (Quellen).
+src/components/         Aufgabe.tsx (Hülle, Typen unter src/aufgaben/), Herkunft.astro (Quellen).
 src/layouts/            Seite.astro (HTML-Hülle), Lektion.astro (die Taktfolge).
 src/lib/mischen.ts      Deterministisches Mischen der Antworten, seed-basiert.
 src/pages/              Übersicht und Lektionsroute.
