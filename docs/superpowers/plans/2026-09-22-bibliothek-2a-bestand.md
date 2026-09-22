@@ -823,7 +823,7 @@ Mehr nicht. Der Prüfbefehl darunter (`node -e "import('./werkzeug/lehrplan.mjs'
 ```bash
 cd "C:/Users/dno/Documents/06_Botters/01_Apps/260901_Kernbohrung" && git diff --stat .claude/ && grep -c "^art: repo" .claude/skills/kernbohrung-compiler/SKILL.md && grep -c "src/lib/lehrplan.ts" .claude/skills/kernbohrung-compiler/SKILL.md
 ```
-Erwartet: `1 file changed, 4 insertions(+), 2 deletions(-)`, `1`, `1`.
+Erwartet: `1 file changed, 3 insertions(+), 1 deletion(-)`, `1`, `1`.
 
 - [ ] **Schritt 9: Mutationsproben — was jeder neue Test fängt**
 
@@ -872,7 +872,7 @@ Die Maengel zeigt kuenftig die Seite, deshalb mit Umlauten.
 <CO-AUTHORED-BY>
 MSG
 ```
-Erwartet: `0`, `- 0 errors`, `- 0 warnings`, `- 0 hints`, danach ein Commit.
+Erwartet: `0`, `- 0 errors`, `- 0 warnings`, `- 1 hint`, danach ein Commit. Der Hinweis ist `ts(6133): 'lektionsIds' is declared but its value is never read` in `src/lib/lehrplan.ts` — der Parameter steht schon in der Signatur, benutzt wird er erst in Aufgabe 2 (Abschnitte mit `status: lektion`); dann verschwindet der Hinweis.
 
 ---
 
