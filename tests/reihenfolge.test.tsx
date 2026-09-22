@@ -292,4 +292,31 @@ describe('Reihenfolge', () => {
 
     expect(ansage()?.textContent).toBe(`${vorher[1]} steht jetzt an Stelle 3 von 4.`);
   });
+
+  /**
+   * Nachtrag AC: Das Ergebnis je Zeile auch als Text (WCAG 1.4.1) - vor der
+   * Randfarbe (siehe `data-zustand`, Nachtrag V oben) entschied nichts
+   * Textliches, ob eine Zeile stimmt. Die Marke erscheint erst nach der
+   * Aufloesung: vorher wuerde sie die Loesung verraten, noch bevor die
+   * Zuversicht feststeht.
+   */
+  it('AC: traegt nach der Aufloesung eine Textmarke je Zeile - "richtig" oder die richtige Stelle', () => {
+    const { inPhase } = stelleDar();
+    inPhase('aufgeloest');
+
+    const folge = startfolge(aufgabe.schritte.length, aufgabe.id);
+    const erwartet = folge.map((schritt, stelle) => (schritt === stelle ? 'richtig' : `gehört an Stelle ${schritt + 1}`));
+    const marken = Array.from(document.querySelectorAll('.reihenfolge-zeile')).map(
+      (zeile) => zeile.querySelector('.antwort-marke')?.textContent,
+    );
+    expect(marken).toEqual(erwartet);
+  });
+
+  it('AC: zeigt vor der Aufloesung keine Textmarke je Zeile - weder offen noch abgegeben', () => {
+    const { inPhase } = stelleDar();
+    expect(document.querySelector('.reihenfolge-zeile .antwort-marke')).toBeNull();
+
+    inPhase('abgegeben');
+    expect(document.querySelector('.reihenfolge-zeile .antwort-marke')).toBeNull();
+  });
 });

@@ -103,6 +103,11 @@ export default function Reihenfolge({ aufgabe, phase, onAbgegeben, ergebnissatz 
                   ↓
                 </button>
               </span>
+              {aufgeloest && (
+                <p className="antwort-marke">
+                  {schritt === stelle ? 'richtig' : `gehört an Stelle ${schritt + 1}`}
+                </p>
+              )}
             </li>
           );
         })}

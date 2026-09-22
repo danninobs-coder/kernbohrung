@@ -1543,3 +1543,15 @@ h3 {
     margin-left: auto;
   }
 }
+
+/* Nachtrag AC: Die Ergebnis-Marke je Zeile (Reihenfolge.tsx, Klasse
+   .antwort-marke) steht im selben Flex-Container wie Text und Knoepfe. Ohne
+   Zeilenumbruch quetschte sie sich daneben statt darunter zu stehen - anders
+   als bei wahl und zuordnen, wo die Marke in einem Block-Element steht. */
+.reihenfolge-zeile {
+  flex-wrap: wrap;
+}
+
+.reihenfolge-zeile .antwort-marke {
+  flex-basis: 100%;
+}
