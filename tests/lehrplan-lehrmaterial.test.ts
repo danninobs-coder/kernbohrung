@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { ART_FEHLT, HOECHSTZAHL_JE_ABSCHNITT, pruefeLehrplan } from '../src/lib/lehrplan';
+import { ART_FEHLT, HOECHSTZAHL, HOECHSTZAHL_JE_ABSCHNITT, pruefeLehrplan } from '../src/lib/lehrplan';
 import { liesLehrplan } from '../werkzeug/lehrplan.mjs';
 
 /**
@@ -241,6 +241,35 @@ describe('Abschnitte - grund und lektion', () => {
     );
   });
 
+  // Bisher nur mit status: offen getestet (oben). Abgelehnt und beauftragt
+  // brauchen die eigene Probe: Bei abgelehnt muss der Abschnitt zugleich
+  // einen Grund tragen, sonst greift die andere Regel zuerst.
+  it('weist eine Lektion bei status abgelehnt zurueck, auch mit Grund', () => {
+    expect(
+      maengelVon(
+        mitAbschnitten(
+          abschnitt({ status: 'abgelehnt', grund: 'reine Titelfolien', lektion: 'pauschal-heisst-nicht-komplett' }),
+        ),
+      ),
+    ).toBe('abschnitte.0.lektion: lektion steht nur bei status lektion.');
+  });
+
+  it('weist eine Lektion bei status beauftragt zurueck', () => {
+    expect(
+      maengelVon(mitAbschnitten(abschnitt({ status: 'beauftragt', lektion: 'pauschal-heisst-nicht-komplett' }))),
+    ).toBe('abschnitte.0.lektion: lektion steht nur bei status lektion.');
+  });
+
+  // Spiegelbildlich: grund bisher nur bei offen/beauftragt geprueft (oben).
+  // Bei status lektion muss der Abschnitt zugleich eine Lektion tragen.
+  it('weist einen Grund bei status lektion zurueck, auch mit Lektion', () => {
+    expect(
+      maengelVon(
+        mitAbschnitten(abschnitt({ status: 'lektion', lektion: 'pauschal-heisst-nicht-komplett', grund: 'irgendwas' })),
+      ),
+    ).toBe('abschnitte.0.grund: grund steht nur bei status abgelehnt.');
+  });
+
   it('nimmt einen Abschnitt mit einer Lektion an, die es gibt', () => {
     expect(gilt(mitAbschnitten(abschnitt({ status: 'lektion', lektion: 'pauschal-heisst-nicht-komplett' })))).toBe(
       true,
@@ -318,6 +347,22 @@ describe('Prinzipien je Abschnitt', () => {
     const langer = { ...prinzip, vorbehalt: 'Wort '.repeat(45).trim() };
     expect(maengelVon(mitAbschnitten(abschnitt({ prinzipien: [langer] })))).toMatch(/Ein Vorbehalt ist ein Satz/);
   });
+
+  it(`erlaubt insgesamt mehr als ${HOECHSTZAHL} Prinzipien — die Obergrenze fuer Repos gilt hier nicht`, () => {
+    // Vier Abschnitte zu je drei Prinzipien: zwoelf insgesamt, mehr als
+    // HOECHSTZAHL. Fuer Lehrmaterial tritt an ihre Stelle die Pflicht, jeden
+    // Abschnitt zu entscheiden (siehe Kommentar bei HOECHSTZAHL) — nicht,
+    // insgesamt zu verdichten.
+    expect(4 * HOECHSTZAHL_JE_ABSCHNITT).toBeGreaterThan(HOECHSTZAHL);
+    const vierAbschnitte = Array.from({ length: 4 }, (_, i) =>
+      abschnitt({
+        id: `m07-${i}`,
+        seiten: [i * 10 + 1, i * 10 + 9],
+        prinzipien: prinzipien(HOECHSTZAHL_JE_ABSCHNITT).map((p, j) => ({ ...p, id: `a${i}-prinzip-${j}` })),
+      }),
+    );
+    expect(gilt(mitAbschnitten(...vierAbschnitte))).toBe(true);
+  });
 });
 
 describe('liesLehrplan - Lehrmaterial', () => {
@@ -363,6 +408,58 @@ abschnitte:
     mitOrdner((datei, lektionen) => {
       const e = liesLehrplan(datei, path.join(lektionen, 'gibt-es-nicht'));
       expect(e.ok).toBe(false);
+    });
+  });
+});
+
+describe('liesLehrplan - Standardordner inhalt/lektionen', () => {
+  /**
+   * Ohne zweites Argument greift der Vorgabewert `lektionsordner =
+   * 'inhalt/lektionen'` — relativ zum Arbeitsverzeichnis, hier also der
+   * echte Ordner des Projekts, nicht der Wegwerfordner der Nachbartests. Nur
+   * der Lehrplan selbst liegt in einer Temp-Datei; die Lektion muss deshalb
+   * wirklich unter `inhalt/lektionen/` existieren.
+   */
+  const vorlage = (lektion: string) => `art: folien
+quelle: bauch-projektmanagement
+titel: Projektmanagement
+stand: "sha256:${'a'.repeat(64)}"
+geprueftVon: Daniel Nobs
+geprueftAm: 2026-09-22
+abschnitte:
+  - id: m07-2-vertragsarten
+    titel: Risikomanagement und Vertragswesen
+    datei: M7 Risikomanagement 26.pdf
+    seiten: [28, 34]
+    status: lektion
+    lektion: ${lektion}
+`;
+
+  function mitLehrplan(lektion: string, pruefe: (datei: string) => void): void {
+    const ordner = mkdtempSync(path.join(tmpdir(), 'lehrplan-standardordner-'));
+    try {
+      const datei = path.join(ordner, 'plan.yaml');
+      writeFileSync(datei, vorlage(lektion), 'utf8');
+      pruefe(datei);
+    } finally {
+      rmSync(ordner, { recursive: true, force: true });
+    }
+  }
+
+  it('findet eine echte Lektion ueber den Standardordner, ohne zweites Argument', () => {
+    mitLehrplan('pauschal-heisst-nicht-komplett', (datei) => {
+      const e = liesLehrplan(datei);
+      if (!e.ok) throw new Error(e.maengel.join('\n'));
+      expect(e.ok).toBe(true);
+    });
+  });
+
+  it('weist ueber denselben Standardordner eine Lektion zurueck, die es nicht gibt', () => {
+    mitLehrplan('gibt-es-nicht', (datei) => {
+      const e = liesLehrplan(datei);
+      expect(e.ok).toBe(false);
+      if (e.ok) return;
+      expect(e.maengel.join(' ')).toContain('Die Lektion gibt-es-nicht gibt es nicht');
     });
   });
 });
