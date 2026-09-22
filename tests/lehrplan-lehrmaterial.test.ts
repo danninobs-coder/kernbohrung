@@ -94,7 +94,7 @@ describe('Buch und Folien - die Form', () => {
     expect(gilt(folien({ auflage: '3. Auflage' }))).toBe(false);
   });
 
-  it.each(['titel', 'stand', 'geprueftVon', 'geprueftAm', 'abschnitte'])('verlangt das Feld %s', (feld) => {
+  it.each(['quelle', 'titel', 'stand', 'geprueftVon', 'geprueftAm', 'abschnitte'])('verlangt das Feld %s', (feld) => {
     expect(gilt(ohneFeld(folien(), feld))).toBe(false);
   });
 
