@@ -410,7 +410,11 @@ export function speicher(oeffnen: Oeffner = idbOeffner()): Speicher {
         schluessel.forEach((k, i) => {
           einstellungen[k] = werte[i];
         });
-        return { ereignisse, karten, einstellungen };
+        // Derselbe Sicherheitsgurt wie in ereignisse(): Ohne ihn stuende ein
+        // Satz, der die Migration umgangen hat, in alter Form im Auszug,
+        // obwohl `fassung` schon 2 sagt.
+        const gehoben = (ereignisse as (Ereignis | EreignisV1)[]).map(hebeAufV2);
+        return { ereignisse: gehoben, karten, einstellungen };
       });
 
       // Auch im Fehlerfall gueltiges JSON mit leeren Listen. Der Ausfuhrknopf

@@ -733,3 +733,52 @@ describe('ereignisse() hebt auch dann, wenn ein Satz die Migration umgangen hat'
     await s.schliessen();
   });
 });
+
+/**
+ * Derselbe Sicherheitsgurt, nur am Ausfuhrknopf.
+ *
+ * `alsJson()` liest die Ereignisse ueber eine eigene Transaktion, nicht ueber
+ * `ereignisse()` — der Gurt aus dem Test oben deckt deshalb nur den einen Weg
+ * ab, nicht den anderen. Ohne `.map(hebeAufV2)` an dieser zweiten Stelle
+ * stuende ein von Hand nachtraeglich eingelegter Satz in alter Form im
+ * Auszug, obwohl `fassung` schon 2 sagt — und die Datei sieht vollstaendig
+ * aus, obwohl sie es nicht ist.
+ */
+describe('alsJson hebt auch dann, wenn ein Satz die Migration umgangen hat', () => {
+  it('gibt einen von Hand nachtraeglich eingelegten Satz im Auszug gehoben zurueck', async () => {
+    const name = neuerName();
+    // Wie im Test oben: Die Datenbank steht schon bei Fassung 2, der alte
+    // Satz landet erst DANACH direkt im Speicher.
+    const alt = await idbOeffner(name, SCHRITTE)();
+    const roh = alt as unknown as IDBPDatabase;
+    await roh.add('ereignisse', {
+      lektion: 'rvp',
+      frage: 'rvp-1',
+      zuversicht: 'sicher',
+      richtig: false,
+      gewaehlt: 'Ein Reranker dahinter',
+      dauerMs: 900,
+      zeitpunkt: '2026-09-16T09:00:00.000Z',
+    });
+    alt.close();
+
+    const s = speicher(idbOeffner(name, SCHRITTE));
+    const ausfuhr = JSON.parse(await s.alsJson(JETZT)) as Ausfuhr;
+    expect(ausfuhr.fassung).toBe(FASSUNG);
+    expect(ausfuhr.ereignisse).toEqual([
+      {
+        lektion: 'rvp',
+        frage: 'rvp-1',
+        typ: 'wahl',
+        zuversicht: 'sicher',
+        richtig: false,
+        anteil: 0,
+        antwort: 'Ein Reranker dahinter',
+        merkmal: 'Ein Reranker dahinter',
+        dauerMs: 900,
+        zeitpunkt: '2026-09-16T09:00:00.000Z',
+      },
+    ]);
+    await s.schliessen();
+  });
+});
