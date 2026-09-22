@@ -35,6 +35,16 @@ export const LektionSchema = z
       .trim()
       .min(1)
       .max(200, 'prinzip soll ein Satz sein, kein Absatz (max. 200 Zeichen).'),
+    // Der Vorbehalt kommt aus dem Lehrplan: Die Quelle behauptet etwas, das
+    // sich nicht belegen laesst oder dem Stand der Forschung widerspricht.
+    // Die Lektion zeigt ihn unter dem Satz — Pruefungsstoff bleibt lernbar,
+    // ohne dass die App ihn als gesichert ausgibt. Gemessen wie `prinzip`.
+    vorbehalt: z
+      .string()
+      .trim()
+      .min(1, 'vorbehalt braucht einen Satz — sonst das Feld weglassen.')
+      .max(200, 'vorbehalt soll ein Satz sein, kein Absatz (max. 200 Zeichen).')
+      .optional(),
     reihenfolge: z.number().int().positive(),
     gesperrt: z.boolean().default(false),
     // Bis zur Aufgabenfamilie hiess das Feld `fragen`. Ein nicht-striktes

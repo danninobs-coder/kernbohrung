@@ -42,6 +42,14 @@ const { id, daten } = Astro.props;
           die Reihenfolge nicht. */}
       <p class="augenbraue">Takt 3 · Der Satz</p>
       <p class="prinzip">{daten.prinzip}</p>
+      {/* Der Vorbehalt gehoert zum Satz und steht deshalb in seinem Takt,
+          unmittelbar darunter: Die Quelle behauptet hier etwas, das sich
+          nicht belegen laesst. Sichtbar, nicht im Kleingedruckten — und
+          ohne Vorbehalt gar nicht, auch nicht als leerer Kasten. Das Wort
+          „Vorbehalt:" steht im Text, damit es auch vorgelesen wird. */}
+      {daten.vorbehalt !== undefined && (
+        <p class="vorbehalt"><strong>Vorbehalt:</strong> {daten.vorbehalt}</p>
+      )}
     </section>
 
     {/*

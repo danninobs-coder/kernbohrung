@@ -225,3 +225,22 @@ describe('LektionSchema - die Aufgabenfamilie', () => {
     expect(LektionSchema.safeParse(kaputt).success).toBe(false);
   });
 });
+
+describe('LektionSchema - der Vorbehalt', () => {
+  it('nimmt eine Lektion mit Vorbehalt an und gibt ihn getrimmt zurueck', () => {
+    const d = LektionSchema.parse(lektion({ vorbehalt: '  Für diese Quoten gibt es keine belastbare Studie.  ' }));
+    expect(d.vorbehalt).toBe('Für diese Quoten gibt es keine belastbare Studie.');
+  });
+
+  it('weist einen Vorbehalt zurueck, der ein Absatz ist', () => {
+    const befund = LektionSchema.safeParse(lektion({ vorbehalt: 'Wort '.repeat(45).trim() }));
+    expect(befund.success).toBe(false);
+    expect(JSON.stringify(befund.error?.issues)).toContain('vorbehalt soll ein Satz sein, kein Absatz');
+  });
+
+  it('weist einen leeren Vorbehalt zurueck, statt ihn als keinen zu lesen', () => {
+    const befund = LektionSchema.safeParse(lektion({ vorbehalt: '   ' }));
+    expect(befund.success).toBe(false);
+    expect(JSON.stringify(befund.error?.issues)).toContain('vorbehalt braucht einen Satz');
+  });
+});
