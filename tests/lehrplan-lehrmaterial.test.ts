@@ -114,6 +114,24 @@ describe('Buch und Folien - die Form', () => {
     expect(maengelVon(ohneFeld(folien(), 'titel'))).toBe('titel: fehlt.');
   });
 
+  it('weist einen gekuerzten sha256-Stand zurueck — 63 statt 64 Zeichen', () => {
+    expect(maengelVon(folien({ stand: `sha256:${'a'.repeat(63)}` }))).toBe(
+      'stand: stand ist der Hash aus dem Manifest — sha256: und 64 Zeichen aus 0–9 und a–f.',
+    );
+  });
+
+  it('weist einen Stand ohne das sha256-Praefix zurueck, auch bei 64 Zeichen', () => {
+    expect(maengelVon(folien({ stand: 'a'.repeat(64) }))).toBe(
+      'stand: stand ist der Hash aus dem Manifest — sha256: und 64 Zeichen aus 0–9 und a–f.',
+    );
+  });
+
+  it('weist eine Quelle mit Grossbuchstaben und Leerzeichen zurueck — sie ist der Ordnername unter quellen/', () => {
+    expect(maengelVon(folien({ quelle: 'Awesome LLM' }))).toBe(
+      'quelle: quelle ist der Kurzname des Ordners unter quellen/ — nur Kleinbuchstaben, Ziffern und Bindestrich.',
+    );
+  });
+
   it('verlangt mindestens einen Abschnitt', () => {
     expect(maengelVon(mitAbschnitten())).toMatch(/mindestens einen Abschnitt/);
   });

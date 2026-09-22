@@ -169,6 +169,26 @@ describe('pruefeLehrplan - Repo', () => {
   });
 });
 
+describe('pruefeLehrplan - Repo, stand und quelle', () => {
+  it('weist einen gekuerzten Stand zurueck — der Vergleich mit dem Manifest braucht den vollen Commit', () => {
+    expect(maengelVon(pruefeLehrplan({ ...gut, stand: 'a13701e' }, KEINE))).toEqual([
+      'stand: stand ist der volle Commit aus dem Manifest — 40 Zeichen aus 0–9 und a–f.',
+    ]);
+  });
+
+  it('weist einen Stand mit Grossbuchstaben zurueck', () => {
+    expect(
+      maengelVon(pruefeLehrplan({ ...gut, stand: 'A13701EAE315A81E1011A4304A6B5E741EA0A984' }, KEINE)),
+    ).toEqual(['stand: stand ist der volle Commit aus dem Manifest — 40 Zeichen aus 0–9 und a–f.']);
+  });
+
+  it('weist eine Quelle mit Grossbuchstaben und Leerzeichen zurueck — sie ist der Ordnername unter quellen/', () => {
+    expect(maengelVon(pruefeLehrplan({ ...gut, quelle: 'Awesome LLM' }, KEINE))).toEqual([
+      'quelle: quelle ist der Kurzname des Ordners unter quellen/ — nur Kleinbuchstaben, Ziffern und Bindestrich.',
+    ]);
+  });
+});
+
 describe('pruefeLehrplan - Vorbehalt', () => {
   it('nimmt ein Prinzip mit Vorbehalt an und gibt ihn zurueck', () => {
     const satz = 'Für diese Quoten gibt es keine belastbare Studie.';

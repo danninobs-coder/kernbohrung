@@ -43,6 +43,27 @@ export type Status = (typeof STATUS)[number];
 const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const IdSchema = z.string().regex(ID, 'nur Kleinbuchstaben, Ziffern und Bindestrich.');
 
+/** `quelle` ist der Ordnername unter `quellen/` — dasselbe Muster wie eine Id, eigene Meldung. */
+const QuelleSchema = z
+  .string()
+  .trim()
+  .regex(ID, 'quelle ist der Kurzname des Ordners unter quellen/ — nur Kleinbuchstaben, Ziffern und Bindestrich.');
+
+/** Der volle Commit-Hash aus dem Manifest eines Git-Repos — ein Kurz-SHA waere „anderer Stand", obwohl derselbe Commit gemeint ist. */
+const RepoStandSchema = z
+  .string()
+  .trim()
+  .regex(/^[0-9a-f]{40}$/, 'stand ist der volle Commit aus dem Manifest — 40 Zeichen aus 0–9 und a–f.');
+
+/** Der sha256-Hash ueber die Originale aus dem Manifest von Buch und Folien. */
+const LehrmaterialStandSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^sha256:[0-9a-f]{64}$/,
+    'stand ist der Hash aus dem Manifest — sha256: und 64 Zeichen aus 0–9 und a–f.',
+  );
+
 /**
  * Die Meldung steht zweimal da, und das ist der Punkt: `.min(1, …)` greift
  * nur, wenn ein String da ist und zu kurz. Fehlt das Feld ganz — der
@@ -88,8 +109,8 @@ const PrinzipSchema = z.strictObject({
 const RepoSchema = z
   .strictObject({
     art: z.literal('repo'),
-    quelle: z.string().trim().min(1),
-    stand: z.string().trim().min(7),
+    quelle: QuelleSchema,
+    stand: RepoStandSchema,
     geprueftVon: GeprueftVonSchema,
     geprueftAm: z.string().trim().min(1),
     prinzipien: z
@@ -178,10 +199,10 @@ function pruefeAbschnitte(l: { abschnitte: readonly AbschnittRoh[] }, ctx: z.Ref
 
 /** Was Buch und Folien teilen: eine Form, zwei Gliederer — die sind Sache des Adapters. */
 const lehrmaterial = {
-  quelle: z.string().trim().min(1),
+  quelle: QuelleSchema,
   titel: z.string().trim().min(1),
   /** Der Hash ueber die Originale, aus dem Manifest. */
-  stand: z.string().trim().min(7),
+  stand: LehrmaterialStandSchema,
   geprueftVon: GeprueftVonSchema,
   geprueftAm: z.string().trim().min(1),
   abschnitte: z.array(AbschnittSchema).min(1, 'Ein Lehrplan aus Lehrmaterial hat mindestens einen Abschnitt.'),
