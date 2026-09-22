@@ -175,7 +175,7 @@ Die Reihenfolge legt das Layout fest. Du lieferst Teile:
 | 1 Der Widerspruch | MDX-Rumpf | Prosa: warum ist das nicht offensichtlich? |
 | 2 Das Bild | MDX-Rumpf | der Widget-Aufruf |
 | 3 Der Satz | Frontmatter `prinzip` | das Prinzip in einem Satz |
-| 4 Die Probe | Frontmatter `fragen` | zwei bis vier Fragen |
+| 4 Die Probe | Frontmatter `aufgaben` | zwei bis sechs Aufgaben, jede mit `typ` — bis der Skill die übrigen Typen lernt: `typ: wahl` |
 | 5 Der Transfer | Frontmatter `transfer` | eine Frage auf einen fremden Fall |
 | 6 Die Herkunft | Frontmatter `quellen` | die Belege |
 

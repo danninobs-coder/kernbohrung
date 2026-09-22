@@ -3,8 +3,9 @@ titel: "Der Kontrollfluss folgt der Modellstärke"
 prinzip: "Je schwächer das Modell, desto weiter wandert der Kontrollfluss aus dem Prompt in den Code."
 reihenfolge: 3
 gesperrt: false
-fragen:
-  - id: kfm-1
+aufgaben:
+  - typ: wahl
+    id: kfm-1
     frage: "Ein System routet zwischen Korpus und Websuche mit dem Satz „Durchsuche zuerst deine Wissensbasis. Findest du nichts, suche im Netz.“ Es läuft gut mit einem großen gehosteten Modell. Nach der Umstellung auf ein lokales 1,5-Milliarden-Modell antwortet es oft ohne Abruf. Was ist die naheliegendste Erklärung?"
     antworten:
       - text: "Der Satz ist eine Anweisung, kein Kontrollfluss — und ihre Befolgung ist eine Modellfähigkeit"
@@ -19,7 +20,8 @@ fragen:
       - text: "Lokale Modelle haben keinen Werkzeugzugriff"
         richtig: false
         begruendung: "Viele haben ihn, wenn auch unzuverlässiger. Und selbst mit Zugriff bleibt die Frage offen, ob das Modell die Anweisung befolgt, ihn zu benutzen."
-  - id: kfm-2
+  - typ: wahl
+    id: kfm-2
     frage: "Warum ist es kein Widerspruch, dass dasselbe Vorhaben einmal als dreizeilige Anweisung und einmal als Verzweigung mit Schwellwert und Schalter umgesetzt ist?"
     antworten:
       - text: "Beide setzen dieselbe Entscheidung um, nur an verschiedenen Orten — die Wahl des Ortes hängt daran, wem man sie zutraut"
@@ -34,7 +36,8 @@ fragen:
       - text: "Die Verzweigung ist nötig, weil lokale Modelle keine Zustände halten können"
         richtig: false
         begruendung: "Zustand halten beide nicht; das übernimmt in jedem Fall die Anwendung. Der Unterschied liegt in der Befolgung von Anweisungen, nicht im Gedächtnis."
-  - id: kfm-3
+  - typ: wahl
+    id: kfm-3
     frage: "Was folgt aus diesem Prinzip für die Auswahl eines Modells?"
     antworten:
       - text: "Der Modellwechsel ist eine Architekturentscheidung, keine Konfigurationsänderung"
@@ -50,6 +53,7 @@ fragen:
         richtig: false
         begruendung: "Klingt richtig und ist nicht erreichbar. Ob eine Anweisung befolgt wird, ist eine Eigenschaft des Modells — die Kopplung besteht, ob man sie benennt oder nicht."
 transfer:
+  typ: wahl
   id: kfm-transfer
   frage: "Eine Baufirma gibt einem erfahrenen Polier die Anweisung: „Prüfe die Bewehrung, und wenn etwas nicht stimmt, halte den Betoniertermin an.“ Bei einem neuen, unerfahrenen Polier ersetzt die Bauleitung dieselbe Anweisung durch eine Checkliste mit Freigabeunterschrift. Was beschreibt den Unterschied?"
   antworten:

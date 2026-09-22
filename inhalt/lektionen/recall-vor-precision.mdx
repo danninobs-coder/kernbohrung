@@ -3,8 +3,9 @@ titel: "Recall und Precision sind zwei Probleme, nicht eins"
 prinzip: "Recall entsteht beim Holen, Precision beim Sortieren — repariere sie mit verschiedenen Werkzeugen, und in dieser Reihenfolge."
 reihenfolge: 1
 gesperrt: true
-fragen:
-  - id: rvp-1
+aufgaben:
+  - typ: wahl
+    id: rvp-1
     frage: "Du hängst einen Reranker hinter die Suche. Welche Größe kann sich dadurch nicht verbessern?"
     antworten:
       - text: "Der Recall der Kandidatenmenge"
@@ -19,7 +20,8 @@ fragen:
       - text: "Der Anteil relevanter Dokumente im Kontextfenster"
         richtig: false
         begruendung: "Das ist Precision unter anderem Namen, und die verbessert der Reranker."
-  - id: rvp-2
+  - typ: wahl
+    id: rvp-2
     frage: "Ein bestimmtes Dokument taucht in den Suchergebnissen überhaupt nicht auf, auch nicht unter 200 Kandidaten. Was hilft?"
     antworten:
       - text: "Ein größeres Reranker-Modell einsetzen"
@@ -34,7 +36,8 @@ fragen:
       - text: "Die Chunks verkleinern"
         richtig: false
         begruendung: "Kleinere Chunks ändern die Granularität, nicht die Art der Ähnlichkeit. Was semantisch danebenliegt, liegt auch in kleineren Stücken daneben."
-  - id: rvp-3
+  - typ: wahl
+    id: rvp-3
     frage: "Warum lautet die Reihenfolge erst Recall, dann Precision — und nicht umgekehrt?"
     antworten:
       - text: "Weil Precision-Maßnahmen auf der Kandidatenmenge aufsetzen und deren Obergrenze nicht überschreiten können"
@@ -50,6 +53,7 @@ fragen:
         richtig: false
         begruendung: "Reranker lernen nicht an deinen Daten, sie bewerten Paare aus Anfrage und Dokument. Das Problem ist keine Überanpassung, sondern eine Obergrenze."
 transfer:
+  typ: wahl
   id: rvp-transfer
   frage: "In einem Bewerbungsverfahren gehen 400 Bewerbungen ein. Ein Stichwortfilter lässt 40 durch, eine Fachjury wählt daraus 5 aus. Die Jury beklagt, unter den 5 sei kaum jemand Passendes. Wo liegt das Problem am wahrscheinlichsten?"
   antworten:

@@ -1,0 +1,77 @@
+---
+import type { Lektion } from '../content/schema';
+import Seite from './Seite.astro';
+import Aufgabe from '../components/Aufgabe.tsx';
+import Herkunft from '../components/Herkunft.astro';
+
+/**
+ * Der einzige Ort im Projekt, der die Reihenfolge der sechs Takte kennt.
+ *
+ * Takt 1 (Der Widerspruch) und Takt 2 (Das Bild) kommen ueber den Slot, Takt 3
+ * bis 6 aus `daten`. Inhalt liefert damit Teile, nie Struktur: eine generierte
+ * Lektion kann den Rhythmus nicht umstellen, weil sie ihn gar nicht in der
+ * Hand hat. Takt 2 ist wahlfrei — eine Lektion ohne Widget hat im Slot nur den
+ * Widerspruch.
+ *
+ * Entscheidend ist die Stellung des Slots vor Takt 3 — erst spielen, dann
+ * erklaeren. Wer diese beiden Abschnitte tauscht, kippt die Didaktik, nicht das
+ * Layout.
+ *
+ * Diese Datei nimmt ein Datenobjekt und weiss nichts von `astro:content`. Das
+ * ist der Schnitt fuer Lektionen, die spaeter nicht aus der Sammlung kommen.
+ */
+interface Props {
+  /** Kennung der Lektion — mit der Aufgaben-Id der Schluessel im Speicher. */
+  id: string;
+  daten: Lektion;
+}
+
+const { id, daten } = Astro.props;
+---
+<Seite titel={daten.titel}>
+  <article class="lektion">
+    <h1>{daten.titel}</h1>
+
+    <section class="takt" data-takt="widerspruch-und-bild">
+      <slot />
+    </section>
+
+    <section class="takt" data-takt="satz">
+      {/* Die Augenbrauen benennen den Takt, den die Datei ohnehin kennt.
+          Sie sind Beschriftung, keine Struktur: wer sie entfernt, aendert
+          die Reihenfolge nicht. */}
+      <p class="augenbraue">Takt 3 · Der Satz</p>
+      <p class="prinzip">{daten.prinzip}</p>
+    </section>
+
+    {/*
+      client:idle statt client:visible, gemessen begruendet: Das Buendel der
+      Aufgabe ist klein gegen die React-Laufzeit, die ohnehin geladen wird.
+      Aufgeschobenes Hydrieren spart hier nichts und handelt sich dafuer einen
+      Ausfallmodus ein: client:visible haengt an einem IntersectionObserver,
+      und der feuert nicht, solange das Dokument als versteckt gilt — im
+      Hintergrundtab, bei Vorabdarstellung, in eingebetteten Ansichten. Ein
+      Knopf, der nicht reagiert, ist bei einer Lern-App kein Randfall, sondern
+      die kaputte Hauptsache.
+    */}
+    <section class="takt" data-takt="probe">
+      <p class="augenbraue">Takt 4 · Die Probe</p>
+      <h2>Die Probe</h2>
+      {daten.aufgaben.map((aufgabe) => (
+        <Aufgabe client:idle lektion={id} aufgabe={aufgabe} />
+      ))}
+    </section>
+
+    <section class="takt" data-takt="transfer">
+      <p class="augenbraue">Takt 5 · Der Transfer</p>
+      <h2>Der Transfer</h2>
+      <Aufgabe client:idle lektion={id} aufgabe={daten.transfer} />
+    </section>
+
+    <section class="takt" data-takt="herkunft">
+      <p class="augenbraue">Takt 6 · Herkunft</p>
+      <h2>Herkunft</h2>
+      <Herkunft quellen={daten.quellen} />
+    </section>
+  </article>
+</Seite>

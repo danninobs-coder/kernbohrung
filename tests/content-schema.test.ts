@@ -19,9 +19,47 @@ function antwort(text: string, richtig = false, begruendung?: string) {
 
 function frage(id: string) {
   return {
+    typ: 'wahl',
     id,
     frage: 'Was sortiert ein Reranker?',
     antworten: [antwort('Die Kandidaten', true), antwort('Den Index'), antwort('Die Anfrage')],
+  };
+}
+
+// Fixtures fuer die uebrigen drei Typen — nur fuer die Tests zur
+// Aufgabenfamilie unten gebraucht, deshalb ohne eigene Variationsbreite.
+function fall(id: string) {
+  return {
+    typ: 'fall',
+    id,
+    sachverhalt: 'Ein Sachverhalt mit ausreichend vielen Zeichen fuer die Mindestlaenge von vierzig.',
+    aufgabe: 'Beurteile den Fall.',
+    pruefpunkte: [
+      { text: 'Nennt die Frist', pflicht: true },
+      { text: 'Nennt den Kostentraeger', pflicht: false },
+    ],
+  };
+}
+
+function zuordnen(id: string) {
+  return {
+    typ: 'zuordnen',
+    id,
+    aufgabe: 'Ordne zu.',
+    paare: [
+      { links: 'A', rechts: '1' },
+      { links: 'B', rechts: '2' },
+      { links: 'C', rechts: '3' },
+    ],
+  };
+}
+
+function reihenfolge(id: string) {
+  return {
+    typ: 'reihenfolge',
+    id,
+    aufgabe: 'Ordne.',
+    schritte: ['erst', 'dann', 'zuletzt'],
   };
 }
 
@@ -30,7 +68,7 @@ function lektion(aenderung: Record<string, unknown> = {}) {
     titel: 'Eine Lektion',
     prinzip: 'Recall entsteht beim Holen, Precision beim Sortieren.',
     reihenfolge: 1,
-    fragen: [frage('f-1'), frage('f-2')],
+    aufgaben: [frage('f-1'), frage('f-2')],
     transfer: frage('f-transfer'),
     quellen: [{ pfad: 'rag_tutorials/hybrid_search_rag' }],
     ...aenderung,
@@ -54,7 +92,7 @@ describe('LektionSchema - die sechs Loecher', () => {
   it('1. zaehlt die Laenge erst nach dem Trimmen', () => {
     function mitBegruendung(begruendung: string) {
       return lektion({
-        fragen: [
+        aufgaben: [
           {
             ...frage('f-1'),
             antworten: [
@@ -83,7 +121,7 @@ describe('LektionSchema - die sechs Loecher', () => {
 
   it('2. lehnt doppelte Antworttexte ab, auch nur durch Leerraum getrennt', () => {
     const kaputt = lektion({
-      fragen: [
+      aufgaben: [
         {
           ...frage('f-1'),
           antworten: [antwort('Die Kandidaten', true), antwort('Den Index'), antwort('Den Index ')],
@@ -99,7 +137,7 @@ describe('LektionSchema - die sechs Loecher', () => {
   it('3. lehnt dieselbe Begruendung unter zwei Antworten ab', () => {
     const geteilt = 'Dieselbe Begruendung unter zwei Antworten kopiert.';
     const kaputt = lektion({
-      fragen: [
+      aufgaben: [
         {
           ...frage('f-1'),
           antworten: [
@@ -120,7 +158,7 @@ describe('LektionSchema - die sechs Loecher', () => {
     const fuellung = 'aaaaaaaaaaaaaaaaaaaa';
     expect(fuellung.length).toBeGreaterThanOrEqual(20);
     const kaputt = lektion({
-      fragen: [
+      aufgaben: [
         {
           ...frage('f-1'),
           antworten: [
@@ -135,14 +173,14 @@ describe('LektionSchema - die sechs Loecher', () => {
     expect(LektionSchema.safeParse(kaputt).success).toBe(false);
   });
 
-  it('5. lehnt eine Kollision zwischen fragen[].id und transfer.id ab', () => {
+  it('5. lehnt eine Kollision zwischen aufgaben[].id und transfer.id ab', () => {
     const kaputt = lektion({ transfer: frage('f-1') });
     const ergebnis = LektionSchema.safeParse(kaputt);
     expect(ergebnis.success).toBe(false);
     expect(JSON.stringify(ergebnis.error?.issues)).toContain('eindeutig');
 
-    // und ebenso zwei gleiche Ids unter den Fragen selbst
-    expect(LektionSchema.safeParse(lektion({ fragen: [frage('f-1'), frage('f-1')] })).success).toBe(
+    // und ebenso zwei gleiche Ids unter den Aufgaben selbst
+    expect(LektionSchema.safeParse(lektion({ aufgaben: [frage('f-1'), frage('f-1')] })).success).toBe(
       false,
     );
   });
@@ -151,5 +189,39 @@ describe('LektionSchema - die sechs Loecher', () => {
     const absatz = 'Wort '.repeat(60).trim();
     expect(absatz.length).toBeGreaterThan(200);
     expect(LektionSchema.safeParse(lektion({ prinzip: absatz })).success).toBe(false);
+  });
+});
+
+describe('LektionSchema - die Aufgabenfamilie', () => {
+  it('weist das alte Feld fragen zurueck und sagt, wie es jetzt heisst', () => {
+    const { aufgaben: _aufgaben, ...ohne } = lektion();
+    const befund = LektionSchema.safeParse({ ...ohne, fragen: [frage('f-1'), frage('f-2')] });
+    expect(befund.success).toBe(false);
+    if (befund.success) return;
+    expect(befund.error.issues.map((i) => i.message).join(' | ')).toMatch(/fragen heißt jetzt aufgaben/);
+  });
+
+  it('nimmt zwei bis sechs Aufgaben an und weist eine sowie sieben zurueck', () => {
+    const viele = (n: number) => Array.from({ length: n }, (_, i) => frage(`f-${i}`));
+    expect(LektionSchema.safeParse(lektion({ aufgaben: viele(1) })).success).toBe(false);
+    expect(LektionSchema.safeParse(lektion({ aufgaben: viele(2) })).success).toBe(true);
+    expect(LektionSchema.safeParse(lektion({ aufgaben: viele(6) })).success).toBe(true);
+    expect(LektionSchema.safeParse(lektion({ aufgaben: viele(7) })).success).toBe(false);
+  });
+
+  it('nimmt eine Lektion mit allen vier Aufgabentypen an, Transfer ein fall', () => {
+    const gemischt = lektion({
+      aufgaben: [frage('f-1'), fall('c-1'), zuordnen('z-1'), reihenfolge('r-1')],
+      transfer: fall('c-transfer'),
+    });
+    const befund = LektionSchema.safeParse(gemischt);
+    if (!befund.success) throw new Error(JSON.stringify(befund.error.issues, null, 2));
+    expect(befund.success).toBe(true);
+  });
+
+  it('weist eine Aufgabe ohne typ zurueck', () => {
+    const { typ: _typ, ...ohneTyp } = frage('f-1');
+    const kaputt = lektion({ aufgaben: [ohneTyp, frage('f-2')] });
+    expect(LektionSchema.safeParse(kaputt).success).toBe(false);
   });
 });

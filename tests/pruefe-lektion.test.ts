@@ -15,8 +15,9 @@ titel: "Ein Prinzip"
 prinzip: "Ein Satz, der etwas behauptet."
 reihenfolge: 2
 gesperrt: false
-fragen:
-  - id: p-1
+aufgaben:
+  - typ: wahl
+    id: p-1
     frage: "Erste Frage?"
     antworten:
       - text: "Richtig"
@@ -28,7 +29,8 @@ fragen:
       - text: "Falsch B"
         richtig: false
         begruendung: "Und diese hier ebenfalls, mit genug Woertern."
-  - id: p-2
+  - typ: wahl
+    id: p-2
     frage: "Zweite Frage?"
     antworten:
       - text: "Richtig"
@@ -41,6 +43,7 @@ fragen:
         richtig: false
         begruendung: "Und diese dritte unterscheidet sich ebenfalls davon."
 transfer:
+  typ: wahl
   id: p-t
   frage: "Transferfrage?"
   antworten:

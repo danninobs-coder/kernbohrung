@@ -3,8 +3,9 @@ titel: "Auslagern nimmt die Grundlage, nicht die Entscheidung"
 prinzip: "Ein verwalteter Dienst nimmt dir nicht die Abruf-Entscheidungen ab, sondern die Grundlage, sie zu treffen."
 reihenfolge: 4
 gesperrt: false
-fragen:
-  - id: ang-1
+aufgaben:
+  - typ: wahl
+    id: ang-1
     frage: "Eine Anwendung ruft einen verwalteten RAG-Dienst auf. Die Antwort enthält je Abschnitt einen Ähnlichkeitswert. Der Code macht daraus `[abschnitt.text for abschnitt in antwort.treffer]`. Was ist damit unmöglich geworden?"
     antworten:
       - text: "Jede Entscheidung, die von der Güte des Treffers abhängt"
@@ -19,7 +20,8 @@ fragen:
       - text: "Nachträglich zu reranken"
         richtig: false
         begruendung: "Reranking arbeitet auf dem Text und braucht die Werte des ersten Laufs nicht. Es bleibt möglich — und ist einer der wenigen Handgriffe, die man sich zurückholen kann."
-  - id: ang-2
+  - typ: wahl
+    id: ang-2
     frage: "Ein anderer Dienst liefert als Beleg zu jeder Antwort ein Bild der Quellseite. Warum ist das schwächer, als es aussieht?"
     antworten:
       - text: "Ein Bild lässt sich ansehen, aber nicht mit der Behauptung abgleichen"
@@ -34,7 +36,8 @@ fragen:
       - text: "Das Bild zeigt nicht, welches Modell geantwortet hat"
         richtig: false
         begruendung: "Das tut ein Textausschnitt auch nicht. Die Frage ist, ob sich die Behauptung an der Quelle prüfen lässt, nicht wer sie erzeugt hat."
-  - id: ang-3
+  - typ: wahl
+    id: ang-3
     frage: "Wohin wandern die Kompensationen, wenn die Abruf-Grundlage fehlt?"
     antworten:
       - text: "In den Prompt und in die Bewertung — die zwei Dinge, die im Haus bleiben"
@@ -50,6 +53,7 @@ fragen:
         richtig: false
         begruendung: "Bessere Dokumente helfen immer, ändern aber nichts daran, dass man den Treffer zur Laufzeit nicht mehr beurteilen kann."
 transfer:
+  typ: wahl
   id: ang-transfer
   frage: "Ein Bauherr vergibt die Rechnungsprüfung an ein externes Büro. Er bekommt monatlich eine Freigabeliste, aber weder die Prüfvermerke noch die Massenermittlungen. Was hat er abgegeben?"
   antworten:

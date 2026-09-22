@@ -3,8 +3,9 @@ titel: "Kein Boden ist auch ein Boden"
 prinzip: "Wer keine Relevanzschwelle setzt, hat sie auf minus unendlich gesetzt — und wer eine setzt, wirft den Wert danach meist weg."
 reihenfolge: 2
 gesperrt: false
-fragen:
-  - id: kbib-1
+aufgaben:
+  - typ: wahl
+    id: kbib-1
     frage: "Ein System holt immer die fünf ähnlichsten Dokumente und prüft dann `if dokumente:`, um zu entscheiden, ob es auf die Websuche ausweicht. Wann greift dieser Ausweichweg?"
     antworten:
       - text: "Praktisch nie — die Liste ist immer gefüllt"
@@ -19,7 +20,8 @@ fragen:
       - text: "Wenn das Modell die Dokumente als unpassend einstuft"
         richtig: false
         begruendung: "Das wäre eine Relevanzprüfung, also ein zusätzlicher Schritt. Der Leertest steht davor und ersetzt sie nicht — er läuft ohne jede Bewertung."
-  - id: kbib-2
+  - typ: wahl
+    id: kbib-2
     frage: "Warum lässt sich eine Relevanzschwelle nicht von einem Projekt ins nächste übernehmen?"
     antworten:
       - text: "Weil der Wert eine Eigenschaft des Embedding-Raums ist, nicht der Aufgabe"
@@ -34,7 +36,8 @@ fragen:
       - text: "Weil sie mit der Chunk-Größe zusammenhängt"
         richtig: false
         begruendung: "Ein Zusammenhang besteht, aber er ist zweitrangig. Der Sprung entsteht durch das Verfahren selbst: dichte Einbettungen und eine Hash-Näherung liegen in ganz verschiedenen Wertebereichen."
-  - id: kbib-3
+  - typ: wahl
+    id: kbib-3
     frage: "Ein Team will die Verweigerung einbauen: Findet der Abruf nichts Passendes, soll das System sagen, dass es die Antwort nicht hat. Was muss zuerst da sein?"
     antworten:
       - text: "Eine Schwelle, ab der ein Treffer als unpassend gilt"
@@ -50,6 +53,7 @@ fragen:
         richtig: false
         begruendung: "Ein Ersatzweg ist keine Verweigerung, sondern ihr Gegenteil: Er beschafft Material, statt Materialmangel einzugestehen. Und er wird über denselben Test ausgelöst, der ohne Boden nie anschlägt."
 transfer:
+  typ: wahl
   id: kbib-transfer
   frage: "Ein Rauchmelder soll Alarm geben, wenn die Partikeldichte einen Grenzwert übersteigt. Bei der Abnahme stellt sich heraus: Der Grenzwert wurde nie gesetzt, das Feld steht auf dem Wert, mit dem der Sensor ausgeliefert wurde. Was ist die zutreffende Beschreibung?"
   antworten:
