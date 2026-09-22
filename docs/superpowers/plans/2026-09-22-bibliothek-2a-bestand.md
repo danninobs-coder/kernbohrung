@@ -12,6 +12,8 @@
 
 **Voraussetzung:** `master` ab `549a60e` — Aufgabenfamilie und 3a sind zusammengeführt.
 
+**Nach der Ausführung (2026-09-22):** Der Plan steht hier im Stand vor der Ausführung. Was Reviews und Abnahme geändert haben — Wortlaute, Markup, schärfere Regeln —, steht in „Nachträge aus den Reviews und der Abnahme" vor der Selbstprüfung. Maßgeblich für Wortlaute und Regeln sind seither `src/lib/bestandstext.ts`, `src/lib/lehrplan.ts` und ihre Tests, nicht die Codeblöcke unten.
+
 ---
 
 ## Was jeder Ausführende wissen muss
@@ -3925,6 +3927,41 @@ Erwartet: **SEITEN + 1** `page(s) built` · die Lückenzeile wieder mit `44 von 
 cd "C:/Users/dno/Documents/06_Botters/01_Apps/260901_Kernbohrung" && git status --short && git log --oneline master..bibliothek-2a
 ```
 Erwartet: sauberer Baum (`quellen/` und `handy/` sind gitignored); neun Commits dieses Plans, einer je Aufgabe 1 bis 9, dazu je Behebung aus der Abnahme einer. Das Zusammenführen entscheidet der Nutzer — dafür `superpowers:finishing-a-development-branch`.
+
+---
+
+## Nachträge aus den Reviews und der Abnahme (2026-09-22)
+
+Jede Aufgabe ist einzeln reviewt, der ganze Zweig zum Schluss noch einmal. Die folgenden Abweichungen vom Plan sind beschlossen und getestet; der Commit steht in Klammern.
+
+**Wortlaute und Markup**
+- Der Aufklappknopf nennt die Quelle: „Alle Prinzipien von ‹Titel›", „Alle Abschnitte von ‹Titel›" (Präzisierung 14, Aufgaben 6 und 7). Sonst tragen mehrere `summary` denselben Text und sind in der Elementliste eines Screenreaders nicht zu unterscheiden (8c3bccf). Folge in der Abnahme: Bei 375 px ist der Knopf zweizeilig, 281 × 77 statt 281 × 50 — über der Mindesthöhe von 48.
+- Ungültige Lehrpläne stehen als Liste, wie jede andere wiederholte Sammlung der Seite: `<ul><li class="ungueltig"><h3>…</h3><ul><li><code>…</code></li></ul></li></ul>` statt `<div class="ungueltig">` (8c3bccf). Ein Test hält das ganze Fragment (25b6542). Die Regel `.bestand-warnung[data-warnung='ungueltig'] > ul` nimmt der äußeren Liste Einzug und Punkte; die innere behält genau einen Einzug (46266a8; gemessen: `h3` 29 px, `code` 49 px vom Kartenrand).
+- Einzahl in der Lückenzeile: „1 von 1 Folie nur Bild", „1 von 1 Seite nur Bild", „1 von 1 Datei nicht übernommen" (8c3bccf, 25b6542).
+- Mängel auf Deutsch, über Präzisierung 15 hinaus: `pruefeLehrplan` prüft mit einer eigenen Fehlerfunktion (`deutscheMeldung`), die übersetzt, was Zod sonst englisch meldet — „fehlt.", „ist leer.", „braucht mindestens 2 Einträge.", „ist nicht erlaubt — erlaubt: …", „unbekanntes Feld: …"; der Rest fällt auf `z.locales.de` zurück, ein globales `z.config` gibt es nicht. Meldungen im Schema haben Vorrang. Folien mit `isbn` oder `auflage`: „isbn und auflage stehen nur bei art: buch." `vorbehalt:` ohne Wert und `vorbehalt: ""` haben eigene Sätze (fd8d252). Ein YAML-Fehler steht in einer Zeile, mit Zeile und Spalte (fa9170c).
+
+**Schärfere Regeln**
+- `stand` ist vollständig — bei Repos der Commit mit 40 Zeichen aus 0–9 und a–f, bei Buch und Folien `sha256:` und 64 Zeichen. `quelle` ist der Kurzname des Ordners unter `quellen/` (Muster der Ids). Grund: `abdeckung` vergleicht den Stand mit dem Manifest exakt; ein Kurz-SHA hätte „anderer Stand" ergeben, obwohl es derselbe Commit ist (e9aba39).
+- `quelle` ist bei Buch und Folien Pflicht, mit Test (905c469).
+- Tests für Regeln, die bisher keiner hielt: Die Obergrenze 8 gilt nur für Repos; `lektion` bei `abgelehnt` und `beauftragt`, `grund` bei `lektion`; der Standardordner von `liesLehrplan` (9c77d98).
+
+**Gestaltung, gemessen in der Abnahme**
+- `overflow-wrap: anywhere` auch am Aufklappknopf (3d4b20c — mit einem Titel ohne Trennstelle vorher 373 px Inhalt in 281 px, nachher 281) und an `.zeile-titel` (6d93fef — mit dem Ersatztitel „‹Dateiname›, Folien a–b" aus 2b ohne die Regel 394 px in 259 px, mit ihr 259).
+
+**Umgebung**
+- Node ab 22.18, weil `werkzeug/*.mjs` TypeScript-Dateien direkt laden: `engines` in `package.json` und im Lockfile, dazu das README (905c469, 2828188). `js-yaml` steht unter `dependencies`, weil die Seite es beim Bau braucht (2828188).
+
+**Zahlen am Ende**
+- 795 Tests = BASIS 609 + 139 aus dem Plan + 47 aus den Nacharbeiten. `astro check` 0/0/0, Bau 9 Seiten (SEITEN 8 + 1), kein Rohtext im Bau. NUL-Prüfung über 27 Dateien: 0 — der Plan rechnete 23; dazu kommen der Plan selbst, `package.json`, `package-lock.json` und `README.md`.
+- Abnahme bei 375 px, Schritte 3 bis 9: wie erwartet bis auf die Knopfhöhe oben. Präzisierung 6 gemessen: Kopfleiste 109 px, der Umschalter steht unter der Marke — zweizeilig mit oder ohne diesen Plan. Bau ohne Manifest und Bau mit wartendem Lehrplan wie erwartet; bei wartendem Lehrplan stehen alle fünf Lektionen unter „ohne Lehrplaneintrag", alle fünf Verweise 44 px hoch.
+
+**Offen für 2b und 2c — entschieden wird im jeweiligen Plan**
+- **Freigabe je Durchgang.** Laut Spec leert Durchgang A bei Lehrmaterial `geprueftVon`. Dann verschwindet die Karte samt Zahlen (Präzisierung 10), und alle früher freigegebenen Lektionen der Quelle stehen unter „ohne Lehrplaneintrag" — auch in einem Handy-Bau aus dieser Zeit. Das trifft schon 2b: Das erste Einlesen legt einen Lehrplan ohne Freigabe an. Vorschlag aus dem Schlussreview: ein eigener Zustand „wartet auf Freigabe", wenn nur `geprueftVon` und `geprueftAm` bemängelt sind — die Karte bleibt mit Zahlen, markiert als nicht freigegeben.
+- `status: lektion` mit `prinzipien: []` zählt als abgedeckt, obwohl kein Prinzip durch das Review-Gate ging (2c).
+- Ob ein `vorbehalt` aus dem Lehrplan auch in der Lektion steht, prüft niemand — bei Repos schon heute (2c, `pruefe-lektion`).
+- Dieselbe Prinzip-Id in zwei Repo-Lehrplänen zählt eine Lektion doppelt.
+- Ist `quelle` falsch geschrieben, sagt die Lückenzeile „liegt nur am Rechner, auf dem eingelesen wurde" auch auf genau diesem Rechner.
+- Klein: `ERWARTET` in `deutscheMeldung` kennt nur die Typen, die das Schema heute hat. Der Test zum Standardordner hängt an der Lektion `pauschal-heisst-nicht-komplett`. In `.zeile-status` bricht der Verweis bei 375 px unter „mit Lektion ·" um; der Punkt steht dann am Zeilenende.
 
 ---
 

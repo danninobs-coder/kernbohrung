@@ -1,6 +1,6 @@
 # Bibliothek — die Landing für den Ingest
 
-Stand: 2026-09-19 (überarbeitet nach Prüfung an echtem Material) · Teilprojekt 2 von 3 (Aufgabenfamilie → Bibliothek → Lernprofil)
+Stand: 2026-09-19 (überarbeitet nach Prüfung an echtem Material) · Nachtrag nach 2a: 2026-09-22, am Ende · Teilprojekt 2 von 3 (Aufgabenfamilie → Bibliothek → Lernprofil)
 
 ## Ziel
 
@@ -46,7 +46,7 @@ Und ein Befund für Teilprojekt 1: Das Material passt auf die vier Aufgabentypen
 
 ## Die Seite `/bibliothek`
 
-Verlinkt in der Kopfleiste neben dem Modusumschalter. Zwei Gesichter.
+Verlinkt in der Kopfleiste neben dem Modusumschalter (gebaut in 2a: am Fuß der Übersicht — siehe Nachtrag). Zwei Gesichter.
 
 **Der Bestand — überall.** Eine Karte je Quelle:
 
@@ -68,7 +68,7 @@ Nach dem Durchgang und `npm run build` zeigt der Bestand die neue Abdeckung.
 
 ## Datenmodell: Lehrplan Fassung 2
 
-`werkzeug/lehrplan.mjs` wird eine diskriminierte Union über `art`.
+`werkzeug/lehrplan.mjs` wird eine diskriminierte Union über `art`. (Gebaut in 2a: Das Schema steht in `src/lib/lehrplan.ts`, `werkzeug/lehrplan.mjs` liest nur noch die Datei — siehe Nachtrag.)
 
 ```yaml
 # art: repo — wie heute, plus das Feld art
@@ -114,7 +114,7 @@ Das bestehende `awesome-llm-apps.yaml` bekommt `art: repo` eingetragen.
 
 Reine Funktion `abdeckung(lehrplaene, manifeste, lektionsIds) → Bestand[]`. Für `repo`: ein Prinzip gilt als abgedeckt, wenn eine Lektion mit Id = Prinzip-Id existiert. Für `buch` und `folien`: Zählung nach `status`, dazu aus dem Manifest die Zahl der Bildseiten und Tabellenverdachtsseiten. Kein Dateizugriff in der Funktion; das Einlesen passiert in der Astro-Seite zur Bauzeit.
 
-Die Funktion liefert außerdem **Lektionen ohne Lehrplaneintrag** — Dateien unter `inhalt/lektionen/`, auf die kein Prinzip und kein Abschnitt zeigt. Heute gibt es genau eine: `recall-vor-precision` steht als Lektion da, aber in keinem Lehrplan. Die Seite zeigt das als Warnung, nicht als Abdeckung: Eine Lektion, deren Herkunft der Lehrplan nicht kennt, ist genau die Behauptung ohne Quelle, die das Projekt ausschließt. Was damit geschieht — nachtragen oder entfernen — entscheidet der Mensch; die Seite macht es nur sichtbar.
+Die Funktion liefert außerdem **Lektionen ohne Lehrplaneintrag** — Dateien unter `inhalt/lektionen/`, auf die kein Prinzip und kein Abschnitt zeigt. Heute gibt es genau eine: `recall-vor-precision` steht als Lektion da, aber in keinem Lehrplan. (Stand 2a: zwei — dazu `pauschal-heisst-nicht-komplett`, bewusst, bis das Einlesen den Eintrag nachträgt.) Die Seite zeigt das als Warnung, nicht als Abdeckung: Eine Lektion, deren Herkunft der Lehrplan nicht kennt, ist genau die Behauptung ohne Quelle, die das Projekt ausschließt. Was damit geschieht — nachtragen oder entfernen — entscheidet der Mensch; die Seite macht es nur sichtbar.
 
 ## Der Adapter
 
@@ -218,3 +218,15 @@ Bekannte Lücke, offen benannt: Takt 1 und 2 liegen als MDX-Rumpf vor. Weg B br�
 ## Reihenfolge
 
 Nach der Aufgabenfamilie. Der Compiler kann nur Typen erzeugen, die es gibt.
+
+## Nachtrag nach 2a (2026-09-22)
+
+2a, der Bestand, ist gebaut — Plan `docs/superpowers/plans/2026-09-22-bibliothek-2a-bestand.md` mit seinen Präzisierungen und den Nachträgen aus Reviews und Abnahme. Was davon vom Text oben abweicht:
+
+- **Der Weg zur Seite** ist ein Verweis am Fuß der Übersicht, neben „Dein Lernprofil", nicht in der Kopfleiste. Die Kopfleiste ist bei 375 px schon zweizeilig (Marke und Umschalter brauchen 381 px, Platz ist für 335); ein weiterer Eintrag machte sie auf jeder Seite höher. Ob die Bibliothek doch in die Kopfleiste soll, ist offen.
+- **Das Schema** steht in `src/lib/lehrplan.ts`, weil es auch die Seite zur Bauzeit und später ein Browser liest. `werkzeug/lehrplan.mjs` liest nur noch die Datei; der Aufruf im Compiler-Skill bleibt derselbe.
+- **Schärfer als oben:** `stand` ist vollständig (Repo: der Commit mit 40 Zeichen; Buch und Folien: `sha256:` und 64 Zeichen), `quelle` ist der Kurzname des Ordners unter `quellen/`, `datei` ist in jedem Abschnitt Pflicht. Mängel stehen auf Deutsch und in einer Zeile, denn die Seite zeigt sie wörtlich.
+- **Ein Manifest zählt nur zum Stand seines Lehrplans.** Fehlt es — so baut GitHub, denn `quellen/` ist gitignored —, steht die Zeile trotzdem da: „Lücken: unbekannt — das Manifest liegt nur am Rechner, auf dem eingelesen wurde". Bei Repos sind die Lücken die Auslassungen des Git-Adapters: „44 von 106 Dateien nicht übernommen".
+- **Ein ungültiger Lehrplan bricht den Bau nicht ab.** Er steht als Warnung mit seinen Mängeln da, ohne Zahlen.
+- **Lektionen ohne Lehrplaneintrag** sind heute zwei: `recall-vor-precision` und `pauschal-heisst-nicht-komplett`.
+- **Offen für 2b:** Durchgang A leert bei Lehrmaterial `geprueftVon` (Abschnitt „Der Compiler-Skill"). Nach heutigem Bau verschwindet damit die Karte samt Zahlen, und alle früher freigegebenen Lektionen der Quelle stehen als „ohne Lehrplaneintrag" da. Das trifft schon das erste Einlesen, denn es legt einen Lehrplan ohne Freigabe an. Vorschlag: ein eigener Zustand „wartet auf Freigabe", wenn nur `geprueftVon` und `geprueftAm` fehlen — die Karte bleibt mit ihren Zahlen, markiert als nicht freigegeben. Entschieden wird im Plan für 2b.
