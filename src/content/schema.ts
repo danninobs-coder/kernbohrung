@@ -49,7 +49,10 @@ export const LektionSchema = z
         (wert) => wert === undefined,
         'fragen heißt jetzt aufgaben, und jede Aufgabe braucht ein Feld typ (zum Beispiel typ: wahl).',
       ),
-    // Zwei bis sechs: Faelle brauchen mehr Raum als Wahlfragen.
+    // Zwei bis sechs. Frueher hoechstens vier Wahlfragen; mit vier Typen soll
+    // eine Probe jeden einmal enthalten koennen und dazu zwei Wahlfragen fuer
+    // die schnellen Unterscheidungen. Mehr als sechs sprengt eine Sitzung von
+    // zehn Minuten, weil ein Fall allein mehrere Minuten braucht.
     aufgaben: z.array(AufgabeSchema).min(2).max(6),
     transfer: AufgabeSchema,
     quellen: z.array(QuelleSchema).min(1),
