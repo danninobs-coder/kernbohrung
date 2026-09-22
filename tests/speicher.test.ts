@@ -465,15 +465,23 @@ describe('Größe eines Ereignisses', () => {
   const HOECHSTENS: Record<AufgabenTyp, number> = {
     wahl: 600,
     reihenfolge: 400,
-    zuordnen: 1600,
+    // 6100 statt rund 1600: Seit EintragSchema.max(80) darf ein Paar zwei
+    // 80-Zeichen-Eintraege tragen statt beliebig langer Vertragsnamen, und
+    // sechs solche Paare sind deutlich teurer als die alte Stichprobe.
+    zuordnen: 6100,
     fall: 6500,
   };
 
   const langerText =
     'Weil Precision-Maßnahmen auf der Kandidatenmenge aufsetzen und deren Obergrenze nicht überschreiten können';
+  // Sechs Paare — mehr laesst ZuordnenSchema nicht zu (`paare.max(6)") —, jeder
+  // Eintrag an seiner Hoechstlaenge (`EintragSchema.max(80)` in
+  // src/aufgaben/zuordnen/schema.ts), im teuersten Zeichen. Begruendung fuer
+  // '€' als teuerstes Zeichen beim `fall`-Eintrag weiter unten.
+  const eintragHoechstlaenge = '€'.repeat(80);
   const sechsPaare = Array.from(
     { length: 6 },
-    (_, i) => `Selbstkostenerstattungsvertrag Nummer ${i}→Nachgewiesene Kosten des Auftragnehmers samt Zuschlag ${i}`,
+    () => `${eintragHoechstlaenge}→${eintragHoechstlaenge}`,
   ).join(';');
   const lang = { lektion: 'kontrollfluss-folgt-modellstaerke', frage: 'kfm-transfer', richtig: false, anteil: 0 };
 
@@ -498,7 +506,7 @@ describe('Größe eines Ereignisses', () => {
     // Die Schranke braucht selbst einen Waechter nach unten: Ohne diese Zeile
     // faengt keine Mutation eine grosszuegig angehobene HOECHSTENS ab — der
     // Test oben wird dann einfach mit angehoben und bleibt gruen. Ist-Werte
-    // (gemessen): wahl 430, reihenfolge 245, zuordnen 1390, fall 6233 Byte —
+    // (gemessen): wahl 430, reihenfolge 245, zuordnen 6022, fall 6233 Byte —
     // alle liegen ueber der halben Schranke.
     expect(bytes).toBeGreaterThan(HOECHSTENS[typ] / 2);
   });
@@ -506,7 +514,7 @@ describe('Größe eines Ereignisses', () => {
   // Die Schranke selbst braucht einen Waechter gegen Aufweichung: Wer sie
   // grosszuegig anhebt, damit der Test oben wieder gruen wird, sprengt hier
   // das Budget.
-  const BUDGET_MB: Record<AufgabenTyp, number> = { wahl: 8, reihenfolge: 8, zuordnen: 20, fall: 80 };
+  const BUDGET_MB: Record<AufgabenTyp, number> = { wahl: 8, reihenfolge: 8, zuordnen: 70, fall: 80 };
 
   it.each(AUFGABENTYPEN)('hält 10 000 Ereignisse vom Typ %s im Budget', (typ) => {
     expect(10_000 * HOECHSTENS[typ]).toBeLessThan(BUDGET_MB[typ] * 1024 * 1024);

@@ -262,17 +262,21 @@ const LEERE_AUSFUHR = {
  * 300 Byte, auf der Platte etwa das Doppelte.
  *
  * Die anderen Typen sind groesser, und das ist gewollt: `antwort` haelt fest,
- * was jemand getan hat. Bei `zuordnen` sind das alle Paare (bis rund 1,5 kB),
- * bei `fall` der geschriebene Text — gemessen rund 6,2 kB im teuersten Fall:
- * 2 000 Zeichen, jedes davon ein dreibytiges Zeichen (UTF-8, ausserhalb der
- * ersten 2048 Codepunkte, etwa '€'). `maxLength` zaehlt UTF-16-Einheiten,
+ * was jemand getan hat. Bei `zuordnen` sind das alle Paare, seit
+ * `EintragSchema.max(80)` (src/aufgaben/zuordnen/schema.ts) an ihrer
+ * Hoechstlaenge — gemessen rund 6,0 kB im teuersten Fall: sechs Paare, links
+ * und rechts je 80 Zeichen. Bei `fall` ist es der geschriebene Text —
+ * gemessen rund 6,2 kB im teuersten Fall: 2 000 Zeichen. Beide Male im
+ * teuersten Zeichen, jedes davon ein dreibytiges Zeichen (UTF-8, ausserhalb
+ * der ersten 2048 Codepunkte, etwa '€'). `maxLength` zaehlt UTF-16-Einheiten,
  * nicht Byte — drei Byte je Einheit ist das teuerste Verhaeltnis, das eine
  * einzelne Einheit erreichen kann. Die Schranken je Typ stehen in
  * `tests/speicher.test.ts`.
  *
  * Hochgerechnet: 10 000 Wahl-Ereignisse liegen bei rund 6 MB (10 000 × 600
- * Byte), 10 000 Faelle bei rund 62 MB (10 000 × 6500 Byte) — beide mit
- * Reserve unter den Budgets aus `tests/speicher.test.ts` (8 MB bzw. 80 MB).
+ * Byte), 10 000 Zuordnen-Ereignisse bei rund 58 MB (10 000 × 6100 Byte),
+ * 10 000 Faelle bei rund 62 MB (10 000 × 6500 Byte) — alle drei mit Reserve
+ * unter den Budgets aus `tests/speicher.test.ts` (8 MB, 70 MB bzw. 80 MB).
  * Chrome raeumt einem Ursprung rund sechzig Prozent des freien Plattenplatzes
  * ein, Firefox zehn. 10 000 Bewertungen sind bei taeglich zwanzig Antworten
  * die Ernte von anderthalb Jahren. Es wird nicht eng.

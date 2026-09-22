@@ -99,6 +99,25 @@ describe('ZuordnenSchema', () => {
     expect(ZuordnenSchema.safeParse(zuordnen({ paare })).success).toBe(false);
   });
 
+  it('weist einen linken Eintrag ueber 80 Zeichen zurueck, nimmt genau 80 an', () => {
+    const laenge = (n: number) =>
+      zuordnen({ paare: [{ links: 'a'.repeat(n), rechts: 'Ein einzelner Eintrag' }, ...zuordnen().paare.slice(1)] });
+    expect(ZuordnenSchema.safeParse(laenge(80)).success).toBe(true);
+    expect(ZuordnenSchema.safeParse(laenge(81)).success).toBe(false);
+  });
+
+  it('weist einen rechten Eintrag ueber 80 Zeichen zurueck, nimmt genau 80 an', () => {
+    const laenge = (n: number) =>
+      zuordnen({ paare: [{ links: 'Ein einzelner Eintrag', rechts: 'a'.repeat(n) }, ...zuordnen().paare.slice(1)] });
+    expect(ZuordnenSchema.safeParse(laenge(80)).success).toBe(true);
+    expect(ZuordnenSchema.safeParse(laenge(81)).success).toBe(false);
+  });
+
+  it('weist einen Ablenker ueber 80 Zeichen zurueck, nimmt genau 80 an', () => {
+    expect(ZuordnenSchema.safeParse(zuordnen({ ablenker: ['a'.repeat(80)] })).success).toBe(true);
+    expect(ZuordnenSchema.safeParse(zuordnen({ ablenker: ['a'.repeat(81)] })).success).toBe(false);
+  });
+
   it('weist → und ; in Eintraegen zurueck — links, rechts und im Ablenker', () => {
     // Genau diese zwei Zeichen trennen die Paare im gespeicherten Ereignis.
     // Stuende eines in einem Eintrag, waeren zwei verschiedene Zuordnungen

@@ -19,11 +19,17 @@ const normal = (s: string): string => s.trim().toLowerCase();
  * Zuordnungen nicht mehr unterscheiden. Eine robustere Kodierung (JSON)
  * sprengt den Groessenwaechter des Ereignisses; das Verbot kostet kein Byte
  * und trifft nur kurze Eintraege, keinen Fliesstext.
+ *
+ * `max(80)` aus demselben Grund: Ein Eintrag ist ein Etikett, kein Absatz —
+ * auf dem Handy steht er einspaltig. Die Schranke ist zugleich die Grundlage
+ * fuer den Hoechstfall, den der Groessenwaechter in `tests/speicher.test.ts`
+ * fuer `zuordnen`-Ereignisse durchrechnet.
  */
 const EintragSchema = z
   .string()
   .trim()
   .min(1)
+  .max(80, 'Ein Eintrag soll kurz sein, höchstens 80 Zeichen — auf dem Handy steht er einspaltig.')
   .refine(
     (s) => !s.includes('→') && !s.includes(';'),
     'Ein Eintrag darf weder → noch ; enthalten — beides trennt die Paare im gespeicherten Ereignis.',
