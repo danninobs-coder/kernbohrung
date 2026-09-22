@@ -1555,3 +1555,209 @@ h3 {
 .reihenfolge-zeile .antwort-marke {
   flex-basis: 100%;
 }
+
+/* ---------------------------------------------------------------
+   Bibliothek und Vorbehalt (Teilprojekt 2a)
+
+   Dieselben drei Regeln wie bei Aufgabenfamilie und Lernprofil:
+   - Jede Bedienflaeche mindestens 44 x 44 Pixel, die grossen 48.
+   - Umrisse bedienbarer Elemente ueber --rand-bedien (3:1, WCAG
+     1.4.11), nie ueber --rand.
+   - Kein neues Farbtoken. Ein Zustand, der nur Farbe traegt, ist
+     keiner (WCAG 1.4.1): Jeder Status steht als Wort da, die Farbe
+     kommt nur dazu.
+   --------------------------------------------------------------- */
+
+/* Der Vorbehalt unter dem Satz: in Lesegroesse und Textfarbe, nicht
+   im Kleingedruckten — wie der Beipackzettel des Lernprofils. */
+.vorbehalt {
+  margin: 12px 0 0;
+  padding: 12px 16px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--flaeche);
+  border: 1px solid var(--rand-stark);
+  border-left: 3px solid var(--akzent-fill);
+  border-radius: var(--radius-antwort);
+  text-wrap: pretty;
+}
+
+/* --- die Karte einer Quelle --------------------------------------- */
+
+.quelle + .quelle,
+.quelle + .bestand-warnung,
+.bestand-warnung + .bestand-warnung {
+  margin-top: 18px;
+}
+
+.quelle h2 {
+  margin: 0 0 2px;
+  overflow-wrap: anywhere;
+}
+
+.quelle-kopf {
+  margin: 0 0 14px;
+  font-family: var(--schrift-mono);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.quelle-zahlen {
+  margin: 0 0 6px;
+  font-family: var(--schrift-mono);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.quelle-luecken {
+  margin: 0 0 16px;
+  font-size: 15.5px;
+}
+
+.quelle-liste {
+  border-top: 1px solid var(--rand);
+}
+
+/* Der Knopf zum Aufklappen ist die ganze Zeile, mindestens 48 Pixel
+   hoch. `display: list-item` behaelt das Dreieck des Browsers — mit
+   `flex` verschwaende es in Chrome, und ein eigenes muesste man
+   nachbauen. */
+.quelle-liste > summary {
+  display: list-item;
+  min-height: 48px;
+  padding: 12px 0;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.quelle-liste > summary:hover {
+  color: var(--akzent);
+}
+
+.quelle-liste > ol {
+  margin: 4px 0 0;
+  padding-left: 1.4rem;
+}
+
+.zeile + .zeile {
+  margin-top: 14px;
+}
+
+.zeile p {
+  margin: 0;
+}
+
+.zeile-titel {
+  font-size: 15.5px;
+  line-height: 1.45;
+}
+
+.zeile-fundstelle {
+  font-family: var(--schrift-mono);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.zeile-status {
+  font-size: 14.5px;
+}
+
+/* Der Verweis zur Lektion wird zur 44-Pixel-Flaeche; die Zeile waechst
+   mit, statt dass er in die Nachbarzeile ragt. */
+.zeile-status a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.zeile-marke {
+  font-family: var(--schrift-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.zeile[data-status='lektion'] .zeile-marke {
+  color: var(--teal);
+}
+
+.zeile[data-status='beauftragt'] .zeile-marke {
+  color: var(--akzent);
+}
+
+.zeile[data-status='abgelehnt'] .zeile-marke {
+  color: var(--falsch);
+}
+
+.zeile-grund,
+.zeile-vorbehalt {
+  margin-top: 4px;
+  font-size: 14.5px;
+}
+
+.zeile-vorbehalt {
+  padding-left: 10px;
+  border-left: 3px solid var(--akzent-fill);
+}
+
+/* --- die Warnungen und der leere Bestand -------------------------- */
+
+/* Derselbe Rand wie am Fehlerkasten der Widgets: Hier ist etwas zu
+   entscheiden, nicht nur zu lesen. */
+.bestand-warnung {
+  border-left: 3px solid var(--falsch);
+}
+
+.bestand-warnung h2 {
+  font-size: 19px;
+}
+
+.bestand-warnung > p {
+  margin: 0;
+  font-size: 15.5px;
+}
+
+.bestand-warnung ul {
+  margin: 10px 0 0;
+  padding-left: 1.25rem;
+}
+
+.bestand-warnung li a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.ungueltig h3 {
+  margin: 16px 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.ungueltig code {
+  overflow-wrap: anywhere;
+}
+
+.bestand-leer {
+  color: var(--ink-2);
+}
+
+/* Nacharbeit (nach dem Stand dieses Plans): Die ungueltigen Lehrplaene
+   stehen in Bestand.astro inzwischen als <li class="ungueltig"> in einer
+   <ul>, nicht mehr als <div class="ungueltig">. Ohne diese Regel erbte die
+   aeussere Liste von ".bestand-warnung ul" (oben) Einzug und ein
+   Aufzaehlungszeichen, die fuer die frueheren <div>-Eintraege nicht
+   vorgesehen waren. Der Selektor greift ueber [data-warnung='ungueltig']
+   nur diese Liste heraus - die zweite Warnung (Lektionen ohne
+   Lehrplaneintrag) behaelt ihren Einzug und ihre Punkte unveraendert. */
+.bestand-warnung[data-warnung='ungueltig'] > ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
