@@ -80,7 +80,7 @@ export function lueckenzeile(l: Luecken): string {
     case 'git':
       return l.ausgelassen === 0
         ? 'keine Datei ausgelassen'
-        : `${l.ausgelassen} von ${l.uebernommen + l.ausgelassen} Dateien nicht übernommen`;
+        : `${l.ausgelassen} von ${anzahl(l.uebernommen + l.ausgelassen, 'Datei', 'Dateien')} nicht übernommen`;
     case 'dokument': {
       const [eine, viele] = l.einheit === 'folien' ? ['Folie', 'Folien'] : ['Seite', 'Seiten'];
       const teile = [

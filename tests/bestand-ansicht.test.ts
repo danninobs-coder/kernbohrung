@@ -157,10 +157,11 @@ describe('Bestand - Warnungen und leerer Bestand', () => {
     );
     expect(html).toContain('<h3>awesome-llm-apps.yaml</h3>');
     expect(html).toContain('<code>geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.</code>');
-    // Wie jede andere wiederholte Sammlung der Seite: eine Liste, kein nacktes div.
-    expect(html).toContain('<li class="ungueltig">');
-    expect(html.indexOf('<ul')).toBeGreaterThanOrEqual(0);
-    expect(html.indexOf('<ul')).toBeLessThan(html.indexOf('<li class="ungueltig">'));
+    // Wie jede andere wiederholte Sammlung der Seite: eine Liste, kein nacktes div — und
+    // zwar verschachtelt, nicht nur in der richtigen Reihenfolge auf der Seite.
+    expect(html).toContain(
+      '<ul><li class="ungueltig"><h3>awesome-llm-apps.yaml</h3><ul><li><code>geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.</code></li></ul></li></ul>',
+    );
   });
 
   it('warnt nicht, wo es nichts zu warnen gibt', async () => {

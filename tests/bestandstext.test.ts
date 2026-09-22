@@ -113,6 +113,11 @@ describe('lueckenzeile', () => {
     ['Git mit Auslassungen', { art: 'git', uebernommen: 62, ausgelassen: 44 }, '44 von 106 Dateien nicht übernommen'],
     ['Git ohne Auslassung', { art: 'git', uebernommen: 12, ausgelassen: 0 }, 'keine Datei ausgelassen'],
     [
+      'Git mit genau einer Datei insgesamt, ausgelassen',
+      { art: 'git', uebernommen: 0, ausgelassen: 1 },
+      '1 von 1 Datei nicht übernommen',
+    ],
+    [
       'Folien mit Bild und Tabellen',
       { art: 'dokument', einheit: 'folien', seiten: 35, nurBild: 7, tabellenverdacht: 2 },
       '7 von 35 Folien nur Bild · 2 Tabellen vermutlich zerfallen',
@@ -136,6 +141,11 @@ describe('lueckenzeile', () => {
       'genau eine Folie insgesamt, nur Bild',
       { art: 'dokument', einheit: 'folien', seiten: 1, nurBild: 1, tabellenverdacht: 0 },
       '1 von 1 Folie nur Bild',
+    ],
+    [
+      'genau eine Seite insgesamt, nur Bild',
+      { art: 'dokument', einheit: 'seiten', seiten: 1, nurBild: 1, tabellenverdacht: 0 },
+      '1 von 1 Seite nur Bild',
     ],
     [
       'ein Buch ohne beides',
