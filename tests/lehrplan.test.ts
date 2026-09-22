@@ -3,17 +3,27 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { pruefeLehrplan, liesLehrplan, HOECHSTZAHL } from '../werkzeug/lehrplan.mjs';
+import { ART_FEHLT, HOECHSTZAHL, lehrplaeneAusTexten, pruefeLehrplan } from '../src/lib/lehrplan';
+import { liesLehrplan } from '../werkzeug/lehrplan.mjs';
 
 /**
  * Der Lehrplan ist das Review-Gate: Wer ihn kontrolliert, kontrolliert die App.
+ *
+ * Diese Datei prueft die Form fuer Repos — Fassung 1 plus `art` und
+ * `vorbehalt` — und das Lesen: vom Datentraeger und aus den Texten, die die
+ * Seite /bibliothek bekommt. Buch und Folien stehen in
+ * `tests/lehrplan-lehrmaterial.test.ts`.
  *
  * Die beiden Schranken, an denen sich das entscheidet, stehen unten je fuer
  * sich: die Obergrenze (Durchgang A soll verdichten, nicht katalogisieren) und
  * `geprueftVon` (ohne menschliche Abnahme ist es kein Lehrplan).
  */
 
+/** Fuer Repos spielt es keine Rolle, welche Lektionen es gibt. */
+const KEINE = new Set<string>();
+
 const gut = {
+  art: 'repo',
   quelle: 'awesome-llm-apps',
   stand: 'a13701eae315a81e1011a4304a6b5e741ea0a984',
   geprueftVon: 'Daniel Nobs',
@@ -48,15 +58,46 @@ function maengelVon(ergebnis: ReturnType<typeof pruefeLehrplan>): readonly strin
   return ergebnis.maengel;
 }
 
-describe('pruefeLehrplan', () => {
+/** Legt einen Vorbehalt stumpf ueber das erste Prinzip — und ergaenzt nichts sonst. */
+function mitVorbehalt(vorbehalt: unknown) {
+  return { ...gut, prinzipien: [{ ...gut.prinzipien[0], vorbehalt }, gut.prinzipien[1]] };
+}
+
+describe('pruefeLehrplan - Repo', () => {
   it('nimmt einen gueltigen Lehrplan an', () => {
-    const e = pruefeLehrplan(gut);
+    const e = pruefeLehrplan(gut, KEINE);
     if (!e.ok) throw new Error(`Erwartet war Erfolg, gemeldet wurde:\n  ${e.maengel.join('\n  ')}`);
+    if (e.lehrplan.art !== 'repo') throw new Error('Erwartet war ein Repo.');
     expect(e.lehrplan.prinzipien).toHaveLength(2);
   });
 
+  it('weist einen Lehrplan ohne art zurueck und sagt, was einzutragen ist', () => {
+    // Genau so sieht jeder Lehrplan aus Fassung 1 aus. Migration statt
+    // stiller Voreinstellung: Die Meldung nennt die Zeile, die fehlt.
+    const { art: _art, ...ohne } = gut;
+    expect(maengelVon(pruefeLehrplan(ohne, KEINE))).toEqual([`art: ${ART_FEHLT}`]);
+    expect(ART_FEHLT).toMatch(/art: repo/);
+  });
+
+  it('weist eine unbekannte art mit derselben Meldung zurueck', () => {
+    expect(maengelVon(pruefeLehrplan({ ...gut, art: 'video' }, KEINE))).toEqual([`art: ${ART_FEHLT}`]);
+  });
+
+  // Als Paare aus Name und Wert: `it.each` breitet eine blanke Liste als
+  // Argumente aus — eine leere Liste kaeme als „gar kein Argument" an.
+  it.each([
+    ['nichts', undefined],
+    ['null', null],
+    ['einem Text', 'text'],
+    ['einer Zahl', 42],
+    ['einer leeren Liste', []],
+    ['einem leeren Objekt', {}],
+  ])('macht aus %s einen Befund mit Maengeln, ohne zu werfen', (_name, daten) => {
+    expect(maengelVon(pruefeLehrplan(daten, KEINE)).length).toBeGreaterThan(0);
+  });
+
   it('verlangt mindestens zwei Prinzipien', () => {
-    expect(pruefeLehrplan({ ...gut, prinzipien: [gut.prinzipien[0]] }).ok).toBe(false);
+    expect(pruefeLehrplan({ ...gut, prinzipien: [gut.prinzipien[0]] }, KEINE).ok).toBe(false);
   });
 
   it(`erlaubt hoechstens ${HOECHSTZAHL} Prinzipien — Verdichten ist die Aufgabe`, () => {
@@ -64,24 +105,24 @@ describe('pruefeLehrplan', () => {
       ...gut.prinzipien[0],
       id: `prinzip-${i}`,
     }));
-    const maengel = maengelVon(pruefeLehrplan({ ...gut, prinzipien: viele }));
-    expect(maengel.join(' ')).toMatch(/hoechstens|verdicht/i);
+    const maengel = maengelVon(pruefeLehrplan({ ...gut, prinzipien: viele }, KEINE));
+    expect(maengel.join(' ')).toMatch(/höchstens 8 Prinzipien — verdichten/);
   });
 
   it('lehnt doppelte Prinzip-Ids ab', () => {
     const doppelt = [gut.prinzipien[0], { ...gut.prinzipien[1], id: gut.prinzipien[0].id }];
-    expect(pruefeLehrplan({ ...gut, prinzipien: doppelt }).ok).toBe(false);
+    expect(pruefeLehrplan({ ...gut, prinzipien: doppelt }, KEINE).ok).toBe(false);
   });
 
   it('verlangt zu jedem Prinzip mindestens einen Beleg', () => {
     const ohne = [{ ...gut.prinzipien[0], belege: [] }, gut.prinzipien[1]];
-    const maengel = maengelVon(pruefeLehrplan({ ...gut, prinzipien: ohne }));
+    const maengel = maengelVon(pruefeLehrplan({ ...gut, prinzipien: ohne }, KEINE));
     expect(maengel.join(' ')).toMatch(/beleg/i);
   });
 
   it('verlangt einen Pruefer — der Lehrplan ist das Review-Gate', () => {
     const { geprueftVon: _weg, ...ohne } = gut;
-    const maengel = maengelVon(pruefeLehrplan(ohne));
+    const maengel = maengelVon(pruefeLehrplan(ohne, KEINE));
     expect(maengel.join(' ')).toMatch(/geprueftVon/i);
     // Nicht nur der Feldname: Geprueft wird der Satz, der den Zweck des Gates
     // erklaert. Ohne ihn stuende hier Zods englisches „expected string,
@@ -94,20 +135,52 @@ describe('pruefeLehrplan', () => {
     // Durchgang A laesst `geprueftVon` leer; YAML macht daraus `null`. Genau
     // dieser Wert muss die Erklaerung ausloesen, nicht nur der fehlende Schluessel.
     for (const wert of ['   ', null, undefined]) {
-      const maengel = maengelVon(pruefeLehrplan({ ...gut, geprueftVon: wert }));
+      const maengel = maengelVon(pruefeLehrplan({ ...gut, geprueftVon: wert }, KEINE));
       expect(maengel.join(' ')).toMatch(/Review-Gate/);
     }
   });
 
   it('lehnt ein unbekanntes Widget ab', () => {
     const falsch = [{ ...gut.prinzipien[0], widget: 'GibtEsNicht' }, gut.prinzipien[1]];
-    expect(pruefeLehrplan({ ...gut, prinzipien: falsch }).ok).toBe(false);
+    expect(pruefeLehrplan({ ...gut, prinzipien: falsch }, KEINE).ok).toBe(false);
   });
 
   it('lehnt Zusatzfelder ab, statt sie stillschweigend zu schlucken', () => {
     // Ein Feld, das niemand liest, ist der wahrscheinlichste Ort fuer eine
     // Behauptung, die spaeter niemand belegt.
-    expect(pruefeLehrplan({ ...gut, notizen: 'nebenbei' }).ok).toBe(false);
+    expect(pruefeLehrplan({ ...gut, notizen: 'nebenbei' }, KEINE).ok).toBe(false);
+  });
+
+  it('weist Titel und Abschnitte bei einem Repo zurueck — die gehoeren zu Buch und Folien', () => {
+    expect(pruefeLehrplan({ ...gut, titel: 'Ein Titel' }, KEINE).ok).toBe(false);
+    expect(pruefeLehrplan({ ...gut, abschnitte: [] }, KEINE).ok).toBe(false);
+  });
+});
+
+describe('pruefeLehrplan - Vorbehalt', () => {
+  it('nimmt ein Prinzip mit Vorbehalt an und gibt ihn zurueck', () => {
+    const satz = 'Für diese Quoten gibt es keine belastbare Studie.';
+    const e = pruefeLehrplan(mitVorbehalt(satz), KEINE);
+    if (!e.ok) throw new Error(e.maengel.join('\n'));
+    if (e.lehrplan.art !== 'repo') throw new Error('Erwartet war ein Repo.');
+    expect(e.lehrplan.prinzipien[0]?.vorbehalt).toBe(satz);
+    expect(e.lehrplan.prinzipien[1]?.vorbehalt).toBeUndefined();
+  });
+
+  it('weist einen Vorbehalt zurueck, der ein Absatz ist', () => {
+    const absatz = 'Wort '.repeat(45).trim();
+    expect(absatz.length).toBeGreaterThan(200);
+    expect(maengelVon(pruefeLehrplan(mitVorbehalt(absatz), KEINE)).join(' ')).toMatch(
+      /Ein Vorbehalt ist ein Satz, kein Absatz/,
+    );
+  });
+
+  it('weist einen leeren Vorbehalt zurueck, statt ihn als keinen zu lesen', () => {
+    // Ein leerer Vorbehalt ist ein Fehler beim Erzeugen, kein Vorbehalt.
+    // Wer keinen hat, laesst das Feld weg.
+    expect(maengelVon(pruefeLehrplan(mitVorbehalt('   '), KEINE)).join(' ')).toMatch(
+      /Ein Vorbehalt braucht einen Satz/,
+    );
   });
 });
 
@@ -125,7 +198,8 @@ describe('liesLehrplan', () => {
   }
 
   it('liest eine gueltige Lehrplandatei', () => {
-    const yaml = `quelle: awesome-llm-apps
+    const yaml = `art: repo
+quelle: awesome-llm-apps
 stand: a13701eae315a81e1011a4304a6b5e741ea0a984
 geprueftVon: Daniel Nobs
 geprueftAm: 2026-09-02
@@ -162,7 +236,7 @@ prinzipien:
   it('meldet kaputtes YAML als Mangel, statt abzustuerzen', () => {
     mitDatei('quelle: "unbeendet\nstand: abc\n', (datei) => {
       const maengel = maengelVon(liesLehrplan(datei));
-      expect(maengel.join(' ')).toMatch(/YAML/i);
+      expect(maengel.join(' ')).toMatch(/kein gültiges YAML/);
     });
   });
 
@@ -175,7 +249,41 @@ prinzipien:
    */
   it('unterscheidet eine fehlende Datei von kaputtem YAML', () => {
     const maengel = maengelVon(liesLehrplan(path.join(tmpdir(), 'gibt-es-nicht-4711.yaml')));
-    expect(maengel.join(' ')).toMatch(/nicht lesen/i);
-    expect(maengel.join(' ')).not.toMatch(/gueltiges YAML/i);
+    expect(maengel.join(' ')).toMatch(/lässt sich nicht lesen/);
+    expect(maengel.join(' ')).not.toMatch(/YAML/);
+  });
+});
+
+describe('lehrplaeneAusTexten', () => {
+  /** Der gueltige Lehrplan oben als YAML-Text — JSON ist gueltiges YAML. */
+  const yaml = (aenderung: Record<string, unknown> = {}) => JSON.stringify({ ...gut, ...aenderung });
+
+  it('trennt gueltige von ungueltigen Lehrplaenen und nennt die Datei beim Namen', () => {
+    const { gueltig, ungueltig } = lehrplaeneAusTexten(
+      { '/lehrplan/gut.yaml': yaml(), '/lehrplan/kaputt.yaml': 'quelle: "unbeendet\n' },
+      KEINE,
+    );
+    expect(gueltig.map((l) => l.quelle)).toEqual(['awesome-llm-apps']);
+    expect(ungueltig.map((u) => u.datei)).toEqual(['kaputt.yaml']);
+    expect(ungueltig[0]?.maengel.join(' ')).toMatch(/^kaputt\.yaml ist kein gültiges YAML/);
+  });
+
+  it('legt einen Lehrplan, der auf die Freigabe wartet, zu den ungueltigen — mit der Meldung des Gates', () => {
+    // Genau der Zustand zwischen Durchgang A und dem Menschen: geprueftVon ist
+    // leer. Der Bau soll daran nicht scheitern; die Seite zeigt ihn als Warnung.
+    const { gueltig, ungueltig } = lehrplaeneAusTexten({ '/lehrplan/wartet.yaml': yaml({ geprueftVon: '' }) }, KEINE);
+    expect(gueltig).toEqual([]);
+    expect(ungueltig).toEqual([
+      { datei: 'wartet.yaml', maengel: ['geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.'] },
+    ]);
+  });
+
+  it('sortiert nach Pfad, unabhaengig von der Reihenfolge der Eingabe', () => {
+    const { ungueltig } = lehrplaeneAusTexten({ '/lehrplan/b.yaml': '{', '/lehrplan/a.yaml': '{' }, KEINE);
+    expect(ungueltig.map((u) => u.datei)).toEqual(['a.yaml', 'b.yaml']);
+  });
+
+  it('liefert zwei leere Listen, wenn es keinen Lehrplan gibt', () => {
+    expect(lehrplaeneAusTexten({}, KEINE)).toEqual({ gueltig: [], ungueltig: [] });
   });
 });

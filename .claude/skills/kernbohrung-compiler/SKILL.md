@@ -104,9 +104,11 @@ Prüfe jeden Kandidaten gegen alle drei. Der zweite Punkt siebt am schärfsten.
 ### A6 · Den Entwurf schreiben
 
 Nach `lehrplan/<name>.yaml`. Format und Grenzen stehen in
-`werkzeug/lehrplan.mjs`; sieh dort nach, statt zu raten.
+`src/lib/lehrplan.ts`; sieh dort nach, statt zu raten. Ein Lehrplan aus einem
+Repo trägt `art: repo` — ohne die Zeile weist die Prüfung ihn zurück.
 
 ```yaml
+art: repo
 quelle: <name>
 stand: <SHA aus manifest.json>
 geprueftVon: ""
