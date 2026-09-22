@@ -57,7 +57,7 @@ erklären. Wer beide tauscht, kippt die Didaktik.
 | `npm run check` | Typprüfung über Astro-, TSX- und TS-Dateien |
 | `npm run build` | Produktionsbau nach `dist/` |
 
-Node ≥ 22.12 erforderlich.
+Node ≥ 22.18 erforderlich — die Werkzeuge unter werkzeug/ laden TypeScript-Dateien direkt.
 
 `npm run dev:handy` und `npm run preview:handy` sind dieselben Server, nur ins
 lokale Netz geöffnet — siehe „Auf Android testen und weiterentwickeln".
