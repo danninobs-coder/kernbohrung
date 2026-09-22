@@ -40,6 +40,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Typen zuerst: Vitest und der Bau pruefen keine Typen. Ohne diesen
+      # Schritt fiele ein vergessener Fall im Verteiler erst beim Nutzer auf.
+      - run: npm run check
       - run: npm test
       - name: Bauen mit Basispfad des Repositories
         run: npm run build

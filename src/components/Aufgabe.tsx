@@ -159,9 +159,11 @@ export default function Aufgabe({ lektion, aufgabe, speicher, uhr = standarduhr 
    * nicht auf ein Versprechen, das eine fremde Umsetzung brechen kann.
    *
    * Die Karte wird auch dann fortgeschrieben, wenn das Ereignis nicht
-   * geschrieben werden konnte: Ein geplanter Termin ohne Historie ist der
-   * kleinere Schaden als eine Historie ohne Termin — die Aufgabe kaeme sonst
-   * nie wieder.
+   * geschrieben werden konnte und der Speicher das, wie sein Vertrag sagt, mit
+   * `false` meldet: Ein geplanter Termin ohne Historie ist der kleinere Schaden
+   * als eine Historie ohne Termin — die Aufgabe kaeme sonst nie wieder. Wirft
+   * eine fremde Umsetzung doch, endet der Versuch im `catch`; die Aufloesung
+   * steht dann schon, nur Ereignis und Karte fehlen.
    *
    * Ereignis und Karte tragen denselben Zeitpunkt. Daran haengt, dass sich der
    * geplante Termin aus dem Ereignis exakt nachrechnen laesst.
@@ -187,7 +189,7 @@ export default function Aufgabe({ lektion, aufgabe, speicher, uhr = standarduhr 
       const termin = naechsterTermin(vorher ?? neueKarte(jetzt), mitStufe, fertig.richtig, jetzt);
       await ablage.merkeKarte(lektion, aufgabe.id, termin);
     } catch (fehler) {
-      console.warn('[frage] Aufzeichnung fehlgeschlagen:', fehler);
+      console.warn('[aufgabe] Aufzeichnung fehlgeschlagen:', fehler);
     }
   }
 
