@@ -266,6 +266,7 @@ export type Prinzip = z.infer<typeof PrinzipSchema>;
 export type Befund =
   | { ok: true; lehrplan: Lehrplan }
   | { ok: false; wartet: true; lehrplan: Lehrplan; maengel: string[] }
+  // wartet ist hier optional, damit werkzeug/lehrplan.mjs mit seinem JSDoc-Typ { ok: false, maengel } unveraendert bleibt.
   | { ok: false; wartet?: false; maengel: string[] };
 
 /** Zods Typnamen auf Deutsch, fuer die Meldung bei falscher Form. */
@@ -351,7 +352,8 @@ function nurDieFreigabeFehlt(fehler: readonly z.core.$ZodIssue[]): boolean {
 /**
  * Liest denselben Lehrplan noch einmal, diesmal mit gefuellter Freigabe — nur
  * um an die uebrigen Felder zu kommen. Was zurueckkommt, traegt die Freigabe
- * wieder leer: Im Lehrplan steht nichts, also steht auch hier nichts.
+ * so, wie sie im Lehrplan steht — leer, wo sie fehlt; der Ersatzwert
+ * verlaesst die Funktion nie.
  */
 function mitErsetzterFreigabe(daten: unknown): Lehrplan | null {
   if (typeof daten !== 'object' || daten === null) return null;
@@ -361,8 +363,9 @@ function mitErsetzterFreigabe(daten: unknown): Lehrplan | null {
   );
   if (!zweit.success) return null;
   const lehrplan = zweit.data;
-  lehrplan.geprueftVon = '';
-  lehrplan.geprueftAm = '';
+  const roh = daten as Record<string, unknown>;
+  lehrplan.geprueftVon = typeof roh.geprueftVon === 'string' ? roh.geprueftVon.trim() : '';
+  lehrplan.geprueftAm = typeof roh.geprueftAm === 'string' ? roh.geprueftAm.trim() : '';
   return lehrplan;
 }
 

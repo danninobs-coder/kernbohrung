@@ -299,4 +299,15 @@ describe('abdeckung - Freigabe', () => {
     const { ohneLehrplan } = abdeckung([wartender(wartendeFolien)], KEINE_MANIFESTE, LEKTIONEN);
     expect(ohneLehrplan).toEqual(['lektion-a', 'lektion-b']);
   });
+
+  /** Gemischter Bestand: ein Kurzname vor und einer nach dem wartenden Lehrplan zeigt, dass beide zusammen sortiert werden. */
+  it('mischt einen freigegebenen und einen wartenden Lehrplan — sortiert, mit Freigabe je Karte', () => {
+    const { bestand } = abdeckung(
+      [repo('zeta', prinzip('p-1'), prinzip('p-2')), wartender(wartendeFolien)],
+      KEINE_MANIFESTE,
+      LEKTIONEN,
+    );
+    expect(bestand.map((b) => b.quelle)).toEqual(['bauch-projektmanagement', 'zeta']);
+    expect(bestand.map((b) => b.freigabe)).toEqual(['wartet', 'erteilt']);
+  });
 });

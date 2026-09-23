@@ -1,0 +1,4 @@
+# PDF sind binaer: Ohne diese Zeile entscheidet Git per Heuristik, und bei
+# core.autocrlf=true koennte ein kleines PDF ohne fruehes Binaermuster als
+# Text gelten - dann aendert Git beim Auschecken seine Zeilenenden.
+*.pdf binary

@@ -330,10 +330,20 @@ describe('pruefeLehrplan - wartet auf Freigabe', () => {
     expect(e.maengel.join(' ')).toMatch(/geprueftAm/);
   });
 
-  /** Im Lehrplan steht nichts — dann steht auch im Befund nichts. Der Ersatz war nur ein Lesehilfsmittel. */
-  it('traegt die Freigabe leer, nicht mit einem Platzhalter', () => {
+  /**
+   * Was im Lehrplan tatsaechlich steht, bleibt im Befund erhalten — nur das
+   * fehlende Feld wird leer. Der Ersatzwert aus dem zweiten Lesedurchgang
+   * verlaesst die Funktion nie.
+   */
+  it('traegt nur das fehlende Feld leer, nicht mit einem Platzhalter', () => {
     const e = wartendVon(pruefeLehrplan({ ...gut, geprueftVon: '' }, KEINE));
     expect(e.lehrplan.geprueftVon).toBe('');
+    expect(e.lehrplan.geprueftAm).toBe('2026-09-02');
+  });
+
+  it('behaelt geprueftVon, wenn nur geprueftAm fehlt', () => {
+    const e = wartendVon(pruefeLehrplan({ ...gut, geprueftAm: '' }, KEINE));
+    expect(e.lehrplan.geprueftVon).toBe('Daniel Nobs');
     expect(e.lehrplan.geprueftAm).toBe('');
   });
 
