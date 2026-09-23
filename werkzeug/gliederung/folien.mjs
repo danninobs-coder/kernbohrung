@@ -327,9 +327,15 @@ export function gliedereFolien(dokument, kuerzel) {
   const mitIds = (weg, bereiche) => ({
     gliederung: weg,
     abschnitte: bereiche.map(([von, bis, titel], i) => ({
-      // Zweistellig, damit Abschnitt 10 hinter Abschnitt 2 sortiert.
-      id: `${kuerzel}-${String(i + 1).padStart(2, '0')}-${titel ? slug(titel) : `folien-${von}-${bis}`}`,
-      titel: titel ?? `${name}, Folien ${von}–${bis}`,
+      // Zweistellig, damit Abschnitt 10 hinter Abschnitt 2 sortiert. Der
+      // Rueckfall greift auch, wenn slug(titel) leer bleibt — etwa bei "---"
+      // oder einem Titel ganz ohne lateinische Buchstaben und Ziffern.
+      id: `${kuerzel}-${String(i + 1).padStart(2, '0')}-${(titel ? slug(titel) : '') || `folien-${von}-${bis}`}`,
+      // Ohne jeden Buchstaben und jede Ziffer taugt ein Titel nicht als
+      // Abschnittstitel (z. B. "---"). Ein Titel mit Buchstaben, aus dem nur
+      // kein lateinischer Slug wird (z. B. griechisch), bleibt stehen — nur
+      // seine Id nimmt den Rueckfall.
+      titel: titel !== null && /[\p{L}\p{N}]/u.test(titel) ? titel : `${name}, Folien ${von}–${bis}`,
       datei: dokument.datei,
       seiten: [von, bis],
     })),

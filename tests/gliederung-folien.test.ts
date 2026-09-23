@@ -20,6 +20,12 @@ import {
  */
 const FIXTUREN = path.resolve(__dirname, 'fixtures');
 
+/**
+ * Genau das Muster aus `src/lib/lehrplan.ts` (dort `ID`): nur Kleinbuchstaben,
+ * Ziffern und Bindestrich, kein leerer Abschnitt zwischen zwei Bindestrichen.
+ */
+const ID_MUSTER = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
 /** Eine Folie: Titelzeile in 20 pt, darunter Rumpfzeilen in 15 pt. */
 function folie(nummer: number, titel: string | null, rumpf: string[] = []) {
   const zeilen = [
@@ -151,6 +157,20 @@ describe('findeAgenda', () => {
     expect(agenda).toBeNull();
   });
 
+  it('nimmt keine Folie, deren Zeilen nur zur Haelfte wiederkehren', () => {
+    // Der Test oben trifft wegen nur eines Treffers faktisch die
+    // Mindesttreffer-Schwelle (AGENDA_MINDEST_TREFFER). Hier stehen zwei
+    // Treffer von fuenf Kandidaten (40 %) — das trifft gezielt die
+    // 50-%-Schwelle (AGENDA_MINDEST_ANTEIL).
+    const agenda = findeAgenda(
+      mitAgenda(
+        ['Themenblock eins', 'Themenblock zwei', 'Themenblock drei', 'Themenblock vier', 'Themenblock fuenf'],
+        ['Themenblock eins', 'x', 'Themenblock zwei', 'y', 'z'],
+      ).seiten,
+    );
+    expect(agenda).toBeNull();
+  });
+
   it('sieht nur unter den ersten fuenf Folien nach', () => {
     const spaet = {
       datei: 'M7.pdf',
@@ -236,6 +256,51 @@ describe('gliedereFolien', () => {
     ]);
   });
 
+  it('faengt einen Titel auf, dessen Slug leer wird, mit dem Rueckfall-Slug ab', () => {
+    // Nicht nur ein fehlender Titel: "---" hat einen Titel, aber slug()
+    // daraus wird leer. Ohne Rueckfall entstuende die ungueltige Id
+    // "m07-02-" (Bindestrich ohne Rest) statt "m07-02-folien-12-21".
+    const titel = [
+      ...Array.from({ length: 11 }, () => 'Titel A'),
+      ...Array.from({ length: 10 }, () => '---'),
+    ];
+    const aus = gliedereFolien(satz(titel), kuerzel);
+    expect(aus.gliederung).toBe('titellaeufe');
+    expect(aus.abschnitte.map((a) => [a.id, a.titel, a.seiten])).toEqual([
+      ['m07-01-titel-a', 'Titel A', [1, 11]],
+      ['m07-02-folien-12-21', 'M7 Risikomanagement 26, Folien 12–21', [12, 21]],
+    ]);
+    for (const a of aus.abschnitte) expect(a.id).toMatch(ID_MUSTER);
+  });
+
+  it('laesst einen Titel aus nichtlateinischen Buchstaben stehen, die Id nimmt den Rueckfall-Slug', () => {
+    // "Ελληνικά" hat Buchstaben (\p{L}) und bleibt darum Titel; slug() macht
+    // daraus trotzdem nichts, weil slug() nur a-z0-9 kennt — also nimmt nur
+    // die Id den Rueckfall.
+    const titel = [
+      ...Array.from({ length: 11 }, () => 'Titel A'),
+      ...Array.from({ length: 10 }, () => 'Ελληνικά'),
+    ];
+    const aus = gliedereFolien(satz(titel), kuerzel);
+    expect(aus.gliederung).toBe('titellaeufe');
+    expect(aus.abschnitte.map((a) => [a.id, a.titel, a.seiten])).toEqual([
+      ['m07-01-titel-a', 'Titel A', [1, 11]],
+      ['m07-02-folien-12-21', 'Ελληνικά', [12, 21]],
+    ]);
+    for (const a of aus.abschnitte) expect(a.id).toMatch(ID_MUSTER);
+  });
+
+  it('faellt bei einem Titellauf ueber die ganze Datei auf die gleichmaessige Teilung zurueck', () => {
+    // Ein einziger Lauf 1..N liefert keine Grenze (siehe ausGrenzen) und
+    // faellt damit auf den gleichmaessigen Weg zurueck, mit Rueckfalltiteln.
+    const aus = gliedereFolien(satz(Array.from({ length: 30 }, () => 'Gleicher Titel')), kuerzel);
+    expect(aus.gliederung).toBe('gleichmaessig');
+    expect(aus.abschnitte.map((a) => [a.id, a.titel, a.seiten])).toEqual([
+      ['m07-01-folien-1-15', 'M7 Risikomanagement 26, Folien 1–15', [1, 15]],
+      ['m07-02-folien-16-30', 'M7 Risikomanagement 26, Folien 16–30', [16, 30]],
+    ]);
+  });
+
   it('gibt mehr als drei Folien vor der ersten Grenze einen eigenen Abschnitt', () => {
     // Sonst verschwaenden sie im ersten Abschnitt und traegen dessen Titel,
     // obwohl sie gar nicht dazugehoeren.
@@ -274,6 +339,45 @@ describe('gliedereFolien', () => {
       [23, 32],
     ]);
     expect(aus.abschnitte[0]?.titel).toBe('M7 Risikomanagement 26, Folien 1–11');
+  });
+
+  it('bleibt bei 16 Folien einzeln — EINZELN_BIS greift vor der gleichmaessigen Teilung', () => {
+    // Randfall aus dem Review nachgeprueft: 16 Folien landen NICHT bei einer
+    // 8+8-Teilung. EINZELN_BIS (20) greift zuerst, der ganze Satz bleibt ein
+    // Abschnitt — die gleichmaessige Teilung sieht diese 16 Folien nie.
+    const aus = gliedereFolien(satz(Array.from({ length: 16 }, (_, i) => `Thema ${i}`)), kuerzel);
+    expect(aus.gliederung).toBe('einzeln');
+    expect(aus.abschnitte).toHaveLength(1);
+    expect(aus.abschnitte[0]?.seiten).toEqual([1, 16]);
+  });
+
+  it.each([
+    [30, [15, 15]],
+    [31, [11, 10, 10]],
+  ])('teilt %i Folien gleichmaessig in Abschnitte der Groesse %j — hoechstens 15, Rest vorn verteilt', (n, groessen) => {
+    const aus = gliedereFolien(satz(Array.from({ length: n }, (_, i) => `Thema ${i}`)), kuerzel);
+    expect(aus.gliederung).toBe('gleichmaessig');
+    expect(aus.abschnitte.map((a) => a.seiten[1] - a.seiten[0] + 1)).toEqual(groessen);
+  });
+
+  it('kuerzt ein einzelnes Wort ueber 32 Zeichen im Titel auf einen gueltigen Slug', () => {
+    // Ein einzelnes "Wort" (kein Leerzeichen, kein Bindestrich) ueber 32
+    // Zeichen passt in keine Anhaeufung — slug() faellt auf die harte
+    // Kuerzung der ersten 32 Zeichen zurueck (den || teile[0]?.slice(...)
+    // Zweig). Der volle Titel bleibt als Anzeigetitel stehen.
+    const wortLang = 'wort'.repeat(10);
+    expect(wortLang.length).toBeGreaterThan(32);
+    expect(slug(wortLang)).toBe(wortLang.slice(0, 32));
+
+    const titel = [
+      ...Array.from({ length: 11 }, () => 'Titel A'),
+      ...Array.from({ length: 10 }, () => wortLang),
+    ];
+    const aus = gliedereFolien(satz(titel), kuerzel);
+    const zweiter = aus.abschnitte[1];
+    expect(zweiter?.id).toBe(`m07-02-${wortLang.slice(0, 32)}`);
+    expect(zweiter?.titel).toBe(wortLang);
+    expect(zweiter?.id).toMatch(ID_MUSTER);
   });
 
   it('deckt jede Folie genau einmal ab', () => {
