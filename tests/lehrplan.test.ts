@@ -317,6 +317,9 @@ describe('pruefeLehrplan - wartet auf Freigabe', () => {
   ])('wartet, wenn geprueftVon %s ist — und liefert den Lehrplan mit', (_fall, wert) => {
     const e = wartendVon(pruefeLehrplan({ ...gut, geprueftVon: wert }, KEINE));
     expect(e.maengel).toEqual(['geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.']);
+    // Bei „nur Leerzeichen" haelt das fest, dass mitErsetzterFreigabe trimmt —
+    // ohne .trim() bliebe hier '   ' stehen statt ''.
+    expect(e.lehrplan.geprueftVon).toBe('');
     expect(e.lehrplan.quelle).toBe('awesome-llm-apps');
     if (e.lehrplan.art !== 'repo') throw new Error('Erwartet war ein Repo.');
     expect(e.lehrplan.prinzipien).toHaveLength(2);

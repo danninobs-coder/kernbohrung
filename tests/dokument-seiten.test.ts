@@ -154,8 +154,27 @@ describe('werteOperatorenAus', () => {
 
 describe('liesSeiten an den Fixtures', () => {
   let pdfjs: Awaited<ReturnType<typeof ladePdfjs>>;
+  /**
+   * Konsolenmeldungen waehrend `ladePdfjs()` hier in `beforeAll` — vor jedem
+   * Test dieser Datei. `ladePdfjs` speichert selbst nichts zwischen; einzig
+   * der dynamische Import von pdf.js liegt im Modul-Cache von Node, und
+   * Vitest laedt Module je Testdatei neu (isolate: true, Voreinstellung) —
+   * dieser Aufruf ist also der erste Import von pdf.js in dieser Datei, ganz
+   * gleich, welche andere Testdatei vorher lief.
+   */
+  let ladeMeldungen: unknown[];
   beforeAll(async () => {
-    pdfjs = await ladePdfjs();
+    ladeMeldungen = [];
+    const echt = { log: console.log, warn: console.warn, error: console.error, info: console.info };
+    console.log = (...t: unknown[]) => ladeMeldungen.push(t);
+    console.warn = (...t: unknown[]) => ladeMeldungen.push(t);
+    console.error = (...t: unknown[]) => ladeMeldungen.push(t);
+    console.info = (...t: unknown[]) => ladeMeldungen.push(t);
+    try {
+      pdfjs = await ladePdfjs();
+    } finally {
+      Object.assign(console, echt);
+    }
   });
 
   it('liest Seitenzahl, Format und Zeilen eines Foliensatzes', async () => {
@@ -211,6 +230,10 @@ describe('liesSeiten an den Fixtures', () => {
   });
 
   it('meldet beim Laden und beim Lesen nichts auf der Konsole', async () => {
+    // Die Ladephase: von `beforeAll` in `ladeMeldungen` gesammelt, bevor
+    // dieser oder ein anderer Test dieser Datei lief.
+    expect(ladeMeldungen).toEqual([]);
+
     // Ohne die vier Datenpfade meldet pdf.js fehlende Standardschriften und
     // nicht dekodierbare Bilder — je Datei mehrere Zeilen, die wie ein Fehler
     // aussehen und keiner sind.

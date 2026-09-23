@@ -142,6 +142,16 @@ describe('findeBeiwerk', () => {
     const wandernd = satz(10, (i) => [zeile('Fallbeispiel', (0.9 - i * 0.02) * HOEHE)]);
     expect([...findeBeiwerk(wandernd.seiten).keys()]).toEqual(['Folie #']);
   });
+
+  it('erkennt Beiwerk genau an der 80-%-Schwelle, knapp darunter nicht', () => {
+    // Randstreifen unten (Lage 0,08), zehn Seiten, keine Ziffer in der Zeile:
+    // schluessel() aendert am Vergleichsschluessel nichts.
+    const marke = () => zeile('Vertraulich', 0.08 * HOEHE);
+    const achtVonZehn = satz(10, (i) => (i <= 8 ? [marke()] : []));
+    const siebenVonZehn = satz(10, (i) => (i <= 7 ? [marke()] : []));
+    expect(findeBeiwerk(achtVonZehn.seiten).has('Vertraulich')).toBe(true);
+    expect(findeBeiwerk(siebenVonZehn.seiten).has('Vertraulich')).toBe(false);
+  });
 });
 
 describe('bereinigeQuelle', () => {
@@ -175,6 +185,34 @@ describe('bereinigeQuelle', () => {
     expect(datei.beiwerkHerkunft).toBe('keins');
     expect(datei.seiten[0]?.zeilen).toHaveLength(2);
     expect(datei.abbruch).toBeNull();
+  });
+
+  it('gibt beiwerkAnteil 0 statt NaN, wenn eine Datei kein einziges Zeichen enthaelt', () => {
+    // gesamtZeichen ist 0 — ohne den Schutz waere das eine Division durch null.
+    const leer = { datei: 'leer.pdf', seiten: Array.from({ length: 10 }, (_, i) => seite(i + 1, [])) };
+    const [datei] = bereinigeQuelle([leer]);
+    expect(datei.gesamtZeichen).toBe(0);
+    expect(datei.beiwerkAnteil).toBe(0);
+  });
+
+  it('liefert fuer eine Datei ohne Seiten ein leeres Ergebnis, statt zu werfen', () => {
+    const [datei] = bereinigeQuelle([{ datei: 'ohne-seiten.pdf', seiten: [] }]);
+    expect(datei).toEqual({
+      datei: 'ohne-seiten.pdf',
+      seitenzahl: 0,
+      quer: 0,
+      median: 0,
+      abbruch: null,
+      beiwerk: [],
+      beiwerkHerkunft: 'keins',
+      beiwerkZeichen: 0,
+      gesamtZeichen: 0,
+      beiwerkAnteil: 0,
+      trennungen: 0,
+      nurBild: [],
+      tabellenverdacht: [],
+      seiten: [],
+    });
   });
 });
 
@@ -274,6 +312,28 @@ describe('Abbruch und Art', () => {
       seiten: Array.from({ length: 6 }, (_, i) => ({ ...seite(i + 1, [zeile('x'.repeat(3000), 300)]), breite: 595, hoehe: 842 })),
     };
     expect(artDerQuelle(bereinigeQuelle([hoch])).art).toBe('buch');
+  });
+
+  it('mittelt bei gerader Seitenzahl die beiden mittleren Werte fuer den Median', () => {
+    // Sortiert 100, 200, 800, 900: Median (200+800)/2 = 500 - nur richtig,
+    // wenn beide mittleren Werte gemittelt werden. Wer nur einen naehme,
+    // bekaeme 200 oder 800 - beides ungleich 500.
+    const datei = {
+      datei: 'gerade.pdf',
+      seiten: [900, 100, 800, 200].map((n, i) => seite(i + 1, [zeile('x'.repeat(n), 300)])),
+    };
+    const quelle = artDerQuelle(bereinigeQuelle([datei]));
+    expect(quelle.median).toBe(500);
+    expect(quelle.art).toBe('folien');
+  });
+
+  it('bleibt folien, wenn eine einzelne Seite hochformatig ist — die Quelle entscheidet, nicht die Seite', () => {
+    const quer = Array.from({ length: 9 }, (_, i) => seite(i + 1, [zeile('x'.repeat(100), 300)]));
+    const hoch = { ...seite(10, [zeile('x'.repeat(100), 300)]), breite: 595, hoehe: 842 };
+    const datei = { datei: 'gemischt.pdf', seiten: [...quer, hoch] };
+    const quelle = artDerQuelle(bereinigeQuelle([datei]));
+    expect(quelle.quer).toBe(9);
+    expect(quelle.art).toBe('folien');
   });
 });
 
