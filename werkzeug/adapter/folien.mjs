@@ -12,12 +12,25 @@
  * **Auf der Konsole steht nie Folientext.** Das Material gehoert seinen
  * Verfassern; gemeldet werden Zahlen, Dateinamen, Abschnitt-Ids und Titel.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { BEIWERK_WARNUNG, artDerQuelle, bereinigeQuelle, ladePdfjs, liesSeiten, seitenText } from './dokument.mjs';
+// Namentlich, nicht als Vorgabe-Import: js-yaml 5 liefert unter `import` ein
+// ESM-Buendel ohne Default-Export.
+import { load as yamlLesen } from 'js-yaml';
+import {
+  BEIWERK_WARNUNG,
+  DokumentFehler,
+  artDerQuelle,
+  bereinigeQuelle,
+  ladePdfjs,
+  liesSeiten,
+  seitenText,
+} from './dokument.mjs';
 import { dateikuerzel, gliedereFolien } from '../gliederung/folien.mjs';
+import { lektionsIdsAus } from '../lehrplan.mjs';
 import { baueDokumentManifest, dateiHash, standAusHashes } from '../manifest.mjs';
 import { lehrplanGeruest, vergleicheLehrplan } from '../lehrplan-geruest.mjs';
+import { lehrplanAusYaml } from '../../src/lib/lehrplan.ts';
 
 /**
  * Was auf einer Folie mit Tabellenverdacht ueber dem Text steht.
@@ -128,7 +141,234 @@ export function rohdatei(abschnitt, seiten) {
  */
 
 /**
+ * Lehrplan-Arten, deren Datei ein Folien-Lauf nicht anfasst — auch nicht zum
+ * Vergleich. Nur die bekannten: Ein Tippfehler in `art` macht einen Lehrplan
+ * kaputt, nicht fremd, und ein kaputter bricht nichts ab.
+ */
+const ANDERE_LEHRPLAN_ARTEN = new Set(['repo', 'buch']);
+
+/**
+ * Was pdf.js wirft, wenn eine Datei kein lesbares PDF ist. Erkannt am Namen:
+ * Nicht alle diese Klassen exportiert pdf.js.
+ */
+const PDFJS_LADEFEHLER = new Set(['InvalidPDFException', 'UnknownErrorException', 'ResponseException']);
+
+/**
+ * Warum sich eine Datei nicht lesen liess, als Satz fuer den Nutzer — oder
+ * `null`, wenn der Fehler keiner des Lesens ist, sondern einer im Programm.
+ * Der geht als Stapelabzug durch: Als Lesefehler verkleidet, suchte man am
+ * PDF statt im Code.
+ *
+ * @param {unknown} fehler
+ * @returns {string | null}
+ */
+function lesegrund(fehler) {
+  if (fehler instanceof DokumentFehler) return fehler.message;
+  if (!(fehler instanceof Error)) return null;
+  if (fehler.name === 'PasswordException') return 'ist mit einem Passwort geschützt — bitte ohne Passwort speichern.';
+  // Ein gescheiterter Systemaufruf (gesperrt, keine Rechte) traegt `syscall`.
+  const systemfehler = typeof (/** @type {Error & { syscall?: unknown }} */ (fehler).syscall) === 'string';
+  if (PDFJS_LADEFEHLER.has(fehler.name) || systemfehler) return `lässt sich nicht als PDF lesen (${fehler.message}).`;
+  return null;
+}
+
+/**
+ * Der Code eines gescheiterten Systemaufrufs (`EBUSY`, `EPERM`, …), sonst der
+ * Name des Fehlers.
+ *
+ * @param {unknown} fehler
+ * @returns {string}
+ */
+function fehlercode(fehler) {
+  if (!(fehler instanceof Error)) return String(fehler);
+  const code = /** @type {Error & { code?: unknown }} */ (fehler).code;
+  return typeof code === 'string' ? code : fehler.name;
+}
+
+/**
+ * Die Art, die ein vorhandenes Manifest nennt — `null`, wenn es keines gibt
+ * oder keines, das eine Art lesbar nennt.
+ *
+ * @param {string} pfad
+ * @returns {string | null}
+ */
+function artImManifest(pfad) {
+  try {
+    const art = JSON.parse(readFileSync(pfad, 'utf8'))?.herkunft?.art;
+    return typeof art === 'string' ? art : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Die Art, die ein Lehrplan nennt — `null`, wenn er keine lesbare nennt.
+ *
+ * @param {string} text
+ * @returns {string | null}
+ */
+function artImLehrplan(text) {
+  try {
+    const daten = yamlLesen(text);
+    return typeof daten === 'object' && daten !== null && 'art' in daten && typeof daten.art === 'string'
+      ? daten.art
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ein vorhandener Lehrplan: sein Text, oder warum er sich nicht lesen liess.
+ *
+ * @param {string} pfad
+ * @returns {{ text: string } | { fehler: string }}
+ */
+function liesVorhandenen(pfad) {
+  try {
+    return { text: readFileSync(pfad, 'utf8') };
+  } catch (fehler) {
+    return { fehler: fehler instanceof Error ? fehler.message : String(fehler) };
+  }
+}
+
+/**
+ * Der Vergleich eines vorhandenen Lehrplans mit dem neuen Stand — oder die
+ * Warnung, dass er entfaellt.
+ *
+ * Ein kaputter oder leerer Lehrplan bricht das Einlesen nicht ab: Er bleibt
+ * Byte fuer Byte, wie er ist, und die Warnung sagt, warum nicht verglichen
+ * wurde. Verglichen wird nur mit einem Lehrplan, den auch die Bibliothek
+ * liest — freigegeben oder wartend, geprueft gegen die Lektionen unter der
+ * Wurzel. Der Grund ist der erste Mangel, wie ihn `lehrplanAusYaml` meldet.
+ *
+ * @param {{ text: string } | { fehler: string }} vorhanden
+ * @param {{ kurzname: string, wurzel: string, stand: string, abschnitte: readonly import('../lehrplan-geruest.mjs').Abschnitt[] }} neu
+ * @returns {{ vergleich: import('../lehrplan-geruest.mjs').Vergleich | null, warnung: string | null }}
+ */
+function vergleicheVorhandenen(vorhanden, { kurzname, wurzel, stand, abschnitte }) {
+  let grund;
+  if ('fehler' in vorhanden) {
+    grund = vorhanden.fehler;
+  } else {
+    const lektionen = lektionsIdsAus(path.join(wurzel, 'inhalt', 'lektionen'));
+    const befund = lehrplanAusYaml(vorhanden.text, lektionen, `${kurzname}.yaml`);
+    if (befund.ok || befund.wartet) {
+      return { vergleich: vergleicheLehrplan(vorhanden.text, { stand, abschnitte }), warnung: null };
+    }
+    grund = befund.maengel[0];
+  }
+  return {
+    vergleich: null,
+    // Ohne den Schlusspunkt des Mangels: Der Satz geht danach weiter.
+    warnung: `Vergleich übersprungen: lehrplan/${kurzname}.yaml lässt sich nicht lesen — ${grund.replace(/\.$/, '')}. Der Lehrplan bleibt, wie er ist.`,
+  };
+}
+
+/**
+ * Entfernt einen halb gebauten Ordner `.neu`. Gelingt das nicht, bleibt er
+ * liegen: Der naechste Lauf raeumt ihn vorher weg, und die Bibliothek sieht
+ * Ordner mit einem Punkt vorne nicht (`import.meta.glob` laesst sie aus).
+ *
+ * @param {string} pfad
+ * @param {(pfad: string, optionen: import('node:fs').RmOptions) => void} entfernen
+ */
+function raeumeWeg(pfad, entfernen) {
+  try {
+    entfernen(pfad, { recursive: true, force: true });
+  } catch {
+    // liegen lassen — siehe oben
+  }
+}
+
+/**
+ * Setzt den fertig gebauten Ordner `quellen/.<k>.neu` an die Stelle von
+ * `quellen/<k>`.
+ *
+ * Zwei Umbenennungen statt Loeschen und Neuschreiben: `quellen/<k>` ist zu
+ * jedem Zeitpunkt der vollstaendige alte Stand, der vollstaendige neue oder —
+ * fuer die Dauer einer Umbenennung — gar nicht da; einen halben Ordner gibt es
+ * nie. Scheitert ein Umbenennen — unter Windows etwa, wenn ein PDF aus
+ * `original/` noch in einem Betrachter offen ist —, wird zurueckgerollt: Der
+ * alte Stand kommt an seinen Platz, `.neu` wird entfernt.
+ *
+ * Scheitert auch das Zuruecklegen, bleiben beide Staende liegen und die
+ * Meldung sagt, wo. Der naechste Lauf haelt dann an `.alt` an, statt es zu
+ * ueberschreiben — darin steckt der einzige vollstaendige alte Stand. Laesst
+ * sich nach gelungenem Tausch nur `.alt` nicht entfernen, ist der neue Stand
+ * eingelesen; zurueck kommt dann eine Warnung statt eines Abbruchs.
+ *
+ * `dateisystem` ist nur fuer Tests austauschbar: Ein gesperrtes Umbenennen
+ * laesst sich anders nicht zuverlaessig herbeifuehren.
+ *
+ * @param {string} quellen der Ordner `quellen/` unter der Wurzel
+ * @param {string} kurzname
+ * @param {{ renameSync: typeof renameSync, rmSync: typeof rmSync }} [dateisystem]
+ * @returns {string | null} eine Warnung, wenn am Ende nur `.alt` liegen blieb
+ */
+export function tausche(quellen, kurzname, dateisystem = { renameSync, rmSync }) {
+  const ziel = path.join(quellen, kurzname);
+  const neu = path.join(quellen, `.${kurzname}.neu`);
+  const alt = path.join(quellen, `.${kurzname}.alt`);
+  /** @type {(fehler: unknown) => EinleseFehler} */
+  const nichtErsetzt = (fehler) =>
+    new EinleseFehler(
+      `quellen/${kurzname}/ lässt sich nicht ersetzen (${fehlercode(fehler)}) — ist eine Datei daraus noch geöffnet? Nichts verändert.`,
+    );
+
+  const hatteAlten = existsSync(ziel);
+  if (hatteAlten) {
+    try {
+      dateisystem.renameSync(ziel, alt);
+    } catch (fehler) {
+      raeumeWeg(neu, dateisystem.rmSync);
+      throw nichtErsetzt(fehler);
+    }
+  }
+  try {
+    dateisystem.renameSync(neu, ziel);
+  } catch (fehler) {
+    if (hatteAlten) {
+      try {
+        dateisystem.renameSync(alt, ziel);
+      } catch (auchDas) {
+        throw new EinleseFehler(
+          `quellen/${kurzname}/ lässt sich nicht ersetzen (${fehlercode(fehler)}), ` +
+            `und der alte Stand ließ sich nicht zurücklegen (${fehlercode(auchDas)}): ` +
+            `Er liegt in quellen/.${kurzname}.alt, der neue in quellen/.${kurzname}.neu. Bitte ansehen.`,
+        );
+      }
+    }
+    raeumeWeg(neu, dateisystem.rmSync);
+    throw nichtErsetzt(fehler);
+  }
+  if (!hatteAlten) return null;
+  try {
+    dateisystem.rmSync(alt, { recursive: true, force: true });
+    return null;
+  } catch (fehler) {
+    return (
+      `quellen/.${kurzname}.alt ließ sich nicht entfernen (${fehlercode(fehler)}). Der neue Stand ist eingelesen; ` +
+      'bitte den Ordner von Hand löschen — bis dahin hält das nächste Einlesen dort an.'
+    );
+  }
+}
+
+/**
  * Liest eine Quelle aus Foliensaetzen ein.
+ *
+ * In zwei Schritten, und der erste schreibt nichts. **Rechnen:** alle PDF
+ * lesen, pruefen, bereinigen, gliedern, Rohdateien, Manifest und Lehrplan im
+ * Speicher bauen, einen vorhandenen Lehrplan lesen. Scheitert dort etwas — ein
+ * kaputtes PDF, ein Buch, eine Quelle anderer Art unter demselben Namen —, ist
+ * nichts veraendert. **Tauschen:** `quellen/.<k>.neu` aufbauen und an die
+ * Stelle von `quellen/<k>` setzen (`tausche`); dann, wenn es keinen gab, den
+ * Lehrplan anlegen.
+ *
+ * Die Originale werden aus den Bytes geschrieben, die gelesen und gehasht
+ * wurden, nicht noch einmal kopiert: Liegt eine Eingabe in
+ * `quellen/<k>/original/` selbst, gibt es sie beim Tauschen dort nicht mehr —
+ * und so passt der Hash im Manifest sicher zur Datei daneben.
  *
  * @param {{
  *   orte: readonly string[],
@@ -147,15 +387,50 @@ export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestem
   }
   if (!titel.trim()) throw new EinleseFehler('--titel fehlt. Die Bibliothek zeigt ihn auf der Karte.');
 
+  // --- vorab: was schon da ist ----------------------------------------------
+  const quellen = path.join(wurzel, 'quellen');
+  const lehrplanPfad = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
+  // Zuerst .alt: Darin kann der einzige vollstaendige Stand stecken, und ein
+  // weiterer Tausch wuerde ihn ueberschreiben.
+  if (existsSync(path.join(quellen, `.${kurzname}.alt`))) {
+    throw new EinleseFehler(
+      `Ein früherer Lauf ist nicht zu Ende gekommen: quellen/.${kurzname}.alt liegt noch da. Bitte ansehen und entfernen, dann neu einlesen.`,
+    );
+  }
+  const manifestArt = artImManifest(path.join(quellen, kurzname, 'manifest.json'));
+  if (manifestArt !== null && manifestArt !== 'folien') {
+    throw new EinleseFehler(
+      `quellen/${kurzname}/ gehört schon zu einer Quelle der Art ${manifestArt} — für Foliensätze einen anderen Kurznamen wählen. Nichts verändert.`,
+    );
+  }
+  const vorhanden = existsSync(lehrplanPfad) ? liesVorhandenen(lehrplanPfad) : null;
+  const lehrplanArt = vorhanden !== null && 'text' in vorhanden ? artImLehrplan(vorhanden.text) : null;
+  if (lehrplanArt !== null && ANDERE_LEHRPLAN_ARTEN.has(lehrplanArt)) {
+    throw new EinleseFehler(
+      `lehrplan/${kurzname}.yaml gehört schon zu einer Quelle der Art ${lehrplanArt} — für Foliensätze einen anderen Kurznamen wählen. Nichts verändert.`,
+    );
+  }
+
+  // --- rechnen: nichts auf die Platte ---------------------------------------
   const pfade = sammlePdfs(orte);
   const pdfjs = geladen ?? (await ladePdfjs());
 
-  /** @type {{ datei: string, hash: string, seiten: import('./dokument.mjs').RohSeite[] }[]} */
+  /** @type {{ datei: string, bytes: Buffer, hash: string, seiten: import('./dokument.mjs').RohSeite[] }[]} */
   const roh = [];
   for (const pfad of pfade) {
-    const bytes = readFileSync(pfad);
-    const { seiten } = await liesSeiten(new Uint8Array(bytes), pdfjs);
-    roh.push({ datei: path.basename(pfad), hash: dateiHash(bytes), seiten });
+    const datei = path.basename(pfad);
+    try {
+      // Die Bytes bleiben im Speicher: Aus ihnen wird gehasht und spaeter das
+      // Original geschrieben. pdf.js bekommt eine Kopie.
+      const bytes = readFileSync(pfad);
+      const hash = dateiHash(bytes);
+      const { seiten } = await liesSeiten(new Uint8Array(bytes), pdfjs);
+      roh.push({ datei, bytes, hash, seiten });
+    } catch (fehler) {
+      const grund = lesegrund(fehler);
+      if (grund === null) throw fehler;
+      throw new EinleseFehler(`${datei}: ${grund}`);
+    }
   }
 
   const namen = roh.map((r) => r.datei);
@@ -181,25 +456,15 @@ export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestem
   const abschnitte = gegliedert.flatMap((g) => g.abschnitte);
   const stand = standAusHashes(roh.map((r) => r.hash));
 
-  // --- schreiben ------------------------------------------------------------
-  const quellordner = path.join(wurzel, 'quellen', kurzname);
-  const rohordner = path.join(quellordner, 'roh');
-  const originalordner = path.join(quellordner, 'original');
-  // Alte Rohdateien wegraeumen: Faellt ein Abschnitt weg, bliebe er sonst
-  // liegen und das Manifest widerspraeche dem Ordner daneben.
-  rmSync(rohordner, { recursive: true, force: true });
-  rmSync(originalordner, { recursive: true, force: true });
-  mkdirSync(rohordner, { recursive: true });
-  mkdirSync(originalordner, { recursive: true });
-  pfade.forEach((pfad) => copyFileSync(pfad, path.join(originalordner, path.basename(pfad))));
-
+  /** @type {{ name: string, text: string }[]} */
+  const rohdateien = [];
   /** @type {import('../manifest.mjs').Rohdatei[]} */
   const rohListe = [];
   for (const { datei, abschnitte: teile } of gegliedert) {
     for (const abschnitt of teile) {
       const [von, bis] = abschnitt.seiten;
       const seiten = datei.seiten.filter((s) => s.nummer >= von && s.nummer <= bis);
-      writeFileSync(path.join(rohordner, `${abschnitt.id}.md`), rohdatei(abschnitt, seiten), 'utf8');
+      rohdateien.push({ name: `${abschnitt.id}.md`, text: rohdatei(abschnitt, seiten) });
       rohListe.push({
         id: abschnitt.id,
         datei: abschnitt.datei,
@@ -222,23 +487,6 @@ export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestem
     roh: rohListe,
     gestempeltAm,
   });
-  writeFileSync(path.join(quellordner, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-
-  // --- Lehrplan -------------------------------------------------------------
-  const lehrplanPfad = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
-  const text = lehrplanGeruest({ kurzname, titel, stand, abschnitte });
-  let geschrieben = false;
-  /** @type {import('../lehrplan-geruest.mjs').Vergleich | null} */
-  let vergleich = null;
-  if (existsSync(lehrplanPfad)) {
-    // Nie ueberschreiben: Im Lehrplan steckt die Arbeit des Compilers und die
-    // Freigabe eines Menschen. Gemeldet wird, was sich geaendert hat.
-    vergleich = vergleicheLehrplan(readFileSync(lehrplanPfad, 'utf8'), { stand, abschnitte });
-  } else {
-    mkdirSync(path.dirname(lehrplanPfad), { recursive: true });
-    writeFileSync(lehrplanPfad, text, 'utf8');
-    geschrieben = true;
-  }
 
   const warnungen = dateien
     .filter((d) => d.beiwerkAnteil > BEIWERK_WARNUNG)
@@ -247,6 +495,50 @@ export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestem
         `${d.datei}: ${(d.beiwerkAnteil * 100).toFixed(1)} % des Texts als Beiwerk entfernt — ` +
         'vermutlich stimmt etwas mit der Extraktion nicht.',
     );
+
+  // Nie ueberschreiben: Im Lehrplan steckt die Arbeit des Compilers und die
+  // Freigabe eines Menschen. Gemeldet wird, was sich geaendert hat.
+  /** @type {import('../lehrplan-geruest.mjs').Vergleich | null} */
+  let vergleich = null;
+  if (vorhanden !== null) {
+    const bewertet = vergleicheVorhandenen(vorhanden, { kurzname, wurzel, stand, abschnitte });
+    vergleich = bewertet.vergleich;
+    if (bewertet.warnung) warnungen.push(bewertet.warnung);
+  }
+  const geruest = vorhanden === null ? lehrplanGeruest({ kurzname, titel, stand, abschnitte }) : null;
+
+  // --- tauschen -------------------------------------------------------------
+  const neu = path.join(quellen, `.${kurzname}.neu`);
+  // Ein .neu aus einem abgebrochenen Lauf ist halb gebaut: weg damit.
+  rmSync(neu, { recursive: true, force: true });
+  try {
+    mkdirSync(path.join(neu, 'original'), { recursive: true });
+    mkdirSync(path.join(neu, 'roh'), { recursive: true });
+    for (const { datei, bytes } of roh) writeFileSync(path.join(neu, 'original', datei), bytes);
+    for (const { name, text } of rohdateien) writeFileSync(path.join(neu, 'roh', name), text, 'utf8');
+    writeFileSync(path.join(neu, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  } catch (fehler) {
+    raeumeWeg(neu, rmSync);
+    throw fehler;
+  }
+  const liegenGeblieben = tausche(quellen, kurzname);
+  if (liegenGeblieben) warnungen.push(liegenGeblieben);
+
+  // Der Lehrplan erst jetzt: Scheitert der Tausch, ist auch er nicht angelegt.
+  let geschrieben = false;
+  if (geruest !== null) {
+    mkdirSync(path.dirname(lehrplanPfad), { recursive: true });
+    try {
+      // wx: Hat ihn ein Lauf daneben inzwischen angelegt, wird verglichen statt ueberschrieben.
+      writeFileSync(lehrplanPfad, geruest, { encoding: 'utf8', flag: 'wx' });
+      geschrieben = true;
+    } catch (fehler) {
+      if (fehlercode(fehler) !== 'EEXIST') throw fehler;
+      const bewertet = vergleicheVorhandenen(liesVorhandenen(lehrplanPfad), { kurzname, wurzel, stand, abschnitte });
+      vergleich = bewertet.vergleich;
+      if (bewertet.warnung) warnungen.push(bewertet.warnung);
+    }
+  }
 
   return {
     kurzname,

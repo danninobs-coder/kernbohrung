@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { argumente, bericht, fuehreAus } from '../werkzeug/ingest-folien.mjs';
@@ -65,6 +65,19 @@ describe('fuehreAus', () => {
       expect(code).toBe(1);
       expect(zeilen).toHaveLength(1);
       expect(zeilen[0]).toMatch(/^Bücher liest diese Fassung noch nicht ein/);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('meldet ein kaputtes PDF als eine Zeile mit Dateinamen, nicht als Stapelabzug', async () => {
+    const wurzel = temp();
+    try {
+      const kaputt = path.join(wurzel, 'kaputt.pdf');
+      writeFileSync(kaputt, 'x');
+      const { code, zeilen } = await lauf(['--folien', kaputt, '--name', 'x', '--titel', 'T'], wurzel);
+      expect(code).toBe(1);
+      expect(zeilen).toEqual(['kaputt.pdf: lässt sich nicht als PDF lesen (Invalid PDF structure.).']);
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }

@@ -120,6 +120,14 @@ export async function ladePdfjs(basisOrdner) {
 // Teil 1: pdf.js -> Rohseiten
 
 /**
+ * Ein PDF, das sich oeffnen laesst, aber nicht so lesen, wie diese Fassung es
+ * braucht. Die Meldung ist deutsch und nennt die Abhilfe; wer einliest, setzt
+ * den Dateinamen davor. Eigene Klasse, damit das Einlesen sie von einem
+ * Fehler im Programm unterscheiden kann.
+ */
+export class DokumentFehler extends Error {}
+
+/**
  * Liest ein PDF.
  *
  * Aufgeraeumt wird mit `ladeaufgabe.destroy()`: `PDFDocumentProxy.destroy()`
@@ -139,7 +147,7 @@ export async function liesSeiten(bytes, geladen) {
     for (let n = 1; n <= doc.numPages; n++) {
       const seite = await doc.getPage(n);
       if (seite.rotate !== 0) {
-        throw new Error(
+        throw new DokumentFehler(
           `Seite ${n} ist um ${seite.rotate} Grad gedreht. Gedrehte Seiten liest diese Fassung noch nicht in der richtigen Reihenfolge; bitte das PDF ohne Drehung speichern.`,
         );
       }

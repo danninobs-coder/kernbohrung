@@ -21,7 +21,7 @@ import { lehrplanAusYaml } from '../src/lib/lehrplan.ts';
  * @param {string} ordner
  * @returns {Set<string>}
  */
-function lektionsIdsAus(ordner) {
+export function lektionsIdsAus(ordner) {
   try {
     return new Set(
       readdirSync(ordner)
