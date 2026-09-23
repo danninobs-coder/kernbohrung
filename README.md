@@ -33,6 +33,9 @@ src/pages/              Übersicht und Lektionsroute.
 tests/                  Vitest, jsdom, @testing-library/react.
 public/manifest.webmanifest, public/symbole/   Macht die Seite auf Android installierbar.
 .github/workflows/pages.yml   Veröffentlicht auf GitHub Pages — nur von Hand gestartet.
+werkzeug/               Einlesen: ingest.mjs als Weiche, adapter/ (git, dokument, folien),
+                        gliederung/folien.mjs, manifest.mjs, fixtures/erzeuge.mjs.
+lehrplan/               Je Quelle ein Lehrplan — das Review-Gate.
 docs/superpowers/plans/ Der Implementierungsplan zu Abschnitt 1.
 ```
 
@@ -56,11 +59,55 @@ erklären. Wer beide tauscht, kippt die Didaktik.
 | `npm test` | Unit-Tests einmal durchlaufen (`npm run test:watch` für den Dauerbetrieb) |
 | `npm run check` | Typprüfung über Astro-, TSX- und TS-Dateien |
 | `npm run build` | Produktionsbau nach `dist/` |
+| `npm run ingest -- …` | Eine Quelle einlesen — siehe „Eine Quelle einlesen" |
+| `npm run fixtures` | Die Test-PDFs unter `tests/fixtures/` neu erzeugen (deterministisch) |
 
 Node ≥ 22.18 erforderlich — die Werkzeuge unter werkzeug/ laden TypeScript-Dateien direkt.
 
 `npm run dev:handy` und `npm run preview:handy` sind dieselben Server, nur ins
 lokale Netz geöffnet — siehe „Auf Android testen und weiterentwickeln".
+
+## Eine Quelle einlesen
+
+Zwei Herkünfte, ein Befehl:
+
+```bash
+# ein Git-Repo
+npm run ingest -- --git https://github.com/Beispiel/repo.git --pfad unterordner --name kurzname
+
+# Foliensätze als PDF — eine Datei, mehrere Dateien oder ganze Mappen
+npm run ingest -- --folien "C:/Vorlesung/1. Tag" --folien "C:/Vorlesung/2. Tag" \
+  --name bauch-projektmanagement --titel "Vorlesung Projektmanagement (Prof. Bauch, WBA Weimar 2026)"
+```
+
+`--folien` darf mehrfach stehen; jeder Wert ist eine PDF-Datei oder eine Mappe
+(dann alle `.pdf` darin, in natürlicher Reihenfolge). Mehrere Dateien sind
+**eine** Quelle. `--name` ist der Ordner unter `quellen/` und zugleich die
+`quelle` im Lehrplan; `--titel` steht auf der Karte in der Bibliothek.
+
+Dabei entstehen:
+
+```
+quellen/<kurzname>/original/   Kopien der PDF — gitignored, wie ganz quellen/
+quellen/<kurzname>/roh/<id>.md Je Abschnitt der Nutztext mit Seitenmarken (— Folie 31 —)
+quellen/<kurzname>/manifest.json   Herkunftsnachweis, Fassung 3
+lehrplan/<kurzname>.yaml       Das Gerüst: alle Abschnitte offen, Freigabe leer
+```
+
+**Der Lehrplan wird nie überschrieben.** Gibt es ihn schon, bleibt er stehen,
+und das Einlesen meldet den Vergleich: neue, fehlende und verschobene
+Abschnitte, und ob sich der Stand geändert hat. `quellen/` wird dabei neu
+geschrieben — es ist abgeleitet, der Lehrplan ist es nicht.
+
+Nach dem Einlesen trägt ein Mensch `geprueftVon` und `geprueftAm` in den
+Lehrplan ein. Bis dahin zeigt `/bibliothek` die Karte mit ihren Zahlen und der
+Markierung „Wartet auf Freigabe"; der Compiler baut daraus keine Lektionen.
+
+Diese Fassung liest **Foliensätze als PDF**. Ein Hochformat mit viel Text wird
+als Buch erkannt und mit einer Meldung abgewiesen (`--art folien` überstimmt
+die Erkennung); EPUB kommt später. Material ohne Textebene bricht ab — OCR ist
+nicht Teil des Einlesens. Auf der Konsole steht nie Folientext: nur Zahlen,
+Dateinamen, Abschnitt-Ids und Abschnittstitel.
 
 ## Auf Android testen und weiterentwickeln
 
