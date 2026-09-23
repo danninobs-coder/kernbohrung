@@ -13,6 +13,7 @@
     "preview:handy": "astro preview --host",
     "check": "astro check",
     "ingest": "node werkzeug/ingest.mjs",
+    "fixtures": "node werkzeug/fixtures/erzeuge.mjs tests/fixtures",
     "pruefe-lektion": "node werkzeug/pruefe-lektion.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -40,6 +41,8 @@
     "@types/node": "^26.4.0",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "6.3.289",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   }
