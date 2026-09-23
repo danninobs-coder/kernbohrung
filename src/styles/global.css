@@ -1765,3 +1765,26 @@ h3 {
   padding: 0;
   list-style: none;
 }
+
+/* ---------------------------------------------------------------
+   Bibliothek: die Markierung „Wartet auf Freigabe" (Teilprojekt 2b-1)
+
+   Dieselbe Sprache wie der Vorbehalt in der Lektion: Lesegroesse,
+   Textfarbe, Randstreifen in --akzent-fill. Kein neues Farbtoken,
+   und kein eigener Hintergrund — die Karte traegt schon --flaeche,
+   ein zweiter waere unsichtbar.
+
+   Die Markierung ist kein Bedienelement: kein Mindestmass, keine
+   44 Pixel. Sie steht unter der Kopfzeile und ueber den Zahlen,
+   weil sie die Zahlen einordnet und nicht ersetzt.
+   --------------------------------------------------------------- */
+.quelle-freigabe {
+  margin: 0 0 12px;
+  padding-left: 10px;
+  border-left: 3px solid var(--akzent-fill);
+  font-size: 15.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
