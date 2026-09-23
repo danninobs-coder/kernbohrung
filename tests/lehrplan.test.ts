@@ -294,6 +294,59 @@ prinzipien:
   });
 });
 
+/**
+ * Der Zustand zwischen Durchgang A und dem Menschen am Review-Gate.
+ *
+ * Fuer den Compiler bleibt ein solcher Lehrplan `ok: false` — er baut daraus
+ * keine Lektionen. Fuer die Seite ist er trotzdem lesbar: Ohne diesen dritten
+ * Fall verschwaende die Karte samt Zahlen, sobald ein Durchgang laeuft, und
+ * alle frueher freigegebenen Lektionen stuenden als „ohne Lehrplaneintrag" da.
+ */
+describe('pruefeLehrplan - wartet auf Freigabe', () => {
+  /** Holt den Lehrplan aus einem wartenden Befund. */
+  function wartendVon(ergebnis: ReturnType<typeof pruefeLehrplan>) {
+    if (ergebnis.ok) throw new Error('Erwartet war ein Fehlschlag, die Pruefung war aber zufrieden.');
+    if (!ergebnis.wartet) throw new Error(`Erwartet war „wartet", gemeldet wurde: ${ergebnis.maengel.join(' | ')}`);
+    return ergebnis;
+  }
+
+  it.each([
+    ['leer', ''],
+    ['nicht gesetzt', null],
+    ['nur Leerzeichen', '   '],
+  ])('wartet, wenn geprueftVon %s ist — und liefert den Lehrplan mit', (_fall, wert) => {
+    const e = wartendVon(pruefeLehrplan({ ...gut, geprueftVon: wert }, KEINE));
+    expect(e.maengel).toEqual(['geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.']);
+    expect(e.lehrplan.quelle).toBe('awesome-llm-apps');
+    if (e.lehrplan.art !== 'repo') throw new Error('Erwartet war ein Repo.');
+    expect(e.lehrplan.prinzipien).toHaveLength(2);
+  });
+
+  it('wartet auch, wenn beide Felder fehlen', () => {
+    const { geprueftVon: _v, geprueftAm: _a, ...ohne } = gut;
+    const e = wartendVon(pruefeLehrplan(ohne, KEINE));
+    expect(e.maengel).toHaveLength(2);
+    expect(e.maengel.join(' ')).toMatch(/geprueftVon/);
+    expect(e.maengel.join(' ')).toMatch(/geprueftAm/);
+  });
+
+  /** Im Lehrplan steht nichts — dann steht auch im Befund nichts. Der Ersatz war nur ein Lesehilfsmittel. */
+  it('traegt die Freigabe leer, nicht mit einem Platzhalter', () => {
+    const e = wartendVon(pruefeLehrplan({ ...gut, geprueftVon: '' }, KEINE));
+    expect(e.lehrplan.geprueftVon).toBe('');
+    expect(e.lehrplan.geprueftAm).toBe('');
+  });
+
+  it('bleibt ungueltig, wenn neben der Freigabe noch etwas fehlt — und zeigt alle Maengel', () => {
+    const e = pruefeLehrplan({ ...gut, geprueftVon: '', stand: 'a13701e' }, KEINE);
+    if (e.ok) throw new Error('Erwartet war ein Fehlschlag.');
+    expect(e.wartet).toBeFalsy();
+    expect(e.maengel).toHaveLength(2);
+    expect(e.maengel.join(' ')).toMatch(/Review-Gate/);
+    expect(e.maengel.join(' ')).toMatch(/40 Zeichen/);
+  });
+});
+
 describe('lehrplaeneAusTexten', () => {
   /** Der gueltige Lehrplan oben als YAML-Text — JSON ist gueltiges YAML. */
   const yaml = (aenderung: Record<string, unknown> = {}) => JSON.stringify({ ...gut, ...aenderung });
@@ -324,14 +377,17 @@ describe('lehrplaeneAusTexten', () => {
     expect(ungueltig[0]?.maengel[0]).not.toContain('\n');
   });
 
-  it('legt einen Lehrplan, der auf die Freigabe wartet, zu den ungueltigen — mit der Meldung des Gates', () => {
+  it('legt einen Lehrplan, dem nur die Freigabe fehlt, zu den wartenden', () => {
     // Genau der Zustand zwischen Durchgang A und dem Menschen: geprueftVon ist
-    // leer. Der Bau soll daran nicht scheitern; die Seite zeigt ihn als Warnung.
-    const { gueltig, ungueltig } = lehrplaeneAusTexten({ '/lehrplan/wartet.yaml': yaml({ geprueftVon: '' }) }, KEINE);
+    // leer. Der Bau soll daran nicht scheitern, und die Seite zeigt seine
+    // Zahlen — markiert, nicht als Warnung ohne Zahlen.
+    const { gueltig, wartend, ungueltig } = lehrplaeneAusTexten(
+      { '/lehrplan/wartet.yaml': yaml({ geprueftVon: '' }) },
+      KEINE,
+    );
     expect(gueltig).toEqual([]);
-    expect(ungueltig).toEqual([
-      { datei: 'wartet.yaml', maengel: ['geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.'] },
-    ]);
+    expect(ungueltig).toEqual([]);
+    expect(wartend.map((l) => l.quelle)).toEqual(['awesome-llm-apps']);
   });
 
   it('sortiert nach Pfad, unabhaengig von der Reihenfolge der Eingabe', () => {
@@ -339,7 +395,7 @@ describe('lehrplaeneAusTexten', () => {
     expect(ungueltig.map((u) => u.datei)).toEqual(['a.yaml', 'b.yaml']);
   });
 
-  it('liefert zwei leere Listen, wenn es keinen Lehrplan gibt', () => {
-    expect(lehrplaeneAusTexten({}, KEINE)).toEqual({ gueltig: [], ungueltig: [] });
+  it('liefert drei leere Listen, wenn es keinen Lehrplan gibt', () => {
+    expect(lehrplaeneAusTexten({}, KEINE)).toEqual({ gueltig: [], wartend: [], ungueltig: [] });
   });
 });

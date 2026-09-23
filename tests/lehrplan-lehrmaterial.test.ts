@@ -192,6 +192,37 @@ describe('Abschnitte - Pflichtfelder und Form', () => {
   });
 });
 
+/**
+ * Wartet auf Freigabe — bei Lehrmaterial ist das der Normalfall gleich nach
+ * dem Einlesen: Der Lehrplan traegt alle Abschnitte als `offen`, und
+ * `geprueftVon` ist noch leer. Er ist trotzdem lesbar.
+ */
+describe('Buch und Folien - wartet auf Freigabe', () => {
+  it('wartet, wenn nur die Freigabe fehlt — und liefert die Abschnitte mit', () => {
+    const e = pruefeLehrplan(folien({ geprueftVon: '' }), LEKTIONEN);
+    if (e.ok) throw new Error('Erwartet war ein Fehlschlag.');
+    if (!e.wartet) throw new Error(`Erwartet war „wartet": ${e.maengel.join(' | ')}`);
+    expect(e.maengel).toEqual(['geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.']);
+    if (e.lehrplan.art === 'repo') throw new Error('Erwartet waren Folien.');
+    expect(e.lehrplan.abschnitte).toHaveLength(2);
+    expect(e.lehrplan.geprueftVon).toBe('');
+  });
+
+  it('bleibt ungueltig, wenn daneben eine Lektion fehlt — und zeigt beide Maengel', () => {
+    const daten = folien({
+      geprueftVon: '',
+      abschnitte: [abschnitt({ status: 'lektion', lektion: 'gibt-es-nicht' })],
+    });
+    const e = pruefeLehrplan(daten, LEKTIONEN);
+    if (e.ok) throw new Error('Erwartet war ein Fehlschlag.');
+    expect(e.wartet).toBeFalsy();
+    expect(e.maengel).toEqual([
+      'geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.',
+      'abschnitte.0.lektion: Die Lektion gibt-es-nicht gibt es nicht (inhalt/lektionen/gibt-es-nicht.mdx).',
+    ]);
+  });
+});
+
 describe('Abschnitte - grund und lektion', () => {
   it('verlangt einen Grund, wenn ein Abschnitt abgelehnt ist', () => {
     expect(maengelVon(mitAbschnitten(abschnitt({ status: 'abgelehnt' })))).toMatch(

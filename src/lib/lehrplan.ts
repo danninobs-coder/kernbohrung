@@ -256,7 +256,17 @@ type Lehrmaterial = Extract<Lehrplan, { art: 'buch' | 'folien' }>;
 export type Abschnitt = Lehrmaterial['abschnitte'][number];
 export type Prinzip = z.infer<typeof PrinzipSchema>;
 
-export type Befund = { ok: true; lehrplan: Lehrplan } | { ok: false; maengel: string[] };
+/**
+ * Das Ergebnis der Pruefung. Drei Faelle, nicht zwei: Ein Lehrplan, dem als
+ * einziges die Freigabe fehlt, ist nicht ungueltig, sondern **wartend** — der
+ * Zustand zwischen Durchgang A und dem Menschen am Review-Gate. Fuer den
+ * Compiler bleibt er `ok: false`; die Seite /bibliothek zeigt seine Zahlen
+ * und markiert ihn.
+ */
+export type Befund =
+  | { ok: true; lehrplan: Lehrplan }
+  | { ok: false; wartet: true; lehrplan: Lehrplan; maengel: string[] }
+  | { ok: false; wartet?: false; maengel: string[] };
 
 /** Zods Typnamen auf Deutsch, fuer die Meldung bei falscher Form. */
 const ERWARTET: Readonly<Record<string, string>> = {
@@ -316,6 +326,47 @@ const deutscheMeldung: z.core.$ZodErrorMap = (iss) => {
 };
 
 /**
+ * Die Lektionen, auf die ein Lehrplan aus Lehrmaterial zeigt, muessen es
+ * geben. Das kann Zod nicht wissen; deshalb steht die Pruefung hier.
+ */
+function pruefeLektionen(lehrplan: Lehrplan, lektionsIds: ReadonlySet<string>): string[] {
+  if (lehrplan.art === 'repo') return [];
+  return lehrplan.abschnitte.flatMap((a, i) =>
+    a.lektion !== undefined && !lektionsIds.has(a.lektion)
+      ? [`abschnitte.${i}.lektion: Die Lektion ${a.lektion} gibt es nicht (inhalt/lektionen/${a.lektion}.mdx).`]
+      : [],
+  );
+}
+
+/** Die beiden Felder, deren Fehlen allein noch keinen ungueltigen Lehrplan ergibt. */
+const FREIGABE = ['geprueftVon', 'geprueftAm'] as const;
+
+/** Ein Wert, der die Schranke von `geprueftVon` passiert — nur fuer den zweiten Lesedurchgang. */
+const FREIGABE_ERSATZ = 'wartet auf Freigabe';
+
+function nurDieFreigabeFehlt(fehler: readonly z.core.$ZodIssue[]): boolean {
+  return fehler.every((f) => f.path.length === 1 && FREIGABE.some((name) => f.path[0] === name));
+}
+
+/**
+ * Liest denselben Lehrplan noch einmal, diesmal mit gefuellter Freigabe — nur
+ * um an die uebrigen Felder zu kommen. Was zurueckkommt, traegt die Freigabe
+ * wieder leer: Im Lehrplan steht nichts, also steht auch hier nichts.
+ */
+function mitErsetzterFreigabe(daten: unknown): Lehrplan | null {
+  if (typeof daten !== 'object' || daten === null) return null;
+  const zweit = LehrplanSchema.safeParse(
+    { ...(daten as Record<string, unknown>), geprueftVon: FREIGABE_ERSATZ, geprueftAm: FREIGABE_ERSATZ },
+    { error: deutscheMeldung },
+  );
+  if (!zweit.success) return null;
+  const lehrplan = zweit.data;
+  lehrplan.geprueftVon = '';
+  lehrplan.geprueftAm = '';
+  return lehrplan;
+}
+
+/**
  * Prueft einen geladenen Lehrplan. Wirft nie.
  *
  * `lektionsIds` sind die Lektionen, die es gibt. Ein Abschnitt mit
@@ -326,21 +377,18 @@ const deutscheMeldung: z.core.$ZodErrorMap = (iss) => {
  */
 export function pruefeLehrplan(daten: unknown, lektionsIds: ReadonlySet<string>): Befund {
   const geprueft = LehrplanSchema.safeParse(daten, { error: deutscheMeldung });
-  if (!geprueft.success) {
-    return {
-      ok: false,
-      maengel: geprueft.error.issues.map((m) => `${m.path.join('.') || '(Wurzel)'}: ${m.message}`),
-    };
+  if (geprueft.success) {
+    const maengel = pruefeLektionen(geprueft.data, lektionsIds);
+    return maengel.length > 0 ? { ok: false, maengel } : { ok: true, lehrplan: geprueft.data };
   }
-  const lehrplan = geprueft.data;
-  if (lehrplan.art === 'repo') return { ok: true, lehrplan };
 
-  const maengel = lehrplan.abschnitte.flatMap((a, i) =>
-    a.lektion !== undefined && !lektionsIds.has(a.lektion)
-      ? [`abschnitte.${i}.lektion: Die Lektion ${a.lektion} gibt es nicht (inhalt/lektionen/${a.lektion}.mdx).`]
-      : [],
-  );
-  return maengel.length > 0 ? { ok: false, maengel } : { ok: true, lehrplan };
+  const maengel = geprueft.error.issues.map((m) => `${m.path.join('.') || '(Wurzel)'}: ${m.message}`);
+  // Fehlt ausser der Freigabe nichts, ist der Lehrplan lesbar — und wartend.
+  // Kommt dabei ein weiterer Mangel heraus, bleibt er ungueltig und zeigt alle.
+  const lehrplan = nurDieFreigabeFehlt(geprueft.error.issues) ? mitErsetzterFreigabe(daten) : null;
+  if (lehrplan === null) return { ok: false, maengel };
+  const weitere = pruefeLektionen(lehrplan, lektionsIds);
+  return weitere.length > 0 ? { ok: false, maengel: [...maengel, ...weitere] } : { ok: false, wartet: true, lehrplan, maengel };
 }
 
 /**
@@ -381,21 +429,24 @@ export type Ungueltig = { readonly datei: string; readonly maengel: readonly str
  * Nach Pfad sortiert, mit eigenem Vergleich statt `localeCompare` — das haengt
  * an der Spracheinstellung des Rechners, und der Bau soll ueberall dieselbe
  * Seite ergeben. Ein ungueltiger Lehrplan bricht nichts ab: Er landet in
- * `ungueltig`, und die Seite zeigt ihn als Warnung. Das ist auch der Zustand
- * zwischen Durchgang A und der Freigabe, in dem `geprueftVon` leer ist.
+ * `ungueltig`, und die Seite zeigt ihn als Warnung. Fehlt ihm nur die
+ * Freigabe — der Zustand zwischen Durchgang A und dem Menschen —, steht er in
+ * `wartend`: mit seinen Zahlen auf der Seite, aber markiert.
  */
 export function lehrplaeneAusTexten(
   texte: Readonly<Record<string, string>>,
   lektionsIds: ReadonlySet<string>,
-): { gueltig: Lehrplan[]; ungueltig: Ungueltig[] } {
+): { gueltig: Lehrplan[]; wartend: Lehrplan[]; ungueltig: Ungueltig[] } {
   const gueltig: Lehrplan[] = [];
+  const wartend: Lehrplan[] = [];
   const ungueltig: Ungueltig[] = [];
   const eintraege = Object.entries(texte).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   for (const [pfad, text] of eintraege) {
     const datei = pfad.slice(pfad.lastIndexOf('/') + 1);
     const befund = lehrplanAusYaml(text, lektionsIds, datei);
     if (befund.ok) gueltig.push(befund.lehrplan);
+    else if (befund.wartet) wartend.push(befund.lehrplan);
     else ungueltig.push({ datei, maengel: befund.maengel });
   }
-  return { gueltig, ungueltig };
+  return { gueltig, wartend, ungueltig };
 }
