@@ -8,7 +8,16 @@ import path from 'node:path';
 import { load as yamlLesen } from 'js-yaml';
 import { PDFDocument, PDFHexString, StandardFonts, degrees } from 'pdf-lib';
 import { ladePdfjs } from '../werkzeug/adapter/dokument.mjs';
-import { EinleseFehler, leseFolienEin, natuerlich, sammlePdfs, tausche } from '../werkzeug/adapter/folien.mjs';
+import {
+  EinleseFehler,
+  NUR_BILD_ZEILE,
+  WARNZEILE,
+  leseFolienEin,
+  natuerlich,
+  rohdatei,
+  sammlePdfs,
+  tausche,
+} from '../werkzeug/adapter/folien.mjs';
 import { lehrplanGeruest, vergleicheLehrplan, vergleichInZeilen } from '../werkzeug/lehrplan-geruest.mjs';
 import { pruefeLehrplan } from '../src/lib/lehrplan';
 
@@ -171,10 +180,11 @@ describe('leseFolienEin - was entsteht', () => {
       expect(roh).toContain('— Folie 1 —');
       // Die Bildfolie steht als Marke mit Hinweis da, ohne Text.
       expect(roh).toContain('— Folie 9 —\nnur Bild — im Original ansehen');
-      // Die Warnzeile steht VOR der Seitenmarke der Tabellenfolie.
+      // Die Warnzeile steht direkt HINTER der Seitenmarke der Tabellenfolie:
+      // Wer an der Marke trennt, ordnet sie ihrer Folie zu und nicht der davor.
       const tabelle = lies(wurzel, 'quellen', 'fixture-vorlesung', 'roh', 'd01-02-kosten-und-termine.md');
       expect(tabelle).toContain(
-        '> Tabelle oder Grafik — die Anordnung fehlt im Text; im Original ansehen.\n— Folie 14 —',
+        '— Folie 14 —\n> Tabelle oder Grafik — die Anordnung fehlt im Text; im Original ansehen.',
       );
       // Die Foliennummer des Briefkopfs ist weg.
       expect(roh).not.toMatch(/^Folie \d+$/m);
@@ -210,6 +220,29 @@ describe('leseFolienEin - was entsteht', () => {
         nurBild: [9],
         tabellenverdacht: [],
       });
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('meldet viel Beiwerk mit deutschem Komma', async () => {
+    const wurzel = temp();
+    try {
+      // Fuenf Folien, jede mit derselben langen Kopf- und Fusszeile und wenig Inhalt.
+      const doc = await PDFDocument.create();
+      const schrift = await doc.embedFont(StandardFonts.Helvetica);
+      for (let n = 1; n <= 5; n++) {
+        const seite = doc.addPage([842, 595]);
+        seite.drawText('Kopfzeile mit einem langen Namen der Veranstaltung', { x: 40, y: 560, size: 12, font: schrift });
+        seite.drawText('Fusszeile mit Hochschule, Ort und Semester', { x: 40, y: 30, size: 12, font: schrift });
+        seite.drawText(`Inhalt der Folie ${n} steht hier`, { x: 40, y: 300, size: 20, font: schrift });
+      }
+      const pdf = path.join(wurzel, 'viel-beiwerk.pdf');
+      writeFileSync(pdf, await doc.save());
+      const aus = await einlesen(wurzel, [pdf]);
+      expect(aus.warnungen).toEqual([
+        'viel-beiwerk.pdf: 77,1 % des Texts als Beiwerk entfernt — vermutlich stimmt etwas mit der Extraktion nicht.',
+      ]);
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }
@@ -269,16 +302,68 @@ describe('leseFolienEin - der Lehrplan', () => {
     }
   });
 
-  it('schreibt das Geruest deterministisch', () => {
+  it('schreibt ein Geruest, aus dem YAML genau das zurueckliest, was hineinging', () => {
+    const titel = [
+      'a: b # c "d" \\ e „f“ - * g',
+      'Tabulator\tund Steuerzeichen\u0001\u001f\u007f am Ende',
+      '- 2024: null',
+    ];
     const eingabe = {
       kurzname: 'fixture-vorlesung',
-      titel: 'Fixture-Vorlesung: „Projektmanagement"',
+      titel: titel[0]!,
       stand: `sha256:${'a'.repeat(64)}`,
-      abschnitte: [{ id: 'd01-01-grundlagen', titel: 'Grundlagen', datei: 'a.pdf', seiten: [1, 10] as [number, number] }],
+      abschnitte: titel.map((t, i) => ({
+        id: `d01-0${i + 1}-x`,
+        titel: t,
+        datei: `${t}.pdf`,
+        seiten: [i + 1, i + 1] as [number, number],
+      })),
     };
-    expect(lehrplanGeruest(eingabe)).toBe(lehrplanGeruest(eingabe));
-    // Titel in Anfuehrungszeichen, Sonderzeichen maskiert.
-    expect(lehrplanGeruest(eingabe)).toContain('titel: "Fixture-Vorlesung: „Projektmanagement\\""');
+    const text = lehrplanGeruest(eingabe);
+    const gelesen = yamlLesen(text) as { quelle: unknown; titel: unknown; stand: unknown; abschnitte: unknown };
+    expect(gelesen.quelle).toBe(eingabe.kurzname);
+    expect(gelesen.titel).toBe(eingabe.titel);
+    expect(gelesen.stand).toBe(eingabe.stand);
+    expect(gelesen.abschnitte).toEqual(eingabe.abschnitte.map((a) => ({ ...a, status: 'offen' })));
+    // Maskiert und lesbar fuer den Menschen am Review-Gate: Steuerzeichen als \xNN.
+    expect(text).toContain(String.raw`    titel: "a: b # c \"d\" \\ e „f“ - * g"`);
+    expect(text).toContain(String.raw`    titel: "Tabulator\x09und Steuerzeichen\x01\x1F\x7F am Ende"`);
+  });
+
+  it('setzt quelle in Anfuehrungszeichen: Auch --name 2024 bleibt Text, und der Lehrplan wartet', () => {
+    for (const kurzname of ['2024', 'null', 'true', '0x1f', '1e5']) {
+      const daten = yamlLesen(
+        lehrplanGeruest({
+          kurzname,
+          titel: 'T',
+          stand: `sha256:${'a'.repeat(64)}`,
+          abschnitte: [{ id: 'd01-01-x', titel: 'X', datei: 'a.pdf', seiten: [1, 2] }],
+        }),
+      );
+      expect((daten as { quelle: unknown }).quelle).toBe(kurzname);
+      const befund = pruefeLehrplan(daten, new Set<string>());
+      expect(!befund.ok && befund.wartet).toBe(true);
+    }
+  });
+
+  it('meldet nach dem Umbenennen einer Datei die neue Datei — bei denselben Ids', async () => {
+    const wurzel = temp();
+    try {
+      const vorher = path.join(wurzel, 'M7 Risiko 26.pdf');
+      writeFileSync(vorher, readFileSync(path.join(FIXTUREN, 'folien-agenda.pdf')));
+      const erster = await einlesen(wurzel, [vorher]);
+      const nachher = path.join(wurzel, 'M7 Risiko 27.pdf');
+      renameSync(vorher, nachher);
+      const zweiter = await einlesen(wurzel, [nachher]);
+      // Dieselben Bytes: Stand und Ids bleiben gleich — nur die Datei im Lehrplan stimmt nicht mehr.
+      expect(zweiter.stand).toBe(erster.stand);
+      expect(zweiter.abschnitte.map((a) => a.id)).toEqual(erster.abschnitte.map((a) => a.id));
+      expect(vergleichInZeilen(zweiter.lehrplan.vergleich!)).toEqual(
+        erster.abschnitte.map((a) => `Datei geändert: ${a.id} — M7 Risiko 26.pdf → M7 Risiko 27.pdf`),
+      );
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
   });
 });
 
@@ -322,6 +407,86 @@ describe('vergleicheLehrplan', () => {
       'fehlt jetzt: m01-02-zwei',
       'verschoben: m01-01-eins 1–10 → 1–12',
     ]);
+  });
+
+  it('meldet unter derselben Id eine geaenderte Datei und einen geaenderten Titel', () => {
+    const vorher = lehrplanGeruest({
+      kurzname: 'q',
+      titel: 'T',
+      stand: `sha256:${'a'.repeat(64)}`,
+      abschnitte: [
+        { id: 'm07-01-begriffe', titel: 'Begriffe', datei: 'M7 Risikomanagement 26.pdf', seiten: [1, 5] },
+        { id: 'm07-02-prozess', titel: 'Prozess', datei: 'M7 Risikomanagement 26.pdf', seiten: [6, 26] },
+      ],
+    });
+    const vergleich = vergleicheLehrplan(vorher, {
+      stand: `sha256:${'a'.repeat(64)}`,
+      abschnitte: [
+        { id: 'm07-01-begriffe', titel: 'Begriffe', datei: 'M7 Risikomanagement 27.pdf', seiten: [1, 5] },
+        { id: 'm07-02-prozess', titel: 'Prozess: der Ablauf', datei: 'M7 Risikomanagement 27.pdf', seiten: [6, 26] },
+      ],
+    });
+    expect(vergleich.unveraendert).toBe(0);
+    expect(vergleichInZeilen(vergleich)).toEqual([
+      'Datei geändert: m07-01-begriffe — M7 Risikomanagement 26.pdf → M7 Risikomanagement 27.pdf',
+      'Datei geändert: m07-02-prozess — M7 Risikomanagement 26.pdf → M7 Risikomanagement 27.pdf',
+      'Titel geändert: m07-02-prozess — Prozess → Prozess: der Ablauf',
+    ]);
+  });
+});
+
+describe('rohdatei', () => {
+  /** Eine bereinigte Folie, wie `rohdatei` sie bekommt. Der Text ist erfunden. */
+  function folie(nummer: number, texte: string[], merkmale: { nurBild?: boolean; tabellenverdacht?: boolean } = {}) {
+    return {
+      nummer,
+      breite: 842,
+      hoehe: 595,
+      zeilen: texte.map((text, i) => ({ text, groesse: 12, y: 500 - 20 * i, x0: 60, x1: 400 })),
+      bilder: [],
+      gitter: { hLinien: 0, vLinien: 0 },
+      quer: true,
+      zeichen: texte.join('').length,
+      beiwerkZeichen: 0,
+      echteBilder: merkmale.nurBild ? 1 : 0,
+      nurBild: merkmale.nurBild ?? false,
+      tabellenverdacht: merkmale.tabellenverdacht ?? false,
+    };
+  }
+
+  it('stellt beide Hinweise direkt hinter die Seitenmarke ihrer Folie', () => {
+    const abschnitt = { id: 'd01-01-x', titel: 'X', datei: 'a.pdf', seiten: [1, 4] as [number, number] };
+    const text = rohdatei(abschnitt, [
+      folie(1, ['Titel', 'Zeile']),
+      folie(2, ['Umsatz 2024', '1 2 3'], { tabellenverdacht: true }),
+      folie(3, [], { nurBild: true }),
+      folie(4, ['Legende'], { nurBild: true, tabellenverdacht: true }),
+    ]);
+    // Getrennt an den Seitenmarken, gehoert jeder Hinweis zu seiner Folie.
+    expect(text).toBe(
+      [
+        '# X',
+        '',
+        'a.pdf, Folien 1–4',
+        '',
+        '— Folie 1 —',
+        'Titel',
+        'Zeile',
+        '',
+        '— Folie 2 —',
+        WARNZEILE,
+        'Umsatz 2024',
+        '1 2 3',
+        '',
+        '— Folie 3 —',
+        NUR_BILD_ZEILE,
+        '',
+        '— Folie 4 —',
+        WARNZEILE,
+        NUR_BILD_ZEILE,
+        '',
+      ].join('\n'),
+    );
   });
 });
 
@@ -374,6 +539,46 @@ describe('leseFolienEin - was nicht geht', () => {
       await expect(
         leseFolienEin({ orte, kurzname: 'bauch-pm', titel: '  ', wurzel, gestempeltAm: STEMPEL, geladen }),
       ).rejects.toThrow(/--titel fehlt/);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('weist Kurznamen ab, die Windows fuer Geraete reserviert', async () => {
+    const wurzel = temp();
+    const orte = [path.join(FIXTUREN, 'gibt-es-nicht.pdf')];
+    try {
+      for (const kurzname of ['con', 'prn', 'aux', 'nul', 'com1', 'com9', 'lpt1', 'lpt9']) {
+        const fehler = await abbruch(leseFolienEin({ orte, kurzname, titel: 'T', wurzel, gestempeltAm: STEMPEL, geladen }));
+        expect(fehler).toBeInstanceOf(EinleseFehler);
+        expect(fehler.message).toBe(`Der Kurzname ${kurzname} ist unter Windows reserviert — bitte einen anderen wählen.`);
+      }
+      // Reserviert ist nur der Name selbst: com10 und con-x kommen durch und scheitern erst am fehlenden PDF.
+      for (const kurzname of ['com10', 'con-x']) {
+        const fehler = await abbruch(leseFolienEin({ orte, kurzname, titel: 'T', wurzel, gestempeltAm: STEMPEL, geladen }));
+        expect(fehler.message).toMatch(/gibt es nicht/);
+      }
+      expect(readdirSync(wurzel)).toEqual(['lehrplan']);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('erkennt zwei Originale, die nur Gross- und Kleinschreibung unterscheidet', async () => {
+    const wurzel = temp();
+    try {
+      // Unter Windows sind a.pdf und A.pdf dieselbe Datei — in einem Ordner gaebe es sie nicht zweimal.
+      for (const [ordner, name] of [['eins', 'a.pdf'], ['zwei', 'A.pdf']] as const) {
+        mkdirSync(path.join(wurzel, ordner));
+        writeFileSync(path.join(wurzel, ordner, name), 'x');
+      }
+      const fehler = await abbruch(einlesen(wurzel, [path.join(wurzel, 'eins'), path.join(wurzel, 'zwei')]));
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      expect(fehler.message).toBe(
+        'Zwei Originale heißen gleich (Groß- und Kleinschreibung zählt nicht): ' +
+          `${path.join(wurzel, 'zwei', 'A.pdf')} und ${path.join(wurzel, 'eins', 'a.pdf')}. ` +
+          'Im Lehrplan steht der Dateiname; er muss eindeutig sein.',
+      );
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }

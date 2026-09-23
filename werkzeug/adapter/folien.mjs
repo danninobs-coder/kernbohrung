@@ -30,7 +30,7 @@ import { dateikuerzel, gliedereFolien } from '../gliederung/folien.mjs';
 import { lektionsIdsAus } from '../lehrplan.mjs';
 import { baueDokumentManifest, dateiHash, standAusHashes } from '../manifest.mjs';
 import { lehrplanGeruest, vergleicheLehrplan } from '../lehrplan-geruest.mjs';
-import { lehrplanAusYaml } from '../../src/lib/lehrplan.ts';
+import { ID as ID_MUSTER, lehrplanAusYaml } from '../../src/lib/lehrplan.ts';
 
 /**
  * Was auf einer Folie mit Tabellenverdacht ueber dem Text steht.
@@ -49,6 +49,17 @@ export class EinleseFehler extends Error {}
 
 /** Nur diese Endung liest diese Fassung. */
 const ENDUNG = '.pdf';
+
+/**
+ * Namen, die Windows fuer Geraete reserviert. Gemessen unter Windows 11: Node
+ * legt `quellen/con/` und `lehrplan/con.yaml` trotzdem an, und `existsSync`
+ * meldet `lehrplan/con.yaml` als vorhanden, bevor es die Datei gibt. Andere
+ * Programme, der Explorer vorneweg, behandeln solche Namen als Geraet.
+ */
+const WINDOWS_RESERVIERT = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
+
+/** @type {(anteil: number) => string} Ein Prozentwert mit einer Nachkommastelle, deutsch geschrieben. */
+export const prozent = (anteil) => `${(anteil * 100).toFixed(1).replace('.', ',')} %`;
 
 /**
  * Natuerliche Sortierung: nach der ersten Zahl im Namen, dann nach
@@ -107,6 +118,12 @@ export function sammlePdfs(orte) {
  * Ohne sie zeigte jede spaetere Behauptung auf einen Satz von
  * fuenfunddreissig Folien statt auf eine.
  *
+ * Die Hinweise stehen direkt hinter der Marke ihrer Folie: erst die
+ * Warnzeile, dann — bei einer Bildfolie anstelle des Texts — der Bildhinweis.
+ * Eine Folie kann beide tragen. Wer die Datei an den Marken trennt, wie der
+ * Compiler in 2c, ordnet so jeden Hinweis seiner Folie zu und keinen der
+ * Folie davor.
+ *
  * @param {{ id: string, titel: string, datei: string, seiten: [number, number] }} abschnitt
  * @param {readonly import('./dokument.mjs').Seite[]} seiten
  * @returns {string}
@@ -121,9 +138,10 @@ export function rohdatei(abschnitt, seiten) {
     '',
   ];
   const teile = seiten.map((seite) => {
-    if (seite.nurBild) return `— Folie ${seite.nummer} —\n${NUR_BILD_ZEILE}`;
-    const text = seitenText(seite);
-    return seite.tabellenverdacht ? `${WARNZEILE}\n${text}` : text;
+    // seitenText liefert die Marke als erste Zeile, darunter den Text.
+    const [marke, ...text] = seitenText(seite).split('\n');
+    const warnung = seite.tabellenverdacht ? [WARNZEILE] : [];
+    return [marke, ...warnung, ...(seite.nurBild ? [NUR_BILD_ZEILE] : text)].join('\n');
   });
   return `${kopf.join('\n')}${teile.join('\n\n')}\n`;
 }
@@ -382,8 +400,12 @@ export function tausche(quellen, kurzname, dateisystem = { renameSync, rmSync })
  * @returns {Promise<Ergebnis>}
  */
 export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestempeltAm, geladen }) {
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(kurzname)) {
+  if (!ID_MUSTER.test(kurzname)) {
     throw new EinleseFehler(`--name ${kurzname}: nur Kleinbuchstaben, Ziffern und Bindestrich.`);
+  }
+  // Vor jedem Zugriff auf die Platte: Schon ein existsSync liefert hier Unsinn.
+  if (WINDOWS_RESERVIERT.test(kurzname)) {
+    throw new EinleseFehler(`Der Kurzname ${kurzname} ist unter Windows reserviert — bitte einen anderen wählen.`);
   }
   if (!titel.trim()) throw new EinleseFehler('--titel fehlt. Die Bibliothek zeigt ihn auf der Karte.');
 
@@ -413,6 +435,21 @@ export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestem
 
   // --- rechnen: nichts auf die Platte ---------------------------------------
   const pfade = sammlePdfs(orte);
+  // Vor dem Lesen, und ohne Gross- und Kleinschreibung: Unter Windows sind
+  // a.pdf und A.pdf dieselbe Datei — in original/ bliebe nur eine davon.
+  /** @type {Map<string, string>} */
+  const gesehen = new Map();
+  for (const pfad of pfade) {
+    const name = path.basename(pfad).toLowerCase();
+    const frueher = gesehen.get(name);
+    if (frueher !== undefined) {
+      throw new EinleseFehler(
+        `Zwei Originale heißen gleich (Groß- und Kleinschreibung zählt nicht): ${frueher} und ${pfad}. ` +
+          'Im Lehrplan steht der Dateiname; er muss eindeutig sein.',
+      );
+    }
+    gesehen.set(name, pfad);
+  }
   const pdfjs = geladen ?? (await ladePdfjs());
 
   /** @type {{ datei: string, bytes: Buffer, hash: string, seiten: import('./dokument.mjs').RohSeite[] }[]} */
@@ -434,9 +471,6 @@ export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestem
   }
 
   const namen = roh.map((r) => r.datei);
-  if (new Set(namen).size !== namen.length) {
-    throw new EinleseFehler('Zwei Originale heißen gleich. Im Lehrplan steht der Dateiname; er muss eindeutig sein.');
-  }
 
   const dateien = bereinigeQuelle(roh.map((r) => ({ datei: r.datei, seiten: r.seiten })));
   const abgebrochen = dateien.filter((d) => d.abbruch !== null);
@@ -492,7 +526,7 @@ export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestem
     .filter((d) => d.beiwerkAnteil > BEIWERK_WARNUNG)
     .map(
       (d) =>
-        `${d.datei}: ${(d.beiwerkAnteil * 100).toFixed(1)} % des Texts als Beiwerk entfernt — ` +
+        `${d.datei}: ${prozent(d.beiwerkAnteil)} des Texts als Beiwerk entfernt — ` +
         'vermutlich stimmt etwas mit der Extraktion nicht.',
     );
 

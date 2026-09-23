@@ -40,7 +40,12 @@ export const HOECHSTZAHL_JE_ABSCHNITT = 3;
 export const STATUS = ['offen', 'beauftragt', 'lektion', 'abgelehnt'] as const;
 export type Status = (typeof STATUS)[number];
 
-const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+/**
+ * Das Muster einer Id. Auch der Kurzname einer Quelle folgt ihm — er ist der
+ * Ordner unter `quellen/` und die `quelle` im Lehrplan; das Einlesen prueft
+ * ihn mit genau diesem Muster.
+ */
+export const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const IdSchema = z.string().regex(ID, 'nur Kleinbuchstaben, Ziffern und Bindestrich.');
 
 /** `quelle` ist der Ordnername unter `quellen/` — dasselbe Muster wie eine Id, eigene Meldung. */

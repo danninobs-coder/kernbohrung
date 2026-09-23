@@ -12,7 +12,7 @@
  * `quellen/` bleibt am Rechner.
  */
 import path from 'node:path';
-import { EinleseFehler, leseFolienEin } from './adapter/folien.mjs';
+import { EinleseFehler, leseFolienEin, prozent } from './adapter/folien.mjs';
 import { vergleichInZeilen } from './lehrplan-geruest.mjs';
 
 const AUFRUF =
@@ -37,9 +37,6 @@ export function argumente(argv, name) {
   }
   return werte;
 }
-
-/** @type {(anteil: number) => string} Ein Prozentwert mit einer Nachkommastelle, deutsch geschrieben. */
-const prozent = (anteil) => `${(anteil * 100).toFixed(1).replace('.', ',')} %`;
 
 /**
  * Der Bericht eines Laufs, Zeile fuer Zeile.
