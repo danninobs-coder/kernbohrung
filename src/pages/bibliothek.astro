@@ -34,8 +34,10 @@ const manifesttexte = import.meta.glob<string>('/quellen/*/manifest.json', {
   eager: true,
 });
 
-const { gueltig, ungueltig } = lehrplaeneAusTexten(lehrplantexte, lektionsIds);
-const bestand = abdeckung(gueltig, manifesteAusTexten(manifesttexte), lektionsIds);
+// Wartende Lehrplaene zaehlen mit: Ihre Zahlen stimmen, nur die Freigabe
+// fehlt. Die Karte markiert das; `abdeckung` liest es am leeren `geprueftVon`.
+const { gueltig, wartend, ungueltig } = lehrplaeneAusTexten(lehrplantexte, lektionsIds);
+const bestand = abdeckung([...gueltig, ...wartend], manifesteAusTexten(manifesttexte), lektionsIds);
 
 // Lokal `/`, auf GitHub Pages `/kernbohrung/` — siehe astro.config.mjs.
 const basis = import.meta.env.BASE_URL.replace(/\/?$/, '/');

@@ -25,6 +25,14 @@ function gepruefter(daten: unknown, lektionen: ReadonlySet<string> = LEKTIONEN):
   return e.lehrplan;
 }
 
+/** Ein Lehrplan, dem nur die Freigabe fehlt — der Zustand gleich nach dem Einlesen. */
+function wartender(daten: unknown, lektionen: ReadonlySet<string> = LEKTIONEN): Lehrplan {
+  const e = pruefeLehrplan(daten, lektionen);
+  if (e.ok) throw new Error('Die Vorlage ist freigegeben, erwartet war ein wartender Lehrplan.');
+  if (!e.wartet) throw new Error(`Erwartet war „wartet": ${e.maengel.join(' | ')}`);
+  return e.lehrplan;
+}
+
 function prinzip(id: string, vorbehalt?: string) {
   return {
     id,
@@ -243,11 +251,12 @@ describe('der heutige Bestand', () => {
         .filter((name) => name.endsWith('.yaml'))
         .map((name) => [`/lehrplan/${name}`, readFileSync(path.join(wurzel, 'lehrplan', name), 'utf8')]),
     );
-    const { gueltig, ungueltig } = lehrplaeneAusTexten(texte, lektionen);
+    const { gueltig, wartend, ungueltig } = lehrplaeneAusTexten(texte, lektionen);
     expect(ungueltig).toEqual([]);
+    expect(wartend).toEqual([]);
 
     const { bestand, ohneLehrplan } = abdeckung(gueltig, KEINE_MANIFESTE, lektionen);
-    expect(bestand.map((b) => [b.quelle, b.art])).toEqual([['awesome-llm-apps', 'repo']]);
+    expect(bestand.map((b) => [b.quelle, b.art, b.freigabe])).toEqual([['awesome-llm-apps', 'repo', 'erteilt']]);
     expect(bestand[0]?.zaehlung).toEqual({ gesamt: 6, mitLektion: 3, offen: 3, beauftragt: 0, abgelehnt: 0 });
     expect(bestand[0]?.zeilen.filter((z) => z.status === 'lektion').map((z) => z.id)).toEqual([
       'kein-boden-ist-ein-boden',
@@ -255,5 +264,39 @@ describe('der heutige Bestand', () => {
       'auslagern-nimmt-die-grundlage',
     ]);
     expect(ohneLehrplan).toEqual(['pauschal-heisst-nicht-komplett', 'recall-vor-precision']);
+  });
+});
+
+/**
+ * Die Freigabe liest `abdeckung` am Lehrplan ab, nicht an einem zweiten
+ * Parameter: `pruefeLehrplan` liefert einen wartenden Lehrplan mit leerem
+ * `geprueftVon`, ein freigegebener hat dort einen Namen stehen.
+ */
+describe('abdeckung - Freigabe', () => {
+  const lektionsAbschnitt = abschnitt('m7-1', 1, 'lektion', { lektion: 'pauschal-heisst-nicht-komplett' });
+  const wartendeFolien = {
+    art: 'folien',
+    quelle: 'bauch-projektmanagement',
+    titel: 'Projektmanagement',
+    stand: HASH,
+    geprueftVon: '',
+    geprueftAm: '',
+    abschnitte: [lektionsAbschnitt],
+  };
+
+  it('traegt erteilt, wo geprueftVon und geprueftAm stehen', () => {
+    const { bestand } = abdeckung([repo('awesome', prinzip('p-1'), prinzip('p-2'))], KEINE_MANIFESTE, LEKTIONEN);
+    expect(bestand[0]?.freigabe).toBe('erteilt');
+  });
+
+  it('traegt wartet, wo beide leer sind — und zaehlt die Abschnitte trotzdem', () => {
+    const { bestand } = abdeckung([wartender(wartendeFolien)], KEINE_MANIFESTE, LEKTIONEN);
+    expect(bestand[0]?.freigabe).toBe('wartet');
+    expect(bestand[0]?.zaehlung).toEqual({ gesamt: 1, mitLektion: 1, offen: 0, beauftragt: 0, abgelehnt: 0 });
+  });
+
+  it('zaehlt die Lektion eines wartenden Lehrplans nicht zu denen ohne Lehrplaneintrag', () => {
+    const { ohneLehrplan } = abdeckung([wartender(wartendeFolien)], KEINE_MANIFESTE, LEKTIONEN);
+    expect(ohneLehrplan).toEqual(['lektion-a', 'lektion-b']);
   });
 });

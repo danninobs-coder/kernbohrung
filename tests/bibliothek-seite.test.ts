@@ -36,6 +36,15 @@ describe('die Seite /bibliothek', () => {
     expect(seite).toContain("import.meta.glob<string>('/quellen/*/manifest.json'");
   });
 
+  it('rechnet wartende Lehrplaene mit, statt sie fallen zu lassen', () => {
+    // Ein Lehrplan, dem nur die Freigabe fehlt, ist weder gueltig noch
+    // ungueltig. Wer ihn hier vergisst, laesst die Karte samt Zahlen
+    // verschwinden — genau der Fall, den das Einlesen als Erstes erzeugt.
+    const seite = lies('src', 'pages', 'bibliothek.astro');
+    expect(seite).toContain('const { gueltig, wartend, ungueltig } = lehrplaeneAusTexten(lehrplantexte, lektionsIds);');
+    expect(seite).toContain('abdeckung([...gueltig, ...wartend], manifesteAusTexten(manifesttexte), lektionsIds)');
+  });
+
   it('kommt ohne Insel und ohne Skript aus', () => {
     // Aufklappen macht `details`. Was im Browser laeuft, kann dort ausfallen —
     // hier gibt es nichts, was ausfallen koennte.

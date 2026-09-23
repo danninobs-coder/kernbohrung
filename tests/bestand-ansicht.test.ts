@@ -30,6 +30,7 @@ const repo: Quellenbestand = {
   art: 'repo',
   titel: 'awesome-llm-apps',
   stand: 'a13701eae315a81e1011a4304a6b5e741ea0a984',
+  freigabe: 'erteilt',
   zaehlung: { gesamt: 2, mitLektion: 1, offen: 1, beauftragt: 0, abgelehnt: 0 },
   luecken: { art: 'git', uebernommen: 62, ausgelassen: 44 },
   zeilen: [
@@ -49,6 +50,7 @@ const folien: Quellenbestand = {
   art: 'folien',
   titel: 'Projektmanagement',
   stand: `sha256:${'b'.repeat(64)}`,
+  freigabe: 'wartet',
   zaehlung: { gesamt: 2, mitLektion: 1, offen: 0, beauftragt: 0, abgelehnt: 1 },
   luecken: { art: 'dokument', einheit: 'folien', seiten: 35, nurBild: 7, tabellenverdacht: 2 },
   zeilen: [
@@ -118,7 +120,7 @@ describe('Bestand - die Karte einer Quelle', () => {
   it('zeigt bei Folien Fundstelle, Grund und Vorbehalt', async () => {
     const html = await rendere({ bestand: [folien], ohneLehrplan: [] });
     expect(html).toContain('<summary>Alle Abschnitte von Projektmanagement</summary>');
-    expect(html).toContain('7 von 35 Folien nur Bild · 2 Tabellen vermutlich zerfallen');
+    expect(html).toContain('7 von 35 Folien nur Bild · 2 Folien mit Tabelle oder Grafik');
     const lektion = zeileMit(html, 'lektion');
     expect(lektion).toContain('<p class="zeile-fundstelle">M7 Risikomanagement 26.pdf, Folien 28–34</p>');
     expect(lektion).toContain(
@@ -127,6 +129,26 @@ describe('Bestand - die Karte einer Quelle', () => {
     const abgelehnt = zeileMit(html, 'abgelehnt');
     expect(abgelehnt).toContain('<p class="zeile-fundstelle">M7 Risikomanagement 26.pdf, Folie 35</p>');
     expect(abgelehnt).toContain('<p class="zeile-grund"><strong>Grund:</strong> reine Titelfolien</p>');
+  });
+
+  /**
+   * Der Zustand gleich nach dem Einlesen: Der Lehrplan liegt da, die Zahlen
+   * stimmen, nur am Review-Gate stand noch niemand. Die Markierung steht
+   * unter der Kopfzeile, nicht im Kleingedruckten — und Wort fuer Wort.
+   */
+  it('markiert eine Quelle, die auf die Freigabe wartet, unter der Kopfzeile', async () => {
+    const html = await rendere({ bestand: [folien], ohneLehrplan: [] });
+    expect(html).toContain(
+      '<p class="quelle-freigabe"><strong>Wartet auf Freigabe:</strong> Erst wenn geprueftVon und geprueftAm eingetragen sind, baut der Compiler daraus Lektionen.</p>',
+    );
+    // Die Zahlen bleiben stehen: Ein wartender Lehrplan ist kein ungueltiger.
+    expect(html).toContain('<p class="quelle-zahlen">2 Abschnitte · 1 mit Lektion · 0 offen · 1 abgelehnt</p>');
+    expect(html).not.toContain('bestand-warnung');
+  });
+
+  it('markiert eine freigegebene Quelle nicht', async () => {
+    const html = await rendere({ bestand: [repo], ohneLehrplan: [] });
+    expect(html).not.toContain('quelle-freigabe');
   });
 
   it('sagt ohne Manifest, dass die Luecken unbekannt sind, statt die Zeile wegzulassen', async () => {
@@ -152,9 +174,7 @@ describe('Bestand - Warnungen und leerer Bestand', () => {
       { datei: 'awesome-llm-apps.yaml', maengel: ['geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.'] },
     ]);
     expect(html).toContain('<h2>Lehrpläne, die die Prüfung nicht bestehen</h2>');
-    expect(html).toContain(
-      'Aus diesen Dateien zeigt die Seite keine Zahlen. Auch ein Lehrplan, der noch auf die Freigabe wartet — geprueftVon ist leer —, steht hier.',
-    );
+    expect(html).toContain('<p>Aus diesen Dateien zeigt die Seite keine Zahlen, bis ihre Mängel behoben sind.</p>');
     expect(html).toContain('<h3>awesome-llm-apps.yaml</h3>');
     expect(html).toContain('<code>geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.</code>');
     // Wie jede andere wiederholte Sammlung der Seite: eine Liste, kein nacktes div — und

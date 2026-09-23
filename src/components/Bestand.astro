@@ -4,6 +4,7 @@ import type { Ungueltig } from '../lib/lehrplan';
 import {
   STATUS_TEXT,
   aufklapptext,
+  freigabezeile,
   fundstelle,
   kopfzeile,
   lueckenzeile,
@@ -45,6 +46,9 @@ const titelVon = (id: string) => lektionstitel.get(id) ?? id;
   <section class="karte quelle" data-quelle={b.quelle}>
     <h2>{b.titel}</h2>
     <p class="quelle-kopf">{kopfzeile(b)}</p>
+    {freigabezeile(b) !== null && (
+      <p class="quelle-freigabe"><strong>Wartet auf Freigabe:</strong> {freigabezeile(b)}</p>
+    )}
     <p class="quelle-zahlen">{zahlenzeile(b)}</p>
     <p class="quelle-luecken"><strong>Lücken:</strong> {lueckenzeile(b.luecken)}</p>
     <details class="quelle-liste">
@@ -78,10 +82,7 @@ const titelVon = (id: string) => lektionstitel.get(id) ?? id;
 {ungueltig.length > 0 && (
   <section class="karte bestand-warnung" data-warnung="ungueltig">
     <h2>Lehrpläne, die die Prüfung nicht bestehen</h2>
-    <p>
-      Aus diesen Dateien zeigt die Seite keine Zahlen. Auch ein Lehrplan, der noch auf die
-      Freigabe wartet — geprueftVon ist leer —, steht hier.
-    </p>
+    <p>Aus diesen Dateien zeigt die Seite keine Zahlen, bis ihre Mängel behoben sind.</p>
     <ul>
       {ungueltig.map((u) => (
         <li class="ungueltig">

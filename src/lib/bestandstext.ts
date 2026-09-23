@@ -85,11 +85,13 @@ export function lueckenzeile(l: Luecken): string {
       const [eine, viele] = l.einheit === 'folien' ? ['Folie', 'Folien'] : ['Seite', 'Seiten'];
       const teile = [
         ...(l.nurBild > 0 ? [`${l.nurBild} von ${anzahl(l.seiten, eine, viele)} nur Bild`] : []),
-        ...(l.tabellenverdacht > 0
-          ? [`${anzahl(l.tabellenverdacht, 'Tabelle', 'Tabellen')} vermutlich zerfallen`]
-          : []),
+        // Nicht „Tabellen vermutlich zerfallen": Die Regel schlaegt auch bei
+        // Diagrammen an, und zwar zu Recht — der Text eines Strukturplans
+        // traegt dessen Hierarchie nicht. Gemessen an einem Foliensatz mit
+        // Projektstrukturplaenen: 14 von 45 Folien.
+        ...(l.tabellenverdacht > 0 ? [`${anzahl(l.tabellenverdacht, eine, viele)} mit Tabelle oder Grafik`] : []),
       ];
-      return teile.length > 0 ? teile.join(' · ') : `keine ${eine} nur Bild, keine zerfallene Tabelle erkannt`;
+      return teile.length > 0 ? teile.join(' · ') : `keine ${eine} nur Bild, keine mit Tabelle oder Grafik erkannt`;
     }
     case 'fehlt':
       return 'unbekannt — das Manifest liegt nur am Rechner, auf dem eingelesen wurde';
@@ -98,6 +100,17 @@ export function lueckenzeile(l: Luecken): string {
     case 'unlesbar':
       return `unbekannt — das Manifest lässt sich nicht lesen (${l.grund})`;
   }
+}
+
+/**
+ * Der Satz unter der Kopfzeile, solange die Freigabe fehlt — oder `null`,
+ * wenn sie erteilt ist. Er sagt, was fehlt und was deshalb nicht passiert:
+ * Die Zahlen stimmen, der Compiler baut daraus aber noch keine Lektionen.
+ */
+export function freigabezeile(b: Bestand): string | null {
+  return b.freigabe === 'wartet'
+    ? 'Erst wenn geprueftVon und geprueftAm eingetragen sind, baut der Compiler daraus Lektionen.'
+    : null;
 }
 
 /** `M7 Risikomanagement 26.pdf, Folien 28–34` — oder `null` bei einem Prinzip aus einem Repo. */

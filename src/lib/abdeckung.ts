@@ -31,6 +31,15 @@ export type Zeile = {
   readonly vorbehalte: readonly string[];
 };
 
+/**
+ * Ob am Review-Gate schon jemand stand. `wartet` ist der Zustand zwischen
+ * Durchgang A und dem Menschen: `geprueftVon` und `geprueftAm` sind leer.
+ * Gerechnet wird ein wartender Lehrplan wie ein freigegebener — seine
+ * Lektionen stehen nicht als „ohne Lehrplaneintrag" da —, die Karte sagt
+ * aber dazu, dass der Compiler aus ihm noch nichts baut.
+ */
+export type Freigabe = 'erteilt' | 'wartet';
+
 export type Zaehlung = {
   readonly gesamt: number;
   readonly mitLektion: number;
@@ -68,6 +77,7 @@ export type Bestand = {
   readonly stand: string;
   readonly isbn?: string;
   readonly auflage?: string;
+  readonly freigabe: Freigabe;
   readonly zaehlung: Zaehlung;
   readonly luecken: Luecken;
   readonly zeilen: readonly Zeile[];
@@ -162,6 +172,16 @@ function lueckenVon(lehrplan: Lehrplan, manifest: Manifestauszug | undefined): L
     : { art: 'anderer-stand' };
 }
 
+/**
+ * Die Freigabe steht im Lehrplan selbst: `pruefeLehrplan` liefert einen
+ * wartenden Lehrplan mit leerem `geprueftVon` und `geprueftAm`, ein
+ * freigegebener hat in beiden Feldern etwas stehen. Ein eigener Parameter
+ * waere eine zweite Wahrheit neben der ersten.
+ */
+function freigabeVon(l: Lehrplan): Freigabe {
+  return l.geprueftVon.trim() === '' || l.geprueftAm.trim() === '' ? 'wartet' : 'erteilt';
+}
+
 export function abdeckung(
   lehrplaene: readonly Lehrplan[],
   manifeste: ReadonlyMap<string, Manifestauszug>,
@@ -179,6 +199,7 @@ export function abdeckung(
         stand: l.stand,
         isbn: l.art === 'buch' ? l.isbn : undefined,
         auflage: l.art === 'buch' ? l.auflage : undefined,
+        freigabe: freigabeVon(l),
         zaehlung: zaehle(zeilen),
         luecken: lueckenVon(l, manifeste.get(l.quelle)),
         zeilen,

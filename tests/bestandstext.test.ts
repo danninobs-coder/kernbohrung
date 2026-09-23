@@ -3,6 +3,7 @@ import type { Bestand, Luecken, Zeile } from '../src/lib/abdeckung';
 import {
   STATUS_TEXT,
   aufklapptext,
+  freigabezeile,
   fundstelle,
   kopfzeile,
   kurzstand,
@@ -27,6 +28,7 @@ const basis: Bestand = {
   titel: 'awesome-llm-apps',
   stand: SHA,
   zaehlung: { gesamt: 6, mitLektion: 3, offen: 3, beauftragt: 0, abgelehnt: 0 },
+  freigabe: 'erteilt',
   luecken: { art: 'fehlt' },
   zeilen: [],
 };
@@ -120,12 +122,17 @@ describe('lueckenzeile', () => {
     [
       'Folien mit Bild und Tabellen',
       { art: 'dokument', einheit: 'folien', seiten: 35, nurBild: 7, tabellenverdacht: 2 },
-      '7 von 35 Folien nur Bild · 2 Tabellen vermutlich zerfallen',
+      '7 von 35 Folien nur Bild · 2 Folien mit Tabelle oder Grafik',
     ],
     [
       'ein Buch mit einer Tabelle',
       { art: 'dokument', einheit: 'seiten', seiten: 210, nurBild: 0, tabellenverdacht: 1 },
-      '1 Tabelle vermutlich zerfallen',
+      '1 Seite mit Tabelle oder Grafik',
+    ],
+    [
+      'genau eine Folie mit Tabelle oder Grafik',
+      { art: 'dokument', einheit: 'folien', seiten: 45, nurBild: 0, tabellenverdacht: 1 },
+      '1 Folie mit Tabelle oder Grafik',
     ],
     [
       'ein Buch mit Bildseiten',
@@ -135,7 +142,7 @@ describe('lueckenzeile', () => {
     [
       'Folien ohne beides',
       { art: 'dokument', einheit: 'folien', seiten: 20, nurBild: 0, tabellenverdacht: 0 },
-      'keine Folie nur Bild, keine zerfallene Tabelle erkannt',
+      'keine Folie nur Bild, keine mit Tabelle oder Grafik erkannt',
     ],
     [
       'genau eine Folie insgesamt, nur Bild',
@@ -150,7 +157,7 @@ describe('lueckenzeile', () => {
     [
       'ein Buch ohne beides',
       { art: 'dokument', einheit: 'seiten', seiten: 20, nurBild: 0, tabellenverdacht: 0 },
-      'keine Seite nur Bild, keine zerfallene Tabelle erkannt',
+      'keine Seite nur Bild, keine mit Tabelle oder Grafik erkannt',
     ],
     ['kein Manifest', { art: 'fehlt' }, 'unbekannt — das Manifest liegt nur am Rechner, auf dem eingelesen wurde'],
     ['ein Manifest zu einem anderen Stand', { art: 'anderer-stand' }, 'unbekannt — das Manifest gehört zu einem anderen Stand'],
@@ -161,6 +168,18 @@ describe('lueckenzeile', () => {
     ],
   ])('sagt fuer %s das Richtige', (_fall, luecken, text) => {
     expect(lueckenzeile(luecken)).toBe(text);
+  });
+});
+
+describe('freigabezeile', () => {
+  it('sagt bei einer wartenden Quelle, was fehlt und was deshalb nicht passiert', () => {
+    expect(freigabezeile(bestand({ freigabe: 'wartet' }))).toBe(
+      'Erst wenn geprueftVon und geprueftAm eingetragen sind, baut der Compiler daraus Lektionen.',
+    );
+  });
+
+  it('schweigt, wenn die Freigabe erteilt ist', () => {
+    expect(freigabezeile(bestand())).toBeNull();
   });
 });
 
