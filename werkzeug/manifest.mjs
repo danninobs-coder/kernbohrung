@@ -17,6 +17,9 @@ import { createHash } from 'node:crypto';
  * 2, nicht mehr 1: Mit dem Inhalts-Hash je uebernommener Datei ist ein
  * Pflichtfeld dazugekommen. Wer einen alten Bestand in die Hand bekommt, muss
  * ihn von einem neuen unterscheiden koennen — sonst traegt die Nummer nichts.
+ *
+ * Diese Fassung gilt fuer Git-Quellen. Buch und Folien schreiben Fassung 3,
+ * weiter unten.
  */
 export const MANIFEST_FASSUNG = 2;
 
@@ -121,5 +124,119 @@ export function baueManifest({ herkunft, urteile, gestempeltAm, hashes }) {
     },
     uebernommen,
     ausgelassen,
+  };
+}
+
+/**
+ * 3 fuer Buch und Folien. Der Git-Adapter schreibt weiter Fassung 2: Die
+ * beiden Herkuenfte haben ausser dem Stand fast nichts gemeinsam, und ein
+ * Manifest, das beides mit lauter leeren Feldern abdeckt, sagt weniger, nicht
+ * mehr. Die Fassung steht im Wert, damit ein Leser nicht raten muss.
+ */
+export const MANIFEST_FASSUNG_DOKUMENT = 3;
+
+/**
+ * Der Hash einer Datei, wie ihn das Manifest fuehrt — dasselbe Format wie
+ * `inhaltsHash`, nur ueber Bytes statt ueber Text.
+ *
+ * Ein PDF ist keine Textdatei: `inhaltsHash` wuerde es als UTF-8 lesen und an
+ * jedem ungueltigen Byte ein Ersatzzeichen einsetzen. Zwei verschiedene PDFs
+ * koennten dann denselben Hash bekommen.
+ *
+ * @param {Uint8Array} bytes
+ * @returns {string}
+ */
+export function dateiHash(bytes) {
+  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+}
+
+/**
+ * Der Stand einer Quelle aus mehreren Originalen.
+ *
+ * Das Verfahren steht hier fest und nicht nur im Kopf dessen, der es zuerst
+ * gerechnet hat: die Datei-Hashes **nach Codepunkten sortiert**, mit `\n`
+ * verbunden, ohne `\n` am Ende, das Ganze durch `inhaltsHash`. Sortiert nach
+ * Wert und nicht nach Dateinamen — dann ergibt dieselbe Menge Dateien
+ * denselben Stand, gleich in welcher Reihenfolge sie hereinkommen und gleich
+ * wie sie heissen. (Nach Dateinamen sortiert kaeme ein anderer Wert heraus;
+ * gemessen, nicht vermutet.)
+ *
+ * @param {readonly string[]} dateiHashes
+ * @returns {string}
+ */
+export function standAusHashes(dateiHashes) {
+  const sortiert = [...dateiHashes].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return inhaltsHash(sortiert.join('\n'));
+}
+
+/**
+ * @typedef {{ datei: string, dateiHash: string, seiten: number, gliederung: string, beiwerkZeichen: number }} Original
+ * @typedef {{ id: string, datei: string, seiten: [number, number], nurBild: number[], tabellenverdacht: number[] }} Rohdatei
+ */
+
+/**
+ * Das Manifest einer Quelle aus Buch- oder Folienseiten, Fassung 3.
+ *
+ * Es beantwortet dieselben drei Fragen wie Fassung 2 — woher, was ist nicht
+ * mitgekommen, steht in der Rohdatei noch das, was aus der Quelle kam —, nur
+ * heisst „nicht mitgekommen" hier etwas anderes: Bilder und Tabellen, die der
+ * Text nicht traegt. Deshalb stehen sie **je Seite** da und nicht als blosse
+ * Zahl: Der Compiler sieht sich genau diese Seiten im Original an.
+ *
+ * Der Zeitstempel wird uebergeben und nicht erzeugt, wie bei Fassung 2 — sonst
+ * ist das Manifest bei jedem Lauf verschieden und nicht vergleichbar.
+ *
+ * @param {{
+ *   art: 'buch' | 'folien',
+ *   originale: readonly Original[],
+ *   roh: readonly Rohdatei[],
+ *   gestempeltAm: string,
+ * }} eingabe
+ */
+export function baueDokumentManifest({ art, originale, roh, gestempeltAm }) {
+  if (!gestempeltAm) {
+    throw new Error(
+      'baueDokumentManifest: Zeitstempel fehlt. Er wird uebergeben, nicht erzeugt — ' +
+        'sonst ist das Manifest bei jedem Lauf verschieden und nicht vergleichbar.',
+    );
+  }
+  if (!originale?.length) {
+    throw new Error('baueDokumentManifest: keine Originale. Ohne sie gibt es keinen Stand und keinen Herkunftsnachweis.');
+  }
+  for (const o of originale) {
+    if (!o.dateiHash) {
+      throw new Error(
+        `baueDokumentManifest: dateiHash fehlt fuer "${o.datei}". Ohne ihn laesst sich nicht sagen, ` +
+          'ob das Original seit dem Einlesen ausgetauscht wurde.',
+      );
+    }
+  }
+
+  return {
+    fassung: MANIFEST_FASSUNG_DOKUMENT,
+    gestempeltAm,
+    herkunft: { art, stand: standAusHashes(originale.map((o) => o.dateiHash)) },
+    summe: {
+      originale: originale.length,
+      seiten: originale.reduce((n, o) => n + o.seiten, 0),
+      abschnitte: roh.length,
+      nurBild: roh.reduce((n, r) => n + r.nurBild.length, 0),
+      tabellenverdacht: roh.reduce((n, r) => n + r.tabellenverdacht.length, 0),
+      beiwerkZeichen: originale.reduce((n, o) => n + o.beiwerkZeichen, 0),
+    },
+    originale: originale.map((o) => ({
+      datei: o.datei,
+      dateiHash: o.dateiHash,
+      seiten: o.seiten,
+      gliederung: o.gliederung,
+      beiwerkZeichen: o.beiwerkZeichen,
+    })),
+    roh: roh.map((r) => ({
+      id: r.id,
+      datei: r.datei,
+      seiten: r.seiten,
+      nurBild: r.nurBild,
+      tabellenverdacht: r.tabellenverdacht,
+    })),
   };
 }

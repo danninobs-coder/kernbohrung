@@ -37,9 +37,9 @@ describe('leseManifestauszug', () => {
   });
 
   it('nennt eine Fassung, die diese Seite nicht kennt, beim Namen', () => {
-    expect(leseManifestauszug(text({ fassung: 3 }))).toEqual({
+    expect(leseManifestauszug(text({ fassung: 4 }))).toEqual({
       art: 'unlesbar',
-      grund: 'Fassung 3 kennt diese Seite nicht',
+      grund: 'Fassung 4 kennt diese Seite nicht',
     });
   });
 
@@ -88,5 +88,68 @@ describe('manifesteAusTexten', () => {
   it('liefert eine leere Karte, wo nicht eingelesen wurde', () => {
     // So baut GitHub: `quellen/` ist gitignored, der Glob findet nichts.
     expect(manifesteAusTexten({}).size).toBe(0);
+  });
+});
+
+/**
+ * Fassung 3 — was das Einlesen von Buch und Folien schreibt.
+ *
+ * Die Seite liest daraus drei Zahlen und den Stand. Alles andere im Manifest
+ * — die Seitenlisten je Abschnitt, die Originale mit ihren Hashes — ist fuer
+ * den Compiler da und geht diesen Leser nichts an; er muss es uebergehen,
+ * nicht daran scheitern.
+ */
+const fassung3 = {
+  fassung: 3,
+  gestempeltAm: '2026-09-23T08:00:00.000Z',
+  herkunft: { art: 'folien', stand: `sha256:${'f'.repeat(64)}` },
+  summe: { originale: 9, seiten: 199, abschnitte: 22, nurBild: 8, tabellenverdacht: 21, beiwerkZeichen: 41902 },
+  originale: [{ datei: 'M7.pdf', dateiHash: `sha256:${'a'.repeat(64)}`, seiten: 35, gliederung: 'agenda', beiwerkZeichen: 6676 }],
+  roh: [{ id: 'm07-01-begriff', datei: 'M7.pdf', seiten: [1, 5], nurBild: [], tabellenverdacht: [2] }],
+};
+
+/** Legt die Aenderung stumpf ueber das gueltige Manifest der Fassung 3. */
+function text3(aenderung: Record<string, unknown> = {}): string {
+  return JSON.stringify({ ...fassung3, ...aenderung });
+}
+
+describe('leseManifestauszug - Fassung 3', () => {
+  it('liest Stand und die drei Zahlen der Lueckenzeile', () => {
+    expect(leseManifestauszug(text3())).toEqual({
+      art: 'dokument',
+      stand: `sha256:${'f'.repeat(64)}`,
+      seiten: 199,
+      nurBild: 8,
+      tabellenverdacht: 21,
+    });
+  });
+
+  it('liest ein Buch genauso wie Folien — die Einheit steht im Lehrplan', () => {
+    const auszug = leseManifestauszug(text3({ herkunft: { art: 'buch', stand: `sha256:${'f'.repeat(64)}` } }));
+    expect(auszug.art).toBe('dokument');
+  });
+
+  it('nimmt Fassung 3 ohne Summen nicht fuer bare Muenze', () => {
+    const { summe: _summe, ...ohne } = fassung3;
+    expect(leseManifestauszug(JSON.stringify(ohne))).toEqual({
+      art: 'unlesbar',
+      grund: 'Fassung 3, aber unvollständig',
+    });
+  });
+
+  it('weist einen Stand zurueck, der kein sha256 ist', () => {
+    // Der Lehrplan haelt denselben Wert; passt die Form nicht, liesse sich
+    // beides nicht mehr gegeneinander halten.
+    expect(leseManifestauszug(text3({ herkunft: { art: 'folien', stand: 'a13701e' } }))).toEqual({
+      art: 'unlesbar',
+      grund: 'Fassung 3, aber unvollständig',
+    });
+  });
+
+  it('nennt eine Fassung, die diese Seite nicht kennt, weiterhin beim Namen', () => {
+    expect(leseManifestauszug(text3({ fassung: 4 }))).toEqual({
+      art: 'unlesbar',
+      grund: 'Fassung 4 kennt diese Seite nicht',
+    });
   });
 });

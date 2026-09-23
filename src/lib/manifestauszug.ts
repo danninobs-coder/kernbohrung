@@ -13,10 +13,9 @@ import { z } from 'astro/zod';
  * GitHub zum Beispiel —, gibt es kein Manifest. Das ist kein Fehler, sondern
  * ein Zustand, den die Seite benennt (siehe `abdeckung.ts`).
  *
- * Gelesen wird Fassung 2, die der Git-Adapter schreibt. Die Form fuer Buecher
- * und Folien (`dokument`) steht schon im Typ, weil `abdeckung` sie verrechnet;
- * den Leser dafuer bringt das Einlesen von Lehrmaterial mit, zusammen mit der
- * Fassung, die es schreibt. Bis dahin ist jede andere Fassung `unlesbar`.
+ * Gelesen werden zwei Fassungen: 2 vom Git-Adapter, 3 vom Einlesen von Buch
+ * und Folien. Jede andere ist `unlesbar` — lieber keine Zahl als eine aus
+ * einem Format, das diese Seite nicht kennt.
  */
 export type Manifestauszug =
   | {
@@ -53,6 +52,25 @@ const Fassung2Schema = z.object({
   }),
 });
 
+/**
+ * Fassung 3, soweit die Seite sie braucht: der Stand und die drei Zahlen der
+ * Lueckenzeile. Was der Compiler braucht — die Seiten je Bildfolie und je
+ * Tabellenfolie, die Originale mit ihren Hashes — steht im Manifest und wird
+ * hier nicht gelesen: Die Seite zeigt Zahlen, keine Seitenlisten.
+ */
+const Fassung3Schema = z.object({
+  fassung: z.literal(3),
+  herkunft: z.object({
+    art: z.enum(['buch', 'folien']),
+    stand: z.string().trim().regex(/^sha256:[0-9a-f]{64}$/),
+  }),
+  summe: z.object({
+    seiten: z.number().int().min(0),
+    nurBild: z.number().int().min(0),
+    tabellenverdacht: z.number().int().min(0),
+  }),
+});
+
 /** Liest den Auszug aus dem Text einer `manifest.json`. Wirft nie. */
 export function leseManifestauszug(text: string): Manifestauszug {
   let roh: unknown;
@@ -64,16 +82,30 @@ export function leseManifestauszug(text: string): Manifestauszug {
 
   const fassung = typeof roh === 'object' && roh !== null && 'fassung' in roh ? roh.fassung : undefined;
   if (typeof fassung !== 'number') return { art: 'unlesbar', grund: 'ohne Fassung' };
-  if (fassung !== 2) return { art: 'unlesbar', grund: `Fassung ${fassung} kennt diese Seite nicht` };
+  if (fassung === 2) {
+    const befund = Fassung2Schema.safeParse(roh);
+    if (!befund.success) return { art: 'unlesbar', grund: 'Fassung 2, aber unvollständig' };
+    return {
+      art: 'git',
+      stand: befund.data.herkunft.sha,
+      uebernommen: befund.data.summe.uebernommen,
+      ausgelassen: befund.data.summe.ausgelassen,
+    };
+  }
 
-  const befund = Fassung2Schema.safeParse(roh);
-  if (!befund.success) return { art: 'unlesbar', grund: 'Fassung 2, aber unvollständig' };
-  return {
-    art: 'git',
-    stand: befund.data.herkunft.sha,
-    uebernommen: befund.data.summe.uebernommen,
-    ausgelassen: befund.data.summe.ausgelassen,
-  };
+  if (fassung === 3) {
+    const befund = Fassung3Schema.safeParse(roh);
+    if (!befund.success) return { art: 'unlesbar', grund: 'Fassung 3, aber unvollständig' };
+    return {
+      art: 'dokument',
+      stand: befund.data.herkunft.stand,
+      seiten: befund.data.summe.seiten,
+      nurBild: befund.data.summe.nurBild,
+      tabellenverdacht: befund.data.summe.tabellenverdacht,
+    };
+  }
+
+  return { art: 'unlesbar', grund: `Fassung ${fassung} kennt diese Seite nicht` };
 }
 
 /**

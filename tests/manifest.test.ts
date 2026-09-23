@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { baueManifest, inhaltsHash, MANIFEST_FASSUNG } from '../werkzeug/manifest.mjs';
+import {
+  baueDokumentManifest,
+  baueManifest,
+  dateiHash,
+  inhaltsHash,
+  MANIFEST_FASSUNG,
+  MANIFEST_FASSUNG_DOKUMENT,
+  standAusHashes,
+} from '../werkzeug/manifest.mjs';
 
 // `as const` ist hier nicht Kosmetik: Ohne die Festlegung verbreitert
 // TypeScript `mitnehmen: true` im Array-Literal zu `boolean`, und die Fixture
@@ -126,6 +134,116 @@ describe('inhaltsHash', () => {
   it('nennt das Verfahren im Wert, damit spaetere Leser nicht raten muessen', () => {
     expect(inhaltsHash('')).toBe(
       'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    );
+  });
+});
+
+/**
+ * Fassung 3 — das Manifest einer Quelle aus Buch- oder Folienseiten.
+ *
+ * Drei Dinge entscheiden sich hier und nirgends sonst: wie ein Datei-Hash
+ * gebildet wird, wie aus mehreren Datei-Hashes der Stand einer Quelle wird,
+ * und was im Manifest steht. Alle drei sind Herkunftsnachweis: Wer sie
+ * spaeter anders rechnet, bekommt einen anderen Stand — und die Seite meldet
+ * „das Manifest gehört zu einem anderen Stand".
+ */
+describe('dateiHash', () => {
+  const bytes = (...werte: number[]) => new Uint8Array(werte);
+
+  it('nennt das Verfahren im Wert selbst', () => {
+    expect(dateiHash(bytes(1, 2, 3))).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  it('liefert fuer dieselben Bytes denselben Wert', () => {
+    expect(dateiHash(bytes(1, 2, 3))).toBe(dateiHash(bytes(1, 2, 3)));
+    expect(dateiHash(bytes(1, 2, 3))).not.toBe(dateiHash(bytes(1, 2, 4)));
+  });
+
+  it('unterscheidet Bytes, die als Text gleich aussehen wuerden', () => {
+    // Zwei verschiedene ungueltige UTF-8-Folgen: Als Text gelesen wuerden
+    // beide zum Ersatzzeichen und haetten denselben Hash. Ein PDF ist kein Text.
+    expect(dateiHash(bytes(0xff, 0xfe))).not.toBe(dateiHash(bytes(0xfe, 0xff)));
+  });
+});
+
+describe('standAusHashes', () => {
+  const hashes = ['sha256:' + 'c'.repeat(64), 'sha256:' + 'a'.repeat(64), 'sha256:' + 'b'.repeat(64)];
+
+  it('haengt nicht an der Reihenfolge der Eingabe', () => {
+    expect(standAusHashes(hashes)).toBe(standAusHashes([...hashes].reverse()));
+  });
+
+  it('sortiert nach Wert und nicht nach der Reihenfolge, in der die Dateien kamen', () => {
+    // Sonst haette dieselbe Menge Dateien zwei Staende, je nachdem, wie sie
+    // heissen — und ein Umbenennen aendere den Stand.
+    expect(standAusHashes(hashes)).not.toBe(inhaltsHash(hashes.join('\n')));
+  });
+
+  it('rechnet genau ueber die sortierten Werte, mit Zeilenumbruch dazwischen', () => {
+    const sortiert = [...hashes].sort();
+    expect(standAusHashes(hashes)).toBe(inhaltsHash(sortiert.join('\n')));
+    expect(standAusHashes(hashes)).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  it('haengt an jedem einzelnen Hash', () => {
+    expect(standAusHashes(hashes)).not.toBe(standAusHashes([...hashes.slice(1), 'sha256:' + 'd'.repeat(64)]));
+  });
+});
+
+describe('baueDokumentManifest', () => {
+  const originale = [
+    { datei: 'M7.pdf', dateiHash: 'sha256:' + 'a'.repeat(64), seiten: 35, gliederung: 'agenda', beiwerkZeichen: 6676 },
+    { datei: 'M9.pdf', dateiHash: 'sha256:' + 'b'.repeat(64), seiten: 13, gliederung: 'einzeln', beiwerkZeichen: 2643 },
+  ];
+  const roh = [
+    { id: 'm07-01-begriff', datei: 'M7.pdf', seiten: [1, 5] as [number, number], nurBild: [], tabellenverdacht: [2] },
+    { id: 'm07-02-prozess', datei: 'M7.pdf', seiten: [6, 35] as [number, number], nurBild: [16, 19], tabellenverdacht: [17, 26] },
+    { id: 'm09-01-folien-1-13', datei: 'M9.pdf', seiten: [1, 13] as [number, number], nurBild: [13], tabellenverdacht: [5, 7] },
+  ];
+  const baue = () => baueDokumentManifest({ art: 'folien', originale, roh, gestempeltAm: '2026-09-23T08:00:00.000Z' });
+
+  it('traegt Fassung 3 und den Stand aus den Datei-Hashes', () => {
+    const manifest = baue();
+    expect(manifest.fassung).toBe(3);
+    expect(MANIFEST_FASSUNG_DOKUMENT).toBe(3);
+    expect(manifest.herkunft).toEqual({
+      art: 'folien',
+      stand: standAusHashes(originale.map((o) => o.dateiHash)),
+    });
+  });
+
+  it('rechnet die Summen aus Originalen und Rohdateien', () => {
+    expect(baue().summe).toEqual({
+      originale: 2,
+      seiten: 48,
+      abschnitte: 3,
+      nurBild: 3,
+      tabellenverdacht: 5,
+      beiwerkZeichen: 9319,
+    });
+  });
+
+  it('nennt jede Bildseite und jede Tabellenseite einzeln, nicht nur als Zahl', () => {
+    // Der Compiler oeffnet genau diese Seiten im Original. Eine Zaehlung
+    // allein sagte ihm nicht, welche.
+    expect(baue().roh).toEqual(roh);
+    expect(baue().originale).toEqual(originale);
+  });
+
+  it('verlangt den Zeitstempel, statt ihn zu erzeugen', () => {
+    expect(() => baueDokumentManifest({ art: 'folien', originale, roh, gestempeltAm: '' })).toThrow(/Zeitstempel fehlt/);
+  });
+
+  it('verlangt mindestens ein Original', () => {
+    expect(() => baueDokumentManifest({ art: 'folien', originale: [], roh, gestempeltAm: 'jetzt' })).toThrow(
+      /keine Originale/,
+    );
+  });
+
+  it('verlangt zu jedem Original seinen Hash', () => {
+    const ohne = [{ ...originale[0], dateiHash: '' }];
+    expect(() => baueDokumentManifest({ art: 'folien', originale: ohne, roh, gestempeltAm: 'jetzt' })).toThrow(
+      /dateiHash fehlt fuer "M7.pdf"/,
     );
   });
 });
