@@ -388,3 +388,383 @@ export function zeilenAus(elemente) {
     }))
     .filter((zeile) => zeile.text);
 }
+
+// ---------------------------------------------------------------------------
+// Teil 2: rein — Beiwerk, Silbentrennung, Bildseiten, Tabellenverdacht, Art
+//
+// Ab hier kommt kein pdf.js mehr vor. Eingabe sind Rohseiten, wie `liesSeiten`
+// sie liefert; erfundene Rohseiten tun es genauso, und genau so wird geprueft.
+
+/** Eine Zeile gilt als Beiwerk, wenn sie auf so vielen Seiten der Datei steht. */
+const BEIWERK_ANTEIL = 0.8;
+
+/**
+ * Unter fuenf Seiten traegt die Wiederkehr nicht.
+ *
+ * Gemessen: Eine Datei mit einer einzigen Seite hat jede Zeile auf 100 % ihrer
+ * Seiten — der ganze Text waere Beiwerk, der Nutztext null, und die Datei
+ * wuerde als Scan abgewiesen. Solche Dateien uebernehmen deshalb das Beiwerk,
+ * das in den groesseren Dateien derselben Quelle erkannt wurde.
+ */
+const BEIWERK_MINDEST_SEITEN = 5;
+
+/** Beiwerk steht an fester Stelle: hoechstens ein Prozent der Seitenhoehe Streuung. */
+const BEIWERK_LAGE_TOLERANZ = 0.01;
+
+/**
+ * ... und im oberen oder unteren Randstreifen der Seite.
+ *
+ * Ohne diese Bedingung wird ein Aufzaehlungspunkt, der sich nur in einer Zahl
+ * unterscheidet und auf 80 % der Folien an derselben Stelle steht, zu Beiwerk
+ * — der Satz verloere seinen Inhalt. Am echten Material liegt jede
+ * Beiwerkzeile im Randstreifen (Lage 0,07 oder 0,93) und streut hoechstens ein
+ * Zehntelprozent.
+ */
+const BEIWERK_RANDSTREIFEN = 0.15;
+
+/**
+ * Ueber diesem Anteil entfernten Texts meldet das Einlesen eine Warnung: Dann
+ * stimmt vermutlich etwas mit der Extraktion nicht. Am echten Material lag der
+ * hoechste Wert bei 57 % — ein Satz mit vielen Bildfolien, an dem nichts falsch
+ * ist. Die Schwelle warnt also knapp ueber dem, was noch legitim vorkommt.
+ */
+export const BEIWERK_WARNUNG = 0.6;
+
+/** Weniger Nutztext als das zaehlt als „kein Text auf dieser Seite". */
+const NUR_BILD_ZEICHEN = 20;
+
+/** Eine einzelne Zeile unter dieser Laenge neben einem Bild ist eine Bildunterschrift. */
+const NUR_BILD_EINE_ZEILE = 40;
+
+/** Ab so vielen waagrechten UND senkrechten Linien ist es ein Tabellengitter. */
+const TABELLE_LINIEN = 5;
+
+/** ... oder ab so vielen Zeilen, die nur aus Zahlen, Daten und Einheiten bestehen. */
+const TABELLE_ZAHLZEILEN = 3;
+
+/** Unter so vielen Zeichen gilt eine Seite als leer. */
+const KEINE_TEXTEBENE_ZEICHEN = 20;
+
+/** Sind mehr als so viele Seiten leer, hat die Datei keine Textebene. */
+const KEINE_TEXTEBENE_ANTEIL = 0.9;
+
+/** Median des Nutztexts je Seite, unter dem ein Querformat als Folien gilt. */
+const FOLIEN_MEDIAN = 600;
+
+/**
+ * @typedef {RohSeite & { quer: boolean, zeichen: number, beiwerkZeichen: number, echteBilder: number, nurBild: boolean, tabellenverdacht: boolean }} Seite
+ * @typedef {{ datei: string, seiten: RohSeite[] }} RohDatei
+ * @typedef {{
+ *   datei: string, seitenzahl: number, quer: number, median: number, abbruch: string | null,
+ *   beiwerk: string[], beiwerkHerkunft: 'datei' | 'quelle' | 'keins',
+ *   beiwerkZeichen: number, gesamtZeichen: number, beiwerkAnteil: number, trennungen: number,
+ *   nurBild: number[], tabellenverdacht: number[], seiten: Seite[]
+ * }} Datei
+ */
+
+/**
+ * Der Vergleichsschluessel einer Zeile: jede Ziffernfolge wird zu einem `#`.
+ *
+ * **Folge**, nicht Ziffer. Wer jede Ziffer einzeln ersetzt, macht aus
+ * „Folie 7" und „Folie 17" zwei verschiedene Zeilen (`Folie #` und `Folie ##`).
+ * In jedem Satz mit mehr als neun Folien erreicht dann keine der beiden die
+ * 80 %, und die laufende Foliennummer bleibt im Nutztext stehen — gemessen an
+ * drei Saetzen: 39/61, 29/71 und 26/74 Prozent.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export const schluessel = (text) => text.replace(/\d+/g, '#').replace(/\s+/g, ' ').trim();
+
+/**
+ * Zeichen ohne Leerraum.
+ *
+ * @param {string} text
+ * @returns {number}
+ */
+export const zeichen = (text) => text.replace(/\s/g, '').length;
+
+/** Woerter, vor denen ein Strich am Zeilenende kein Trennstrich ist, sondern ein Ergaenzungsstrich. */
+const BINDEWORT = new Set(['und', 'oder', 'bzw', 'bzw.', 'sowie', 'bis', 'als', 'wie', 'noch', 'statt', 'u.', 'o.']);
+
+/** Trennstrich, weiches Trennzeichen, Bindestrich-Variante. */
+const TRENNSTRICH = /\p{L}[-­‐]$/u;
+
+/**
+ * Silbentrennung zusammenziehen.
+ *
+ * Bedingungen, alle zusammen: Die Zeile endet auf Buchstabe und Trennstrich,
+ * die naechste beginnt klein, steht direkt darunter und ueberlappt im
+ * x-Bereich — also im selben Textfeld. Und das erste Wort der naechsten Zeile
+ * ist kein Bindewort: „Kosten- und Terminplanung" traegt einen
+ * Ergaenzungsstrich, keine Trennung.
+ *
+ * Reihenfolge: erst Beiwerk entfernen, dann trennen. Der Adressblock in einem
+ * Briefkopf endet selbst auf einem Strich.
+ *
+ * @param {Zeile[]} zeilen
+ * @returns {{ zeilen: Zeile[], zusammengezogen: number }}
+ */
+export function zieheTrennungZusammen(zeilen) {
+  /** @type {Zeile[]} */
+  const aus = [];
+  let zusammengezogen = 0;
+  for (const zeile of zeilen) {
+    const vor = aus[aus.length - 1];
+    if (vor && !vor.gedreht && !zeile.gedreht && TRENNSTRICH.test(vor.text) && /^\p{Ll}/u.test(zeile.text)) {
+      const darunter = vor.y - zeile.y > 0 && vor.y - zeile.y <= 2.5 * Math.max(vor.groesse, zeile.groesse);
+      const ueberlappt = zeile.x0 < vor.x1 && zeile.x1 > vor.x0;
+      if (darunter && ueberlappt && !BINDEWORT.has(zeile.text.split(' ')[0])) {
+        aus[aus.length - 1] = {
+          ...vor,
+          text: vor.text.slice(0, -1) + zeile.text,
+          groesse: Math.max(vor.groesse, zeile.groesse),
+          x1: Math.max(vor.x1, zeile.x1),
+        };
+        zusammengezogen++;
+        continue;
+      }
+    }
+    aus.push(zeile);
+  }
+  return { zeilen: aus, zusammengezogen };
+}
+
+const ZAHL = /^[(\[]?[+\-–−±~≈<>]?(\d{1,3}([.’' ]\d{3})+|\d+)([.,]\d+)?[)\]]?(%|‰|€|T€|Mio\.?|Mrd\.?|m²|m³|h|d|Wo\.?)?[.,;:)]?$/u;
+const DATUM = /^(\d{1,2}\.\d{1,2}\.(\d{2}|\d{4})?|\d{1,2}\/\d{2,4}|\d{4}-\d{2}(-\d{2})?|(KW|Q)\s?\d{1,2}([./]\d{2,4})?)[.,;:]?$/u;
+const EINHEIT = /^(€|EUR|T€|TEUR|%|Mio\.?|Mrd\.?|€\/m²|m²|m³|Std\.?|h|Tage?|Wochen?|Monate?|-|–|—|\/|x|X|✓|✗)$/u;
+
+/**
+ * Eine Zeile, die nur aus Zahlen, Daten und Einheiten besteht — und mindestens
+ * eine Zahl oder ein Datum enthaelt.
+ *
+ * Die zweite Bedingung ist noetig: Eine Zeile aus lauter Gedankenstrichen
+ * besteht formal nur aus Einheiten und ist trotzdem keine Tabellenzeile.
+ *
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function istZahlenzeile(text) {
+  const token = text.split(/\s+/).filter(Boolean);
+  if (!token.length) return false;
+  return (
+    token.every((t) => ZAHL.test(t) || DATUM.test(t) || EINHEIT.test(t)) &&
+    token.some((t) => ZAHL.test(t) || DATUM.test(t))
+  );
+}
+
+/**
+ * Das Beiwerk einer Datei: Zeilen, die auf mindestens 80 % ihrer Seiten
+ * wiederkehren, an fester Stelle im oberen oder unteren Randstreifen.
+ *
+ * Zurueck kommt der Vergleichsschluessel und die Lage, an der die Zeile steht
+ * (als Anteil der Seitenhoehe). Die Lage wird beim Entfernen noch einmal
+ * gebraucht: Dieselbe Zeile mitten auf einer Folie ist Inhalt, kein Beiwerk.
+ *
+ * @param {readonly RohSeite[]} seiten
+ * @returns {Map<string, number[]>}
+ */
+export function findeBeiwerk(seiten) {
+  /** @type {Map<string, number[]>} */
+  const beiwerk = new Map();
+  const anzahl = seiten.length;
+  if (anzahl < BEIWERK_MINDEST_SEITEN) return beiwerk;
+
+  /** @type {Map<string, { seite: number, lage: number }[]>} */
+  const vorkommen = new Map();
+  for (const seite of seiten) {
+    for (const zeile of seite.zeilen) {
+      const k = schluessel(zeile.text);
+      const liste = vorkommen.get(k) ?? [];
+      liste.push({ seite: seite.nummer, lage: zeile.y / seite.hoehe });
+      vorkommen.set(k, liste);
+    }
+  }
+  for (const [k, liste] of vorkommen) {
+    const lagen = liste.map((e) => e.lage).sort((a, b) => a - b);
+    const mitte = lagen[Math.floor(lagen.length / 2)];
+    if (mitte > BEIWERK_RANDSTREIFEN && mitte < 1 - BEIWERK_RANDSTREIFEN) continue;
+    const seitenMitZeile = new Set(
+      liste.filter((e) => Math.abs(e.lage - mitte) <= BEIWERK_LAGE_TOLERANZ).map((e) => e.seite),
+    );
+    if (seitenMitZeile.size / anzahl >= BEIWERK_ANTEIL) beiwerk.set(k, [mitte]);
+  }
+  return beiwerk;
+}
+
+/**
+ * Bild-Beiwerk: dieselbe Platzierung auf mindestens 80 % der Seiten — das Logo
+ * im Briefkopf. Ohne diese Unterscheidung heisst „die Seite traegt ein Bild"
+ * gar nichts: Am echten Material trug jede der 199 Seiten das Logo.
+ *
+ * @param {readonly RohSeite[]} seiten
+ * @returns {Set<string>}
+ */
+export function findeBildBeiwerk(seiten) {
+  const anzahl = seiten.length;
+  /** @type {Set<string>} */
+  const treffer = new Set();
+  if (anzahl < BEIWERK_MINDEST_SEITEN) return treffer;
+  /** @type {Map<string, number>} */
+  const vorkommen = new Map();
+  for (const seite of seiten) {
+    for (const k of new Set(seite.bilder)) vorkommen.set(k, (vorkommen.get(k) ?? 0) + 1);
+  }
+  for (const [k, n] of vorkommen) if (n / anzahl >= BEIWERK_ANTEIL) treffer.add(k);
+  return treffer;
+}
+
+/**
+ * Eine Rohdatei bereinigen: Beiwerk entfernen, Trennungen zusammenziehen,
+ * Bildseiten und Tabellenverdacht markieren, Median und Abbruch rechnen.
+ *
+ * `beiwerk` und `bildBeiwerk` kommen von aussen, weil eine kleine Datei das
+ * Beiwerk der uebrigen Dateien derselben Quelle uebernimmt.
+ *
+ * @param {RohDatei} roh
+ * @param {{ beiwerk: Map<string, number[]>, bildBeiwerk: Set<string>, herkunft: 'datei' | 'quelle' | 'keins' }} vorgabe
+ * @returns {Datei}
+ */
+export function bereinige(roh, vorgabe) {
+  const anzahl = roh.seiten.length;
+  const { beiwerk, bildBeiwerk } = vorgabe;
+  /** @type {(zeile: Zeile, seite: RohSeite) => boolean} */
+  const istBeiwerk = (zeile, seite) => {
+    const lagen = beiwerk.get(schluessel(zeile.text));
+    return lagen !== undefined && lagen.some((l) => Math.abs(zeile.y / seite.hoehe - l) <= BEIWERK_LAGE_TOLERANZ);
+  };
+
+  let gesamtZeichen = 0;
+  let beiwerkZeichen = 0;
+  let trennungen = 0;
+
+  const seiten = roh.seiten.map((roheSeite) => {
+    /** @type {Zeile[]} */
+    const nutzzeilen = [];
+    let entfernt = 0;
+    for (const zeile of roheSeite.zeilen) {
+      const n = zeichen(zeile.text);
+      gesamtZeichen += n;
+      if (istBeiwerk(zeile, roheSeite)) entfernt += n;
+      else nutzzeilen.push(zeile);
+    }
+    beiwerkZeichen += entfernt;
+
+    const gezogen = zieheTrennungZusammen(nutzzeilen);
+    trennungen += gezogen.zusammengezogen;
+    const zeilen = gezogen.zeilen;
+    const nutzZeichen = zeilen.reduce((n, z) => n + zeichen(z.text), 0);
+    const echteBilder = roheSeite.bilder.filter((k) => !bildBeiwerk.has(k)).length;
+    // Bild mit Bildunterschrift zaehlt auch: Am echten Material war die einzige
+    // Nutzzeile einer Bildfolie eine Unterschrift mit genau 20 Zeichen — die
+    // blosse Schwelle verfehlte sie um ein Zeichen.
+    const nurBild =
+      echteBilder >= 1 &&
+      (nutzZeichen < NUR_BILD_ZEICHEN || (zeilen.length === 1 && zeichen(zeilen[0].text) < NUR_BILD_EINE_ZEILE));
+    const gitter = roheSeite.gitter.hLinien >= TABELLE_LINIEN && roheSeite.gitter.vLinien >= TABELLE_LINIEN;
+    const zahlenzeilen = zeilen.filter((z) => istZahlenzeile(z.text)).length;
+    return {
+      ...roheSeite,
+      quer: roheSeite.breite > roheSeite.hoehe,
+      zeilen,
+      zeichen: nutzZeichen,
+      beiwerkZeichen: entfernt,
+      echteBilder,
+      nurBild,
+      tabellenverdacht: gitter || zahlenzeilen >= TABELLE_ZAHLZEILEN,
+    };
+  });
+
+  const sortiert = seiten.map((s) => s.zeichen).sort((a, b) => a - b);
+  const median =
+    anzahl === 0 ? 0 : anzahl % 2 ? sortiert[(anzahl - 1) / 2] : (sortiert[anzahl / 2 - 1] + sortiert[anzahl / 2]) / 2;
+  const leere = seiten.filter((s) => s.zeichen < KEINE_TEXTEBENE_ZEICHEN).length;
+
+  return {
+    datei: roh.datei,
+    seitenzahl: anzahl,
+    quer: seiten.filter((s) => s.quer).length,
+    median,
+    // Wenig Text ist ausdruecklich kein Abbruchgrund. „Scan" heisst: keine
+    // Textebene — fast jede Seite leer.
+    abbruch:
+      anzahl > 0 && leere / anzahl > KEINE_TEXTEBENE_ANTEIL
+        ? `${roh.datei}: kein Textinhalt — das Material ist gescannt; OCR ist nicht Teil des Ingests`
+        : null,
+    beiwerk: [...beiwerk.keys()].filter((k) => roh.seiten.some((s) => s.zeilen.some((z) => schluessel(z.text) === k))),
+    beiwerkHerkunft: vorgabe.herkunft,
+    beiwerkZeichen,
+    gesamtZeichen,
+    beiwerkAnteil: gesamtZeichen ? beiwerkZeichen / gesamtZeichen : 0,
+    trennungen,
+    nurBild: seiten.filter((s) => s.nurBild).map((s) => s.nummer),
+    tabellenverdacht: seiten.filter((s) => s.tabellenverdacht).map((s) => s.nummer),
+    seiten,
+  };
+}
+
+/**
+ * Alle Dateien einer Quelle bereinigen.
+ *
+ * Dateien unter fuenf Seiten uebernehmen das Beiwerk der groesseren Dateien
+ * derselben Quelle. Gibt es keine groessere, bleiben sie ohne Beiwerk —
+ * `beiwerkHerkunft` sagt, welcher Fall vorlag.
+ *
+ * @param {readonly RohDatei[]} dateien
+ * @returns {Datei[]}
+ */
+export function bereinigeQuelle(dateien) {
+  const eigenes = dateien.map((d) => findeBeiwerk(d.seiten));
+  const eigenesBild = dateien.map((d) => findeBildBeiwerk(d.seiten));
+  /** @type {Map<string, number[]>} */
+  const gelernt = new Map();
+  /** @type {Set<string>} */
+  const gelerntBild = new Set();
+  dateien.forEach((d, i) => {
+    if (d.seiten.length < BEIWERK_MINDEST_SEITEN) return;
+    for (const [k, lagen] of eigenes[i]) gelernt.set(k, [...(gelernt.get(k) ?? []), ...lagen]);
+    for (const k of eigenesBild[i]) gelerntBild.add(k);
+  });
+
+  return dateien.map((d, i) => {
+    if (d.seiten.length >= BEIWERK_MINDEST_SEITEN) {
+      return bereinige(d, { beiwerk: eigenes[i], bildBeiwerk: eigenesBild[i], herkunft: 'datei' });
+    }
+    const herkunft = gelernt.size > 0 || gelerntBild.size > 0 ? 'quelle' : 'keins';
+    return bereinige(d, { beiwerk: gelernt, bildBeiwerk: gelerntBild, herkunft });
+  });
+}
+
+/**
+ * Die Art einer Quelle — nicht einer Datei.
+ *
+ * Je Datei entschieden wackelt es: Am echten Material lag eine Datei mit
+ * Median 599,5 einen halben Punkt unter der Schwelle, eine andere bei 576.
+ * Ueber alle Seiten der Quelle war der Median 242 — eindeutig Folien. Eine
+ * Quelle hat eine Art, nicht neun.
+ *
+ * @param {readonly Datei[]} dateien
+ * @returns {{ art: 'folien' | 'buch', median: number, quer: number, seiten: number }}
+ */
+export function artDerQuelle(dateien) {
+  const alle = dateien.flatMap((d) => d.seiten);
+  const sortiert = alle.map((s) => s.zeichen).sort((a, b) => a - b);
+  const anzahl = sortiert.length;
+  const median =
+    anzahl === 0 ? 0 : anzahl % 2 ? sortiert[(anzahl - 1) / 2] : (sortiert[anzahl / 2 - 1] + sortiert[anzahl / 2]) / 2;
+  const quer = alle.filter((s) => s.quer).length;
+  return { art: quer > anzahl / 2 && median < FOLIEN_MEDIAN ? 'folien' : 'buch', median, quer, seiten: anzahl };
+}
+
+/**
+ * Der Nutztext einer Seite fuer die Rohdatei — mit Seitenmarke davor, damit
+ * jede spaetere Behauptung auf eine Folie zeigen kann und nicht nur auf einen
+ * Satz von fuenfunddreissig.
+ *
+ * @param {Seite} seite
+ * @param {string} [marke]
+ * @returns {string}
+ */
+export function seitenText(seite, marke = 'Folie') {
+  return [`— ${marke} ${seite.nummer} —`, ...seite.zeilen.map((z) => z.text)].join('\n');
+}
