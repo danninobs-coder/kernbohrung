@@ -101,6 +101,13 @@ export async function ladePdfjs(basisOrdner) {
     wasmUrl: ordner('wasm'),
     iccUrl: ordner('iccs'),
   };
+  // Nur die paint*-Varianten: Ein Inline-Bild (BI/ID/EI im Content-Stream,
+  // OPS 63-65 = beginInlineImage/beginImageData/endInlineImage) baut pdf.js
+  // beim Erzeugen der Operatorliste schon zu einem einzigen
+  // paintInlineImageXObject zusammen (pdf.worker.mjs, Fall
+  // OPS.endInlineImage ruft buildPaintImageXObject auf). Die drei anderen
+  // OPS tauchen in der fertigen Liste nicht auf; sie zusaetzlich zu
+  // zaehlen waere eine Doppelzaehlung desselben Bilds.
   const bildOps = new Set(
     Object.entries(pdfjs.OPS)
       .filter(([name]) => /^paint.*Image|^paintSolidColorImageMask$/.test(name))
@@ -131,6 +138,11 @@ export async function liesSeiten(bytes, geladen) {
     const seiten = [];
     for (let n = 1; n <= doc.numPages; n++) {
       const seite = await doc.getPage(n);
+      if (seite.rotate !== 0) {
+        throw new Error(
+          `Seite ${n} ist um ${seite.rotate} Grad gedreht. Gedrehte Seiten liest diese Fassung noch nicht in der richtigen Reihenfolge; bitte das PDF ohne Drehung speichern.`,
+        );
+      }
       // getViewport beruecksichtigt /Rotate — die gedrehte Seite ist die,
       // die man sieht, und nur sie entscheidet ueber quer oder hoch.
       const sichtfeld = seite.getViewport({ scale: 1 });
@@ -239,7 +251,9 @@ export function werteOperatorenAus(operatoren, OPS, bildOps) {
   const stapel = [];
   /** @type {string[]} */
   const bilder = [];
+  /** @type {Set<number>} */
   const waagrecht = new Set();
+  /** @type {Set<number>} */
   const senkrecht = new Set();
   /** @type {(wert: number) => number} */
   const raster = (wert) => Math.round(wert / BILD_RASTER) * BILD_RASTER;

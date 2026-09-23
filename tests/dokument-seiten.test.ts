@@ -1,8 +1,9 @@
 // @vitest-environment node
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ladePdfjs, liesSeiten, werteOperatorenAus, zeilenAus } from '../werkzeug/adapter/dokument.mjs';
+import { PDFDocument, StandardFonts, degrees } from 'pdf-lib';
 
 /**
  * Der Teil von `dokument.mjs`, der ein PDF liest.
@@ -152,9 +153,13 @@ describe('werteOperatorenAus', () => {
 });
 
 describe('liesSeiten an den Fixtures', () => {
+  let pdfjs: Awaited<ReturnType<typeof ladePdfjs>>;
+  beforeAll(async () => {
+    pdfjs = await ladePdfjs();
+  });
+
   it('liest Seitenzahl, Format und Zeilen eines Foliensatzes', async () => {
-    const geladen = await ladePdfjs();
-    const { seiten } = await liesSeiten(liesFixture('folien-agenda.pdf'), geladen);
+    const { seiten } = await liesSeiten(liesFixture('folien-agenda.pdf'), pdfjs);
     expect(seiten).toHaveLength(26);
     expect(seiten.map((s) => [Math.round(s.breite), Math.round(s.hoehe)])).toContainEqual([842, 595]);
     expect(new Set(seiten.map((s) => `${Math.round(s.breite)}x${Math.round(s.hoehe)}`))).toEqual(new Set(['842x595']));
@@ -172,27 +177,24 @@ describe('liesSeiten an den Fixtures', () => {
   });
 
   it('erkennt das Logo an derselben Platzierung auf jeder Folie', async () => {
-    const geladen = await ladePdfjs();
-    const { seiten } = await liesSeiten(liesFixture('folien-agenda.pdf'), geladen);
+    const { seiten } = await liesSeiten(liesFixture('folien-agenda.pdf'), pdfjs);
     expect(new Set(seiten.map((s) => s.bilder[0]))).toEqual(new Set(['84x28@712,16']));
     // Die Bildfolie traegt daneben ein zweites, anders platziertes Bild.
     expect(seiten[8]?.bilder).toEqual(['84x28@712,16', '540x380@152,120']);
   });
 
   it('findet das Liniengitter der Tabellenfolie und nur dort', async () => {
-    const geladen = await ladePdfjs();
-    const { seiten } = await liesSeiten(liesFixture('folien-agenda.pdf'), geladen);
+    const { seiten } = await liesSeiten(liesFixture('folien-agenda.pdf'), pdfjs);
     expect(seiten[13]?.gitter).toEqual({ hLinien: 6, vLinien: 5 });
     expect(seiten.filter((s) => s.gitter.hLinien >= 5 && s.gitter.vLinien >= 5).map((s) => s.nummer)).toEqual([14]);
   });
 
   it('liest das Hochformat als hoch und den Satz ohne Textebene als leer', async () => {
-    const geladen = await ladePdfjs();
-    const buch = await liesSeiten(liesFixture('buch-hochformat.pdf'), geladen);
+    const buch = await liesSeiten(liesFixture('buch-hochformat.pdf'), pdfjs);
     expect(buch.seiten).toHaveLength(12);
     expect([Math.round(buch.seiten[0]!.breite), Math.round(buch.seiten[0]!.hoehe)]).toEqual([595, 842]);
 
-    const scan = await liesSeiten(liesFixture('folien-scan.pdf'), geladen);
+    const scan = await liesSeiten(liesFixture('folien-scan.pdf'), pdfjs);
     expect(scan.seiten).toHaveLength(5);
     expect(scan.seiten.every((s) => s.zeilen.length === 0)).toBe(true);
     expect(scan.seiten.every((s) => s.bilder.length === 1)).toBe(true);
@@ -202,7 +204,7 @@ describe('liesSeiten an den Fixtures', () => {
     // Unter Windows endet `path.join` auf dem Trennzeichen des Systems; pdf.js weist solche Pfade mit
     // „Invalid factory url … must include trailing slash" ab. Der Fehler faellt
     // erst beim Lesen auf, nicht beim Laden.
-    const { optionen } = await ladePdfjs();
+    const { optionen } = pdfjs;
     const pfade = ['standardFontDataUrl', 'cMapUrl', 'wasmUrl', 'iccUrl'].map((name) => String(optionen[name]));
     expect(pfade.map((p) => p.endsWith('/'))).toEqual([true, true, true, true]);
     expect(pfade.some((p) => p.includes('\\'))).toBe(false);
@@ -218,11 +220,24 @@ describe('liesSeiten an den Fixtures', () => {
     console.warn = (...t: unknown[]) => gesammelt.push(t);
     console.error = (...t: unknown[]) => gesammelt.push(t);
     try {
-      const geladen = await ladePdfjs();
-      await liesSeiten(liesFixture('folien-agenda.pdf'), geladen);
+      await liesSeiten(liesFixture('folien-agenda.pdf'), pdfjs);
     } finally {
       Object.assign(console, echt);
     }
     expect(gesammelt).toEqual([]);
+  });
+
+  it('weist eine gedrehte Seite ab, statt die Zeilenreihenfolge still falsch zu lesen', async () => {
+    // getViewport dreht Breite/Hoehe mit /Rotate, getTextContent liefert die
+    // Koordinaten aber unrotiert — vermischt ergaebe das eine falsche
+    // Zeilenreihenfolge, ohne dass irgendetwas das meldet.
+    const doc = await PDFDocument.create();
+    const schrift = await doc.embedFont(StandardFonts.Helvetica);
+    const seite = doc.addPage([595, 842]);
+    seite.setRotation(degrees(90));
+    seite.drawText('Text auf gedrehter Seite', { x: 50, y: 800, size: 12, font: schrift });
+    const bytes = await doc.save();
+
+    await expect(liesSeiten(bytes, pdfjs)).rejects.toThrow('Seite 1 ist um 90 Grad gedreht');
   });
 });
