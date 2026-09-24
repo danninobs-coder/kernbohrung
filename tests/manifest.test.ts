@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import {
   baueDokumentManifest,
   baueManifest,
@@ -8,6 +10,8 @@ import {
   MANIFEST_FASSUNG_DOKUMENT,
   standAusHashes,
 } from '../werkzeug/manifest.mjs';
+
+const FIXTUREN = path.resolve(__dirname, 'fixtures');
 
 // `as const` ist hier nicht Kosmetik: Ohne die Festlegung verbreitert
 // TypeScript `mitnehmen: true` im Array-Literal zu `boolean`, und die Fixture
@@ -187,6 +191,18 @@ describe('standAusHashes', () => {
 
   it('haengt an jedem einzelnen Hash', () => {
     expect(standAusHashes(hashes)).not.toBe(standAusHashes([...hashes.slice(1), 'sha256:' + 'd'.repeat(64)]));
+  });
+
+  it('ergibt fuer einen festen Fixture-Satz immer denselben, einmal ermittelten Stand', () => {
+    // Anders als oben: nicht mit demselben Verfahren nachgerechnet, sondern
+    // gegen einen Literalwert. Die Fixtures sind byte-gleich reproduzierbar
+    // (werkzeug/fixtures/erzeuge.mjs) — weicht einer der drei Werte hier ab,
+    // sind es die Fixtures nicht mehr, oder das Verfahren hat sich geaendert.
+    const agenda = dateiHash(readFileSync(path.join(FIXTUREN, 'folien-agenda.pdf')));
+    const laeufe = dateiHash(readFileSync(path.join(FIXTUREN, 'folien-laeufe.pdf')));
+    expect(agenda).toBe('sha256:99a4bb45b1f91d7767eac4696220ec987598801252e2f5c6b36446975d8d2bed');
+    expect(laeufe).toBe('sha256:085a59cba48eeefde12ad74069c4bba4dce30a94f65b8ed8d95797211adfec75');
+    expect(standAusHashes([agenda, laeufe])).toBe('sha256:3ac610ce0753ac35a76584585549374fba93e2e36c867cf69a5a8b5df95d9095');
   });
 });
 

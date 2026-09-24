@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
@@ -346,8 +346,16 @@ describe('seitenText', () => {
 });
 
 describe('an den Fixtures', () => {
+  /**
+   * Einmal geladen und durchgereicht (Vorspann-Regel 20): Der kalte Import von
+   * pdf.js ginge sonst je Test von der 20-s-Frist ab.
+   */
+  let geladen: Awaited<ReturnType<typeof ladePdfjs>>;
+  beforeAll(async () => {
+    geladen = await ladePdfjs();
+  });
+
   it('raeumt den Foliensatz mit Agenda auf', async () => {
-    const geladen = await ladePdfjs();
     const roh = { datei: 'folien-agenda.pdf', ...(await liesSeiten(liesFixture('folien-agenda.pdf'), geladen)) };
     const [datei] = bereinigeQuelle([roh]);
 
@@ -376,7 +384,6 @@ describe('an den Fixtures', () => {
   });
 
   it('bricht beim Satz ohne Textebene ab und beim Satz mit wenig Text nicht', async () => {
-    const geladen = await ladePdfjs();
     const scan = { datei: 'folien-scan.pdf', ...(await liesSeiten(liesFixture('folien-scan.pdf'), geladen)) };
     const wenig = { datei: 'folien-wenig-text.pdf', ...(await liesSeiten(liesFixture('folien-wenig-text.pdf'), geladen)) };
     expect(bereinigeQuelle([scan])[0]?.abbruch).toBe(
@@ -388,7 +395,6 @@ describe('an den Fixtures', () => {
   });
 
   it('nennt das Hochformat ein Buch und die Foliensaetze Folien', async () => {
-    const geladen = await ladePdfjs();
     const lies = async (name: string) => ({ datei: name, ...(await liesSeiten(liesFixture(name), geladen)) });
     const folien = bereinigeQuelle([await lies('folien-agenda.pdf'), await lies('folien-laeufe.pdf')]);
     expect(artDerQuelle(folien)).toEqual({ art: 'folien', median: 188, quer: 51, seiten: 51 });

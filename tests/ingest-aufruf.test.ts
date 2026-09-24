@@ -1,9 +1,10 @@
 // @vitest-environment node
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { ladePdfjs } from '../werkzeug/adapter/dokument.mjs';
 import { argumente, bericht, fuehreAus } from '../werkzeug/ingest-folien.mjs';
 
 /**
@@ -29,6 +30,14 @@ async function lauf(argv: string[], wurzel: string): Promise<{ code: number; zei
   const code = await fuehreAus(argv, wurzel, (zeile: string) => zeilen.push(zeile));
   return { code, zeilen };
 }
+
+/**
+ * pdf.js einmal vorab laden (Vorspann-Regel 20): `fuehreAus` laedt es ueber
+ * `leseFolienEin` intern selbst, ohne ein `geladen` entgegenzunehmen — hier
+ * genuegt ein Vorwaermen, der Modul-Cache von Node sorgt dafuer, dass ein
+ * Aufruf danach nichts mehr laedt.
+ */
+beforeAll(() => ladePdfjs());
 
 describe('argumente', () => {
   it('sammelt ein mehrfach genanntes Argument in der Reihenfolge der Zeile', () => {

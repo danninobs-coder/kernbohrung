@@ -10,8 +10,12 @@
  * gemeint ist, sagt das erste Argument, das da ist — geraten wird nichts:
  * Fehlen beide, kommt die Hilfe und kein halber Lauf.
  *
- * Geladen wird der gewaehlte Weg erst dann. So zieht ein Git-Lauf pdf.js nicht
- * mit hoch, und ein Folien-Lauf klont nichts.
+ * Nicht alles wartet auf diese Entscheidung: `argumente` unten ist ein
+ * statischer Import, und der laedt `ingest-folien.mjs` samt Folien-Zweig und
+ * zod immer mit hoch — auch bei einem reinen Git-Lauf. Erst der Rest des
+ * gewaehlten Wegs kommt per `await import(...)`, und pdf.js laedt `ladePdfjs`
+ * ohnehin erst bei Bedarf. So zieht ein Git-Lauf pdf.js nicht mit hoch, und
+ * ein Folien-Lauf klont nichts.
  */
 import { argumente } from './ingest-folien.mjs';
 

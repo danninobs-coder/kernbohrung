@@ -20,7 +20,10 @@ import {
 } from '../werkzeug/adapter/folien.mjs';
 import type { Dateisystem } from '../werkzeug/adapter/folien.mjs';
 import { lehrplanGeruest, vergleicheLehrplan, vergleichInZeilen } from '../werkzeug/lehrplan-geruest.mjs';
-import { pruefeLehrplan } from '../src/lib/lehrplan';
+import { lehrplaeneAusTexten, pruefeLehrplan } from '../src/lib/lehrplan';
+import { manifesteAusTexten } from '../src/lib/manifestauszug';
+import { abdeckung } from '../src/lib/abdeckung';
+import { freigabezeile, lueckenzeile, zahlenzeile } from '../src/lib/bestandstext';
 
 /**
  * Das Einlesen als Ganzes — gegen ein Temp-Verzeichnis, an den Fixtures.
@@ -163,9 +166,11 @@ describe('sammlePdfs', () => {
     expect(sammlePdfs([eine, eine])).toHaveLength(1);
   });
 
-  it('sagt, was es nicht gibt', () => {
+  it('sagt, was es nicht gibt, statt einen Stapelabzug zu werfen', () => {
     expect(() => sammlePdfs([path.join(FIXTUREN, 'gibt-es-nicht.pdf')])).toThrow(EinleseFehler);
-    expect(() => sammlePdfs([path.join(FIXTUREN, 'gibt-es-nicht.pdf')])).toThrow(/gibt es nicht/);
+    expect(() => sammlePdfs([path.join(FIXTUREN, 'gibt-es-nicht.pdf')])).toThrow(
+      `${path.join(FIXTUREN, 'gibt-es-nicht.pdf')}: lässt sich nicht öffnen (ENOENT).`,
+    );
   });
 
   it('weist alles zurueck, was kein PDF ist', () => {
@@ -411,6 +416,53 @@ describe('leseFolienEin - der Lehrplan', () => {
   });
 });
 
+/**
+ * Der Durchstich: Schreiber (`leseFolienEin`/`baueDokumentManifest`) und
+ * Leser (`manifestauszug.ts`, `lehrplan.ts`, `abdeckung.ts`, `bestandstext.ts`)
+ * teilen sonst kein Testobjekt. Wuerde ein Feld im Manifest umbenannt, zeigte
+ * die Karte still „unbekannt …", und kein anderer Test hier wuerde rot —
+ * jeder prueft nur seine Seite der Grenze fuer sich.
+ *
+ * Gelesen wird ueber dieselben Schluessel wie in `src/pages/bibliothek.astro`:
+ * `/lehrplan/<k>.yaml` und `/quellen/<k>/manifest.json`.
+ */
+describe('Durchstich: vom Einlesen bis zur Bibliothekskarte', () => {
+  it('kommt wartend an, und Luecken-, Zahlen- und Freigabezeile stimmen mit dem Einlesen ueberein', async () => {
+    const wurzel = temp();
+    try {
+      const aus = await einlesen(wurzel);
+      const lehrplanText = lies(wurzel, 'lehrplan', 'fixture-vorlesung.yaml');
+      const manifestText = lies(wurzel, 'quellen', 'fixture-vorlesung', 'manifest.json');
+
+      const { gueltig, wartend, ungueltig } = lehrplaeneAusTexten(
+        { '/lehrplan/fixture-vorlesung.yaml': lehrplanText },
+        new Set<string>(),
+      );
+      expect(ungueltig).toEqual([]);
+      expect(gueltig).toEqual([]);
+      expect(wartend).toHaveLength(1);
+      expect(wartend[0]?.geprueftVon).toBe('');
+
+      const manifeste = manifesteAusTexten({ '/quellen/fixture-vorlesung/manifest.json': manifestText });
+      const { bestand } = abdeckung(wartend, manifeste, new Set<string>());
+      expect(bestand).toHaveLength(1);
+      const karte = bestand[0]!;
+
+      expect(karte.stand).toBe(aus.stand);
+      expect(karte.freigabe).toBe('wartet');
+      // Die Zahlen kommen aus demselben Einlesen: 9 Abschnitte, alle offen, keiner mit Lektion.
+      expect(zahlenzeile(karte)).toBe('9 Abschnitte · 0 mit Lektion · 9 offen');
+      // 2 von 51 Folien nur Bild, 2 mit Tabelle oder Grafik — siehe „schreibt ein Manifest der Fassung 3" oben.
+      expect(lueckenzeile(karte.luecken)).toBe('2 von 51 Folien nur Bild · 2 Folien mit Tabelle oder Grafik');
+      expect(freigabezeile(karte)).toBe(
+        'Erst wenn geprueftVon und geprueftAm eingetragen sind, baut der Compiler daraus Lektionen.',
+      );
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('vergleicheLehrplan', () => {
   const alt = lehrplanGeruest({
     kurzname: 'q',
@@ -627,7 +679,7 @@ describe('leseFolienEin - was nicht geht', () => {
       // Reserviert ist nur der Name selbst: com10 und con-x kommen durch und scheitern erst am fehlenden PDF.
       for (const kurzname of ['com10', 'con-x']) {
         const fehler = await abbruch(leseFolienEin({ orte, kurzname, titel: 'T', wurzel, gestempeltAm: STEMPEL, geladen }));
-        expect(fehler.message).toMatch(/gibt es nicht/);
+        expect(fehler.message).toMatch(/lässt sich nicht öffnen \(ENOENT\)/);
       }
       expect(readdirSync(wurzel)).toEqual(['lehrplan']);
     } finally {
@@ -1326,10 +1378,26 @@ describe('tausche', () => {
       const dateisystem = umbenennenScheitertBei({ '.k.neu': ['ENOENT'] });
       const fehler = abbruchSofort(() => tausche(quellen, 'k', dateisystem));
       expect(fehler).toBeInstanceOf(EinleseFehler);
-      expect(fehler.message).toBe('quellen/k/ lässt sich nicht ersetzen (ENOENT) — ist eine Datei daraus noch geöffnet? Nichts verändert.');
+      // ENOENT ist keine Sperre: keine Frage nach einer geoeffneten Datei.
+      expect(fehler.message).toBe('quellen/k/ lässt sich nicht ersetzen (ENOENT). Nichts verändert.');
       expect(dateisystem.versuche).toEqual(['k', '.k.neu', '.k.alt']);
       expect(dateisystem.wartezeiten).toEqual([]);
       expect(schnappschuss(path.join(quellen, 'k'))).toEqual(vorher);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('fragt bei einem Fehler, der keine Sperre ist, nicht nach einer offenen Datei', () => {
+    const { wurzel, quellen } = vorDemTausch();
+    try {
+      const vorher = schnappschuss(path.join(quellen, 'k'));
+      // Diesmal scheitert schon das Wegstellen des alten Stands — mit ENOENT statt einer Sperre.
+      const fehler = abbruchSofort(() => tausche(quellen, 'k', umbenennenScheitertBei({ k: 'ENOENT' })));
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      expect(fehler.message).toBe('quellen/k/ lässt sich nicht ersetzen (ENOENT). Nichts verändert.');
+      expect(schnappschuss(path.join(quellen, 'k'))).toEqual(vorher);
+      expect(readdirSync(quellen)).toEqual(['k']);
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }

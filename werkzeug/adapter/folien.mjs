@@ -95,9 +95,23 @@ export function sammlePdfs(orte) {
   /** @type {string[]} */
   const gefunden = [];
   for (const ort of orte) {
-    if (!existsSync(ort)) throw new EinleseFehler(`${ort} gibt es nicht.`);
-    if (statSync(ort).isDirectory()) {
-      const drin = readdirSync(ort).filter((name) => name.toLowerCase().endsWith(ENDUNG));
+    /** @type {import('node:fs').Stats} */
+    let stat;
+    try {
+      stat = statSync(ort);
+    } catch (fehler) {
+      if (!istSystemfehler(fehler)) throw fehler;
+      throw new EinleseFehler(`${ort}: lässt sich nicht öffnen (${fehlercode(fehler)}).`);
+    }
+    if (stat.isDirectory()) {
+      /** @type {string[]} */
+      let drin;
+      try {
+        drin = readdirSync(ort).filter((name) => name.toLowerCase().endsWith(ENDUNG));
+      } catch (fehler) {
+        if (!istSystemfehler(fehler)) throw fehler;
+        throw new EinleseFehler(`${ort}: lässt sich nicht öffnen (${fehlercode(fehler)}).`);
+      }
       if (!drin.length) throw new EinleseFehler(`In ${ort} liegt keine PDF-Datei.`);
       for (const name of drin) gefunden.push(path.join(ort, name));
     } else if (ort.toLowerCase().endsWith(ENDUNG)) {
@@ -453,14 +467,20 @@ export function tausche(quellen, kurzname, dateisystem = {}) {
   const alt = path.join(quellen, `.${kurzname}.alt`);
 
   const hatteAlten = existsSync(ziel);
-  // Die Frage nach einer offenen Datei nur, wo es einen Ordner gab, aus dem eine offen sein kann.
+  // Die Frage nach einer offenen Datei nur, wo es einen Ordner gab, aus dem eine
+  // offen sein kann, und nur bei einem Fehler, der nach einer Sperre aussieht
+  // (siehe FLUECHTIG): ENOENT und Aehnliches loest sich nicht durchs Schliessen
+  // einer Datei, und die Frage waere am falschen Ort gesucht.
   /** @type {(fehler: unknown) => EinleseFehler} */
-  const gescheitert = (fehler) =>
-    new EinleseFehler(
-      hatteAlten
-        ? `quellen/${kurzname}/ lässt sich nicht ersetzen (${fehlercode(fehler)}) — ist eine Datei daraus noch geöffnet? Nichts verändert.`
-        : `quellen/${kurzname}/ lässt sich nicht anlegen (${fehlercode(fehler)}). Nichts verändert.`,
+  const gescheitert = (fehler) => {
+    const code = fehlercode(fehler);
+    if (!hatteAlten) return new EinleseFehler(`quellen/${kurzname}/ lässt sich nicht anlegen (${code}). Nichts verändert.`);
+    return new EinleseFehler(
+      FLUECHTIG.has(code)
+        ? `quellen/${kurzname}/ lässt sich nicht ersetzen (${code}) — ist eine Datei daraus noch geöffnet? Nichts verändert.`
+        : `quellen/${kurzname}/ lässt sich nicht ersetzen (${code}). Nichts verändert.`,
     );
+  };
 
   if (hatteAlten) {
     try {

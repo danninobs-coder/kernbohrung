@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { bereinigeQuelle, ladePdfjs, liesSeiten } from '../werkzeug/adapter/dokument.mjs';
@@ -390,8 +390,16 @@ describe('gliedereFolien', () => {
 });
 
 describe('an den Fixtures', () => {
+  /**
+   * Einmal geladen und durchgereicht (Vorspann-Regel 20): Der kalte Import von
+   * pdf.js ginge sonst je Test von der 20-s-Frist ab.
+   */
+  let geladen: Awaited<ReturnType<typeof ladePdfjs>>;
+  beforeAll(async () => {
+    geladen = await ladePdfjs();
+  });
+
   async function gliedere(name: string) {
-    const geladen = await ladePdfjs();
     const bytes = new Uint8Array(readFileSync(path.join(FIXTUREN, name)));
     const [datei] = bereinigeQuelle([{ datei: name, ...(await liesSeiten(bytes, geladen)) }]);
     return gliedereFolien(datei!, dateikuerzel([name]).get(name)!);
