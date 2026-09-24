@@ -96,8 +96,9 @@ lehrplan/<kurzname>.yaml       Das Gerüst: alle Abschnitte offen, Freigabe leer
 
 **Der Lehrplan wird nie überschrieben.** Gibt es ihn schon, bleibt er stehen,
 und das Einlesen meldet den Vergleich: neue, fehlende und verschobene
-Abschnitte, und ob sich der Stand geändert hat. `quellen/` wird dabei neu
-geschrieben — es ist abgeleitet, der Lehrplan ist es nicht.
+Abschnitte, und ob sich der Stand geändert hat. Unter derselben Id meldet er
+auch, wenn sich Datei oder Titel eines Abschnitts geändert haben. `quellen/`
+wird dabei neu geschrieben — es ist abgeleitet, der Lehrplan ist es nicht.
 
 Nach dem Einlesen trägt ein Mensch `geprueftVon` und `geprueftAm` in den
 Lehrplan ein. Bis dahin zeigt `/bibliothek` die Karte mit ihren Zahlen und der

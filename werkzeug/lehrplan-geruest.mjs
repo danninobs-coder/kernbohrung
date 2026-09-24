@@ -33,9 +33,12 @@ import { load as yamlLesen } from 'js-yaml';
  * Immer, nicht nur wo noetig: Ein Titel aus einer Folie kann mit einem
  * Doppelpunkt, einem Bindestrich oder einer Zahl anfangen, und YAML liest
  * dann etwas anderes als Text. Ein Titel, der `"` oder `\` enthaelt, wird
- * maskiert. Steuerzeichen (U+0000 bis U+001F und U+007F) stehen als `\xNN`
- * da: Roh weist YAML die meisten ab — der ganze Lehrplan waere dann
- * unlesbar —, und ein Tabulator bliebe am Review-Gate unsichtbar.
+ * maskiert. Steuerzeichen (U+0000 bis U+001F, U+007F bis U+009F) stehen als
+ * `\xNN` da: Roh weist YAML die meisten ab — der ganze Lehrplan waere dann
+ * unlesbar —, und ein Tabulator bliebe am Review-Gate unsichtbar. Aus
+ * demselben Grund stehen die Zeilentrenner U+2028 und U+2029 und das BOM
+ * U+FEFF als `\uNNNN` da: YAML liest sie roh zurueck, aber sehen kann man sie
+ * nicht.
  *
  * @param {string} wert
  * @returns {string}
@@ -44,7 +47,12 @@ function inAnfuehrung(wert) {
   const maskiert = wert
     .replaceAll('\\', '\\\\')
     .replaceAll('"', '\\"')
-    .replace(/[\x00-\x1f\x7f]/g, (zeichen) => `\\x${zeichen.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`);
+    .replace(/[\x00-\x1f\x7f-\x9f\u2028\u2029\ufeff]/g, (zeichen) => {
+      const code = zeichen.charCodeAt(0);
+      return code <= 0xff
+        ? `\\x${code.toString(16).toUpperCase().padStart(2, '0')}`
+        : `\\u${code.toString(16).toUpperCase().padStart(4, '0')}`;
+    });
   return `"${maskiert}"`;
 }
 
@@ -100,8 +108,12 @@ export function lehrplanGeruest({ kurzname, titel, stand, abschnitte }) {
  * Unter derselben Id zaehlen Seiten, Datei und Titel, jedes fuer sich. Die
  * Datei vor allem: Heisst `M7 … 26.pdf` ein Jahr spaeter `M7 … 27.pdf`, bleiben
  * die Ids dieselben — ohne diesen Vergleich stuende im Lehrplan still der alte
- * Name, und der Compiler suchte eine Datei, die es nicht mehr gibt. Ein Feld,
- * das im alten Lehrplan kein Text ist, wird nicht verglichen.
+ * Name, und der Compiler suchte eine Datei, die es nicht mehr gibt.
+ *
+ * Verglichen wird, soweit vorhanden: Das Einlesen vergleicht auch mit einem
+ * ungueltigen Lehrplan. Ein Feld, das dort fehlt oder die falsche Form hat —
+ * Datei oder Titel kein Text, Seiten keine Liste —, wird nicht verglichen;
+ * der Abschnitt zaehlt trotzdem als vorhanden und nicht als neu.
  *
  * @param {string} altesYaml
  * @param {{ stand: string, abschnitte: readonly Abschnitt[] }} neu
@@ -111,12 +123,12 @@ export function vergleicheLehrplan(altesYaml, neu) {
   const geladen = yamlLesen(altesYaml);
   const alt = typeof geladen === 'object' && geladen !== null ? /** @type {Record<string, unknown>} */ (geladen) : {};
   const alteAbschnitte = Array.isArray(alt.abschnitte) ? alt.abschnitte : [];
-  /** @type {Map<string, { seiten: [number, number], datei: string | null, titel: string | null }>} */
+  /** @type {Map<string, { seiten: [number, number] | null, datei: string | null, titel: string | null }>} */
   const vorher = new Map();
   for (const a of alteAbschnitte) {
-    if (a && typeof a === 'object' && typeof a.id === 'string' && Array.isArray(a.seiten)) {
+    if (a && typeof a === 'object' && typeof a.id === 'string') {
       vorher.set(a.id, {
-        seiten: [Number(a.seiten[0]), Number(a.seiten[1])],
+        seiten: Array.isArray(a.seiten) ? [Number(a.seiten[0]), Number(a.seiten[1])] : null,
         datei: typeof a.datei === 'string' ? a.datei : null,
         titel: typeof a.titel === 'string' ? a.titel : null,
       });
@@ -135,7 +147,7 @@ export function vergleicheLehrplan(altesYaml, neu) {
     const v = vorher.get(a.id);
     if (!v) continue;
     let gleich = true;
-    if (v.seiten[0] !== a.seiten[0] || v.seiten[1] !== a.seiten[1]) {
+    if (v.seiten !== null && (v.seiten[0] !== a.seiten[0] || v.seiten[1] !== a.seiten[1])) {
       verschobene.push({ id: a.id, alt: v.seiten, neu: a.seiten });
       gleich = false;
     }

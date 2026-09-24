@@ -15,5 +15,8 @@ export default getViteConfig({
     // fuenf Sekunden geschoben, die allein in unter einer Sekunde laufen. Die
     // Frist faengt haengende Tests weiterhin; sie misst nur keine Last mehr.
     testTimeout: 20_000,
+    // Dieselbe Frist fuer beforeAll und Co.: Unter Last riss sonst ein beforeAll
+    // (etwa das Laden von pdf.js) zuerst, an den voreingestellten zehn Sekunden.
+    hookTimeout: 20_000,
   },
 });

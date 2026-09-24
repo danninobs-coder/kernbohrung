@@ -54,9 +54,10 @@ const ENDUNG = '.pdf';
  * Namen, die Windows fuer Geraete reserviert. Gemessen unter Windows 11: Node
  * legt `quellen/con/` und `lehrplan/con.yaml` trotzdem an, und `existsSync`
  * meldet `lehrplan/con.yaml` als vorhanden, bevor es die Datei gibt. Andere
- * Programme, der Explorer vorneweg, behandeln solche Namen als Geraet.
+ * Programme, der Explorer vorneweg, behandeln solche Namen als Geraet. Auch
+ * `com0` und `lpt0` stehen auf der Liste von Microsoft.
  */
-const WINDOWS_RESERVIERT = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
+const WINDOWS_RESERVIERT = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
 
 /** @type {(anteil: number) => string} Ein Prozentwert mit einer Nachkommastelle, deutsch geschrieben. */
 export const prozent = (anteil) => `${(anteil * 100).toFixed(1).replace('.', ',')} %`;
@@ -172,10 +173,25 @@ const ANDERE_LEHRPLAN_ARTEN = new Set(['repo', 'buch']);
 const PDFJS_LADEFEHLER = new Set(['InvalidPDFException', 'UnknownErrorException', 'ResponseException']);
 
 /**
+ * Ob `fehler` ein gescheiterter Systemaufruf ist — gesperrt, keine Rechte,
+ * verschwunden, Platte voll. Node gibt solchen Fehlern `syscall` und `code`
+ * mit, einem Fehler im Programm nicht.
+ *
+ * @param {unknown} fehler
+ * @returns {boolean}
+ */
+function istSystemfehler(fehler) {
+  return fehler instanceof Error && typeof (/** @type {Error & { syscall?: unknown }} */ (fehler).syscall) === 'string';
+}
+
+/**
  * Warum sich eine Datei nicht lesen liess, als Satz fuer den Nutzer — oder
  * `null`, wenn der Fehler keiner des Lesens ist, sondern einer im Programm.
  * Der geht als Stapelabzug durch: Als Lesefehler verkleidet, suchte man am
  * PDF statt im Code.
+ *
+ * Ein Dateifehler heisst anders als ein kaputtes PDF: Bei `EBUSY` haelt ein
+ * anderes Programm die Datei fest, und am PDF selbst suchte man vergeblich.
  *
  * @param {unknown} fehler
  * @returns {string | null}
@@ -184,9 +200,8 @@ function lesegrund(fehler) {
   if (fehler instanceof DokumentFehler) return fehler.message;
   if (!(fehler instanceof Error)) return null;
   if (fehler.name === 'PasswordException') return 'ist mit einem Passwort geschützt — bitte ohne Passwort speichern.';
-  // Ein gescheiterter Systemaufruf (gesperrt, keine Rechte) traegt `syscall`.
-  const systemfehler = typeof (/** @type {Error & { syscall?: unknown }} */ (fehler).syscall) === 'string';
-  if (PDFJS_LADEFEHLER.has(fehler.name) || systemfehler) return `lässt sich nicht als PDF lesen (${fehler.message}).`;
+  if (istSystemfehler(fehler)) return `lässt sich nicht öffnen (${fehlercode(fehler)}).`;
+  if (PDFJS_LADEFEHLER.has(fehler.name)) return `lässt sich nicht als PDF lesen (${fehler.message}).`;
   return null;
 }
 
@@ -251,49 +266,150 @@ function liesVorhandenen(pfad) {
 }
 
 /**
- * Der Vergleich eines vorhandenen Lehrplans mit dem neuen Stand — oder die
- * Warnung, dass er entfaellt.
+ * Ein Mangel, den auch ein wartender Lehrplan hat: an der Freigabe. Erkannt am
+ * Pfad vorne, so wie `pruefeLehrplan` ihn schreibt.
+ */
+const FREIGABE_MANGEL = /^(geprueftVon|geprueftAm): /;
+
+/**
+ * Ob ein Lehrplantext ein Eintrag mit einer Liste `abschnitte` ist — das
+ * Mindeste, womit sich vergleichen laesst.
  *
- * Ein kaputter oder leerer Lehrplan bricht das Einlesen nicht ab: Er bleibt
- * Byte fuer Byte, wie er ist, und die Warnung sagt, warum nicht verglichen
- * wurde. Verglichen wird nur mit einem Lehrplan, den auch die Bibliothek
- * liest — freigegeben oder wartend, geprueft gegen die Lektionen unter der
- * Wurzel. Der Grund ist der erste Mangel, wie ihn `lehrplanAusYaml` meldet.
+ * @param {string} text
+ * @returns {boolean}
+ */
+function hatAbschnittsliste(text) {
+  try {
+    const daten = yamlLesen(text);
+    return typeof daten === 'object' && daten !== null && 'abschnitte' in daten && Array.isArray(daten.abschnitte);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Der Vergleich eines vorhandenen Lehrplans mit dem neuen Stand — und eine
+ * Warnung, wenn es etwas zu sagen gibt.
+ *
+ * Ein kaputter, leerer oder ungueltiger Lehrplan bricht das Einlesen nicht
+ * ab: Er bleibt Byte fuer Byte, wie er ist. Verglichen wird, sobald er ein
+ * Eintrag mit einer Liste `abschnitte` ist, ueber die Rohdaten — auch wenn er
+ * ungueltig ist, etwa weil eine Lektion fehlt, auf die er zeigt. Die Warnung
+ * nennt dann den ersten Mangel, den ein wartender Lehrplan nicht hat: Die
+ * leere Freigabe ist nach dem Einlesen der Normalfall, kein Fehler.
+ *
+ * Uebersprungen wird nur, wo sich nichts vergleichen laesst: bei einer Datei,
+ * die sich nicht oeffnen laesst, einem YAML-Fehler oder einem Eintrag ohne
+ * Liste `abschnitte`. Der Grund ist derselbe erste Mangel.
  *
  * @param {{ text: string } | { fehler: string }} vorhanden
  * @param {{ kurzname: string, wurzel: string, stand: string, abschnitte: readonly import('../lehrplan-geruest.mjs').Abschnitt[] }} neu
  * @returns {{ vergleich: import('../lehrplan-geruest.mjs').Vergleich | null, warnung: string | null }}
  */
 function vergleicheVorhandenen(vorhanden, { kurzname, wurzel, stand, abschnitte }) {
-  let grund;
-  if ('fehler' in vorhanden) {
-    grund = vorhanden.fehler;
-  } else {
-    const lektionen = lektionsIdsAus(path.join(wurzel, 'inhalt', 'lektionen'));
-    const befund = lehrplanAusYaml(vorhanden.text, lektionen, `${kurzname}.yaml`);
-    if (befund.ok || befund.wartet) {
-      return { vergleich: vergleicheLehrplan(vorhanden.text, { stand, abschnitte }), warnung: null };
-    }
-    grund = befund.maengel[0];
-  }
-  return {
+  // Ohne den Schlusspunkt des Mangels: Der Satz geht danach weiter.
+  /** @type {(grund: string) => string} */
+  const ohnePunkt = (grund) => grund.replace(/\.$/, '');
+  /** @type {(grund: string) => { vergleich: null, warnung: string }} */
+  const uebersprungen = (grund) => ({
     vergleich: null,
-    // Ohne den Schlusspunkt des Mangels: Der Satz geht danach weiter.
-    warnung: `Vergleich übersprungen: lehrplan/${kurzname}.yaml lässt sich nicht lesen — ${grund.replace(/\.$/, '')}. Der Lehrplan bleibt, wie er ist.`,
+    warnung: `Vergleich übersprungen: lehrplan/${kurzname}.yaml lässt sich nicht lesen — ${ohnePunkt(grund)}. Der Lehrplan bleibt, wie er ist.`,
+  });
+
+  if ('fehler' in vorhanden) return uebersprungen(vorhanden.fehler);
+  const lektionen = lektionsIdsAus(path.join(wurzel, 'inhalt', 'lektionen'));
+  const befund = lehrplanAusYaml(vorhanden.text, lektionen, `${kurzname}.yaml`);
+  const mangel =
+    befund.ok || befund.wartet ? null : (befund.maengel.find((m) => !FREIGABE_MANGEL.test(m)) ?? befund.maengel[0]);
+  if (mangel !== null && !hatAbschnittsliste(vorhanden.text)) return uebersprungen(mangel);
+  return {
+    vergleich: vergleicheLehrplan(vorhanden.text, { stand, abschnitte }),
+    warnung: mangel === null ? null : `lehrplan/${kurzname}.yaml ist ungültig: ${ohnePunkt(mangel)}. Der Lehrplan bleibt, wie er ist.`,
   };
 }
 
 /**
- * Entfernt einen halb gebauten Ordner `.neu`. Gelingt das nicht, bleibt er
- * liegen: Der naechste Lauf raeumt ihn vorher weg, und die Bibliothek sieht
- * Ordner mit einem Punkt vorne nicht (`import.meta.glob` laesst sie aus).
+ * Was Einlesen und Tausch mit der Platte tun, als ein Buendel. Nur fuer Tests
+ * austauschbar: Ein gesperrtes Umbenennen oder eine volle Platte laesst sich
+ * anders nicht zuverlaessig herbeifuehren. `warte` haelt den Lauf fuer so
+ * viele Millisekunden an — im Test, ohne wirklich zu warten.
+ *
+ * @typedef {{
+ *   renameSync: (von: string, nach: string) => void,
+ *   rmSync: (pfad: string, optionen: import('node:fs').RmOptions) => void,
+ *   mkdirSync: (pfad: string, optionen: { recursive: true }) => unknown,
+ *   writeFileSync: (pfad: string, daten: string | Uint8Array, optionen?: import('node:fs').WriteFileOptions) => void,
+ *   warte: (ms: number) => void,
+ * }} Dateisystem
+ */
+
+/** Worauf `warte` schlaeft: ein Wert, der sich nie aendert — so endet nur die Frist. */
+const SCHLAF = new Int32Array(new SharedArrayBuffer(4));
+
+/** @type {Dateisystem} */
+const PLATTE = {
+  renameSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  // Synchron wie der Tausch selbst: Ein Timer liefe erst, wenn er vorbei ist.
+  warte: (ms) => {
+    Atomics.wait(SCHLAF, 0, 0, ms);
+  },
+};
+
+/**
+ * Wie entfernt wird: ganz, ohne Fehler, wenn es nichts gibt — und bei einer
+ * Sperre fasst Node selbst dreimal nach, bevor es aufgibt.
+ *
+ * @type {import('node:fs').RmOptions}
+ */
+const ENTFERNEN = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 };
+
+/**
+ * Codes, mit denen ein Umbenennen unter Windows oft nur einen Augenblick lang
+ * scheitert: Ein Virenscanner oder der Suchindex haelt eine frisch
+ * geschriebene Datei kurz fest.
+ */
+const FLUECHTIG = new Set(['EPERM', 'EBUSY', 'EACCES']);
+
+/** Die Pausen zwischen den Versuchen: fuenf Versuche, zusammen hoechstens 1,5 Sekunden Warten. */
+const PAUSEN = [100, 200, 400, 800];
+
+/**
+ * Benennt um und versucht es nach einer fluechtigen Sperre wieder. Jeder
+ * andere Fehler geht sofort durch: Ein `ENOENT` wird durch Warten nicht
+ * besser.
+ *
+ * @param {Dateisystem} platte
+ * @param {string} von
+ * @param {string} nach
+ */
+function umbenennen(platte, von, nach) {
+  for (let versuch = 0; ; versuch++) {
+    try {
+      platte.renameSync(von, nach);
+      return;
+    } catch (fehler) {
+      if (versuch >= PAUSEN.length || !FLUECHTIG.has(fehlercode(fehler))) throw fehler;
+      platte.warte(PAUSEN[versuch]);
+    }
+  }
+}
+
+/**
+ * Entfernt, was halb gebaut liegen blieb: den Ordner `.neu` oder einen halb
+ * geschriebenen Lehrplan. Gelingt das nicht, bleibt es liegen, und der
+ * Fehler, der hierher fuehrte, geht vor. Ein `.neu` raeumt der naechste Lauf
+ * vorher weg, und die Bibliothek sieht Ordner mit einem Punkt vorne nicht
+ * (`import.meta.glob` laesst sie aus).
  *
  * @param {string} pfad
- * @param {(pfad: string, optionen: import('node:fs').RmOptions) => void} entfernen
+ * @param {Dateisystem['rmSync']} entfernen
  */
 function raeumeWeg(pfad, entfernen) {
   try {
-    entfernen(pfad, { recursive: true, force: true });
+    entfernen(pfad, ENTFERNEN);
   } catch {
     // liegen lassen — siehe oben
   }
@@ -310,59 +426,72 @@ function raeumeWeg(pfad, entfernen) {
  * `original/` noch in einem Betrachter offen ist —, wird zurueckgerollt: Der
  * alte Stand kommt an seinen Platz, `.neu` wird entfernt.
  *
- * Scheitert auch das Zuruecklegen, bleiben beide Staende liegen und die
- * Meldung sagt, wo. Der naechste Lauf haelt dann an `.alt` an, statt es zu
- * ueberschreiben — darin steckt der einzige vollstaendige alte Stand. Laesst
- * sich nach gelungenem Tausch nur `.alt` nicht entfernen, ist der neue Stand
- * eingelesen; zurueck kommt dann eine Warnung statt eines Abbruchs.
+ * Scheitert auch das Zuruecklegen, bleiben beide Staende liegen, und die
+ * Meldung sagt, wo, und wie der alte zurueckkommt. Der naechste Lauf haelt
+ * dann an `.alt` an, statt es zu ueberschreiben — darin steckt der einzige
+ * vollstaendige alte Stand. Laesst sich nach gelungenem Tausch nur `.alt`
+ * nicht entfernen, ist der neue Stand eingelesen; zurueck kommt dann eine
+ * Warnung statt eines Abbruchs.
  *
- * `dateisystem` ist nur fuer Tests austauschbar: Ein gesperrtes Umbenennen
- * laesst sich anders nicht zuverlaessig herbeifuehren.
+ * Oft scheitert ein Umbenennen unter Windows nur einen Augenblick lang: Ein
+ * Virenscanner haelt die frisch geschriebenen PDF fest. Jedes Umbenennen wird
+ * deshalb bei `EPERM`, `EBUSY` und `EACCES` bis zu fuenfmal versucht
+ * (`umbenennen`); erst danach gilt es als gescheitert.
+ *
+ * `dateisystem` ist nur fuer Tests austauschbar (siehe `Dateisystem`).
  *
  * @param {string} quellen der Ordner `quellen/` unter der Wurzel
  * @param {string} kurzname
- * @param {{ renameSync: typeof renameSync, rmSync: typeof rmSync }} [dateisystem]
+ * @param {Partial<Dateisystem>} [dateisystem]
  * @returns {string | null} eine Warnung, wenn am Ende nur `.alt` liegen blieb
  */
-export function tausche(quellen, kurzname, dateisystem = { renameSync, rmSync }) {
+export function tausche(quellen, kurzname, dateisystem = {}) {
+  /** @type {Dateisystem} */
+  const platte = { ...PLATTE, ...dateisystem };
   const ziel = path.join(quellen, kurzname);
   const neu = path.join(quellen, `.${kurzname}.neu`);
   const alt = path.join(quellen, `.${kurzname}.alt`);
-  /** @type {(fehler: unknown) => EinleseFehler} */
-  const nichtErsetzt = (fehler) =>
-    new EinleseFehler(
-      `quellen/${kurzname}/ lässt sich nicht ersetzen (${fehlercode(fehler)}) — ist eine Datei daraus noch geöffnet? Nichts verändert.`,
-    );
 
   const hatteAlten = existsSync(ziel);
+  // Die Frage nach einer offenen Datei nur, wo es einen Ordner gab, aus dem eine offen sein kann.
+  /** @type {(fehler: unknown) => EinleseFehler} */
+  const gescheitert = (fehler) =>
+    new EinleseFehler(
+      hatteAlten
+        ? `quellen/${kurzname}/ lässt sich nicht ersetzen (${fehlercode(fehler)}) — ist eine Datei daraus noch geöffnet? Nichts verändert.`
+        : `quellen/${kurzname}/ lässt sich nicht anlegen (${fehlercode(fehler)}). Nichts verändert.`,
+    );
+
   if (hatteAlten) {
     try {
-      dateisystem.renameSync(ziel, alt);
+      umbenennen(platte, ziel, alt);
     } catch (fehler) {
-      raeumeWeg(neu, dateisystem.rmSync);
-      throw nichtErsetzt(fehler);
+      raeumeWeg(neu, platte.rmSync);
+      throw gescheitert(fehler);
     }
   }
   try {
-    dateisystem.renameSync(neu, ziel);
+    umbenennen(platte, neu, ziel);
   } catch (fehler) {
     if (hatteAlten) {
       try {
-        dateisystem.renameSync(alt, ziel);
+        umbenennen(platte, alt, ziel);
       } catch (auchDas) {
         throw new EinleseFehler(
           `quellen/${kurzname}/ lässt sich nicht ersetzen (${fehlercode(fehler)}), ` +
-            `und der alte Stand ließ sich nicht zurücklegen (${fehlercode(auchDas)}): ` +
-            `Er liegt in quellen/.${kurzname}.alt, der neue in quellen/.${kurzname}.neu. Bitte ansehen.`,
+            `und der alte Stand ließ sich nicht zurücklegen (${fehlercode(auchDas)}). ` +
+            `Der alte Stand liegt in quellen/.${kurzname}.alt, der neue in quellen/.${kurzname}.neu. ` +
+            `Zurück zum alten Stand: quellen/.${kurzname}.alt in quellen/${kurzname} umbenennen, ` +
+            `quellen/.${kurzname}.neu löschen, dann neu einlesen.`,
         );
       }
     }
-    raeumeWeg(neu, dateisystem.rmSync);
-    throw nichtErsetzt(fehler);
+    raeumeWeg(neu, platte.rmSync);
+    throw gescheitert(fehler);
   }
   if (!hatteAlten) return null;
   try {
-    dateisystem.rmSync(alt, { recursive: true, force: true });
+    platte.rmSync(alt, ENTFERNEN);
     return null;
   } catch (fehler) {
     return (
@@ -388,6 +517,8 @@ export function tausche(quellen, kurzname, dateisystem = { renameSync, rmSync })
  * `quellen/<k>/original/` selbst, gibt es sie beim Tauschen dort nicht mehr —
  * und so passt der Hash im Manifest sicher zur Datei daneben.
  *
+ * `dateisystem` ist nur fuer Tests austauschbar, wie bei `tausche`.
+ *
  * @param {{
  *   orte: readonly string[],
  *   kurzname: string,
@@ -396,10 +527,11 @@ export function tausche(quellen, kurzname, dateisystem = { renameSync, rmSync })
  *   art?: 'folien',
  *   gestempeltAm: string,
  *   geladen?: Awaited<ReturnType<typeof ladePdfjs>>,
+ *   dateisystem?: Partial<Dateisystem>,
  * }} auftrag
  * @returns {Promise<Ergebnis>}
  */
-export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestempeltAm, geladen }) {
+export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestempeltAm, geladen, dateisystem }) {
   if (!ID_MUSTER.test(kurzname)) {
     throw new EinleseFehler(`--name ${kurzname}: nur Kleinbuchstaben, Ziffern und Bindestrich.`);
   }
@@ -412,11 +544,20 @@ export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestem
   // --- vorab: was schon da ist ----------------------------------------------
   const quellen = path.join(wurzel, 'quellen');
   const lehrplanPfad = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
-  // Zuerst .alt: Darin kann der einzige vollstaendige Stand stecken, und ein
-  // weiterer Tausch wuerde ihn ueberschreiben.
+  // Zuerst .alt, und nichts anfassen. Was es bedeutet, sagt quellen/<k>/
+  // daneben. Fehlt es, blieb ein Tausch auf halbem Weg stehen — Doppelfehler
+  // oder Abbruch zwischen den beiden Umbenennungen —, und in .alt steckt der
+  // einzige vollstaendige Stand; ein weiterer Tausch wuerde ihn
+  // ueberschreiben. Ist es da, war der Tausch fertig, und nur das Aufraeumen
+  // blieb aus.
   if (existsSync(path.join(quellen, `.${kurzname}.alt`))) {
     throw new EinleseFehler(
-      `Ein früherer Lauf ist nicht zu Ende gekommen: quellen/.${kurzname}.alt liegt noch da. Bitte ansehen und entfernen, dann neu einlesen.`,
+      existsSync(path.join(quellen, kurzname))
+        ? `quellen/.${kurzname}.alt ist der Rest eines abgeschlossenen Laufs; der eingelesene Stand liegt in quellen/${kurzname}/. ` +
+            `Bitte quellen/.${kurzname}.alt löschen, dann neu einlesen.`
+        : `quellen/${kurzname}/ fehlt. Der letzte vollständige Stand liegt in quellen/.${kurzname}.alt. ` +
+            `Wiederherstellen: quellen/.${kurzname}.alt in quellen/${kurzname} umbenennen, ` +
+            `quellen/.${kurzname}.neu löschen (falls vorhanden), dann neu einlesen.`,
     );
   }
   const manifestArt = artImManifest(path.join(quellen, kurzname, 'manifest.json'));
@@ -542,32 +683,71 @@ export async function leseFolienEin({ orte, kurzname, titel, wurzel, art, gestem
   const geruest = vorhanden === null ? lehrplanGeruest({ kurzname, titel, stand, abschnitte }) : null;
 
   // --- tauschen -------------------------------------------------------------
+  /** @type {Dateisystem} */
+  const platte = { ...PLATTE, ...dateisystem };
   const neu = path.join(quellen, `.${kurzname}.neu`);
-  // Ein .neu aus einem abgebrochenen Lauf ist halb gebaut: weg damit.
-  rmSync(neu, { recursive: true, force: true });
+  // Ein .neu aus einem abgebrochenen Lauf ist halb gebaut, womoeglich mit
+  // Dateien, die nicht hierher gehoeren: weg damit, bevor etwas hineinkommt.
   try {
-    mkdirSync(path.join(neu, 'original'), { recursive: true });
-    mkdirSync(path.join(neu, 'roh'), { recursive: true });
-    for (const { datei, bytes } of roh) writeFileSync(path.join(neu, 'original', datei), bytes);
-    for (const { name, text } of rohdateien) writeFileSync(path.join(neu, 'roh', name), text, 'utf8');
-    writeFileSync(path.join(neu, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    platte.rmSync(neu, ENTFERNEN);
   } catch (fehler) {
-    raeumeWeg(neu, rmSync);
-    throw fehler;
+    if (!istSystemfehler(fehler)) throw fehler;
+    throw new EinleseFehler(
+      `quellen/.${kurzname}.neu aus einem früheren Lauf lässt sich nicht entfernen (${fehlercode(fehler)}). ` +
+        'Nichts verändert; bitte den Ordner von Hand löschen, dann neu einlesen.',
+    );
   }
-  const liegenGeblieben = tausche(quellen, kurzname);
+  try {
+    platte.mkdirSync(path.join(neu, 'original'), { recursive: true });
+    platte.mkdirSync(path.join(neu, 'roh'), { recursive: true });
+    for (const { datei, bytes } of roh) platte.writeFileSync(path.join(neu, 'original', datei), bytes);
+    for (const { name, text } of rohdateien) platte.writeFileSync(path.join(neu, 'roh', name), text, 'utf8');
+    platte.writeFileSync(path.join(neu, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  } catch (fehler) {
+    raeumeWeg(neu, platte.rmSync);
+    if (!istSystemfehler(fehler)) throw fehler;
+    throw new EinleseFehler(`Schreiben nach quellen/.${kurzname}.neu gescheitert (${fehlercode(fehler)}). Nichts verändert.`);
+  }
+  const liegenGeblieben = tausche(quellen, kurzname, platte);
   if (liegenGeblieben) warnungen.push(liegenGeblieben);
 
   // Der Lehrplan erst jetzt: Scheitert der Tausch, ist auch er nicht angelegt.
   let geschrieben = false;
   if (geruest !== null) {
-    mkdirSync(path.dirname(lehrplanPfad), { recursive: true });
+    /** @type {(fehler: unknown) => EinleseFehler} */
+    const ohneLehrplan = (fehler) =>
+      new EinleseFehler(
+        [
+          `quellen/${kurzname}/ ist neu eingelesen, aber lehrplan/${kurzname}.yaml ließ sich nicht schreiben (${fehlercode(fehler)}).`,
+          // Die Warnung zu .alt geht mit: Bis .alt weg ist, haelt auch der naechste Lauf dort an.
+          ...(liegenGeblieben ? [`Warnung: ${liegenGeblieben}`] : []),
+        ].join('\n'),
+      );
     try {
-      // wx: Hat ihn ein Lauf daneben inzwischen angelegt, wird verglichen statt ueberschrieben.
-      writeFileSync(lehrplanPfad, geruest, { encoding: 'utf8', flag: 'wx' });
+      platte.mkdirSync(path.dirname(lehrplanPfad), { recursive: true });
+    } catch (fehler) {
+      if (!istSystemfehler(fehler)) throw fehler;
+      throw ohneLehrplan(fehler);
+    }
+    try {
+      // wx legt die Datei nur an, wenn es sie in diesem Augenblick nicht gibt;
+      // Pruefen und Anlegen sind ein Schritt. Ist der Lehrplan seit dem Lesen
+      // oben entstanden — von Hand, aus einem Editor, durch einen anderen
+      // Lauf —, wird verglichen statt ueberschrieben. Zwei Laeufe mit demselben
+      // Kurznamen zugleich sichert das nicht ab: Sie teilen sich
+      // quellen/.<k>.neu und .alt und koennen einander dort stoeren. Eine
+      // Sperre gibt es nicht.
+      platte.writeFileSync(lehrplanPfad, geruest, { encoding: 'utf8', flag: 'wx' });
       geschrieben = true;
     } catch (fehler) {
-      if (fehlercode(fehler) !== 'EEXIST') throw fehler;
+      if (fehlercode(fehler) !== 'EEXIST') {
+        if (!istSystemfehler(fehler)) throw fehler;
+        // Scheitert erst das Schreiben nach dem Anlegen, ist die halbe Datei
+        // die eigene — wx hat sie eben erst angelegt. Liegen gelassen, hielte
+        // der naechste Lauf sie fuer einen Lehrplan und legte das Geruest nie an.
+        if (/** @type {Error & { syscall?: unknown }} */ (fehler).syscall !== 'open') raeumeWeg(lehrplanPfad, platte.rmSync);
+        throw ohneLehrplan(fehler);
+      }
       const bewertet = vergleicheVorhandenen(liesVorhandenen(lehrplanPfad), { kurzname, wurzel, stand, abschnitte });
       vergleich = bewertet.vergleich;
       if (bewertet.warnung) warnungen.push(bewertet.warnung);

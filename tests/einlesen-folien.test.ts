@@ -18,6 +18,7 @@ import {
   sammlePdfs,
   tausche,
 } from '../werkzeug/adapter/folien.mjs';
+import type { Dateisystem } from '../werkzeug/adapter/folien.mjs';
 import { lehrplanGeruest, vergleicheLehrplan, vergleichInZeilen } from '../werkzeug/lehrplan-geruest.mjs';
 import { pruefeLehrplan } from '../src/lib/lehrplan';
 
@@ -47,8 +48,15 @@ function temp(): string {
 
 const lies = (...teile: string[]) => readFileSync(path.join(...teile), 'utf8');
 
-/** Liest die beiden Foliensaetze mit Agenda und Titellaeufen als eine Quelle ein. */
-const einlesen = (wurzel: string, orte = [path.join(FIXTUREN, 'folien-agenda.pdf'), path.join(FIXTUREN, 'folien-laeufe.pdf')]) =>
+/**
+ * Liest die beiden Foliensaetze mit Agenda und Titellaeufen als eine Quelle
+ * ein — auf Wunsch mit einem Dateisystem, das an einer Stelle scheitert.
+ */
+const einlesen = (
+  wurzel: string,
+  orte = [path.join(FIXTUREN, 'folien-agenda.pdf'), path.join(FIXTUREN, 'folien-laeufe.pdf')],
+  dateisystem?: Partial<Dateisystem>,
+) =>
   leseFolienEin({
     orte,
     kurzname: 'fixture-vorlesung',
@@ -56,6 +64,7 @@ const einlesen = (wurzel: string, orte = [path.join(FIXTUREN, 'folien-agenda.pdf
     wurzel,
     gestempeltAm: STEMPEL,
     geladen,
+    dateisystem,
   });
 
 /** Jede Datei unter `ordner` mit dem Hash ihres Inhalts — auch in Ordnern mit Punkt vorne. */
@@ -80,6 +89,38 @@ async function abbruch(lauf: Promise<unknown>): Promise<Error> {
     return fehler as Error;
   }
   throw new Error('Erwartet war ein Abbruch.');
+}
+
+/** Ein Fehler, wie Node ihn fuer einen gescheiterten Systemaufruf meldet: mit `code` und `syscall`. */
+const systemfehler = (code: string, syscall: string) => Object.assign(new Error(`${code}: ${syscall}`), { code, syscall });
+
+/**
+ * Ein Dateisystem, dessen Umbenennen scheitert, wenn die Quelle so heisst wie
+ * ein Schluessel: mit einem Code jedes Mal, mit einer Liste von Codes der
+ * Reihe nach und danach nicht mehr. Gewartet wird nicht wirklich:
+ * `wartezeiten` haelt fest, wie lange es gewesen waere, `versuche`, was
+ * umbenannt werden sollte.
+ */
+function umbenennenScheitertBei(codes: Record<string, string | string[]>) {
+  const offen = new Map(Object.entries(codes).map(([name, code]) => [name, Array.isArray(code) ? [...code] : code] as const));
+  const versuche: string[] = [];
+  const wartezeiten: number[] = [];
+  return {
+    versuche,
+    wartezeiten,
+    renameSync: (von: PathLike, nach: PathLike) => {
+      const name = path.basename(String(von));
+      versuche.push(name);
+      const code = offen.get(name);
+      const jetzt = Array.isArray(code) ? code.shift() : code;
+      if (jetzt) throw systemfehler(jetzt, 'rename');
+      renameSync(von, nach);
+    },
+    rmSync,
+    warte: (ms: number) => {
+      wartezeiten.push(ms);
+    },
+  };
 }
 
 /** Ein PDF aus pdf-lib, dessen einzige Seite um 90 Grad gedreht ist. Der Text ist erfunden. */
@@ -307,6 +348,7 @@ describe('leseFolienEin - der Lehrplan', () => {
       'a: b # c "d" \\ e „f“ - * g',
       'Tabulator\tund Steuerzeichen\u0001\u001f\u007f am Ende',
       '- 2024: null',
+      'C1\u0080\u0085\u009f und Trenner\u2028\u2029\ufeff am Ende',
     ];
     const eingabe = {
       kurzname: 'fixture-vorlesung',
@@ -325,9 +367,11 @@ describe('leseFolienEin - der Lehrplan', () => {
     expect(gelesen.titel).toBe(eingabe.titel);
     expect(gelesen.stand).toBe(eingabe.stand);
     expect(gelesen.abschnitte).toEqual(eingabe.abschnitte.map((a) => ({ ...a, status: 'offen' })));
-    // Maskiert und lesbar fuer den Menschen am Review-Gate: Steuerzeichen als \xNN.
+    // Maskiert und lesbar fuer den Menschen am Review-Gate: Steuerzeichen als \xNN,
+    // die unsichtbaren Zeilentrenner und das BOM als \uNNNN.
     expect(text).toContain(String.raw`    titel: "a: b # c \"d\" \\ e „f“ - * g"`);
     expect(text).toContain(String.raw`    titel: "Tabulator\x09und Steuerzeichen\x01\x1F\x7F am Ende"`);
+    expect(text).toContain(String.raw`    titel: "C1\x80\x85\x9F und Trenner\u2028\u2029\uFEFF am Ende"`);
   });
 
   it('setzt quelle in Anfuehrungszeichen: Auch --name 2024 bleibt Text, und der Lehrplan wartet', () => {
@@ -432,6 +476,33 @@ describe('vergleicheLehrplan', () => {
       'Datei geändert: m07-02-prozess — M7 Risikomanagement 26.pdf → M7 Risikomanagement 27.pdf',
       'Titel geändert: m07-02-prozess — Prozess → Prozess: der Ablauf',
     ]);
+  });
+
+  it('vergleicht einen Abschnitt ohne lesbare Seiten ueber Datei und Titel, statt ihn fuer neu zu halten', () => {
+    // Aus einem ungueltigen Lehrplan: einmal fehlen die Seiten, einmal sind sie Text.
+    const ohneSeiten = [
+      'abschnitte:',
+      '  - id: m01-01-eins',
+      '    titel: "Eins"',
+      '    datei: "M1.pdf"',
+      '  - id: m01-02-zwei',
+      '    titel: "Zwei"',
+      '    datei: "M1.pdf"',
+      '    seiten: elf bis zwanzig',
+      '',
+    ].join('\n');
+    const vergleich = vergleicheLehrplan(ohneSeiten, {
+      stand: `sha256:${'a'.repeat(64)}`,
+      abschnitte: [
+        { id: 'm01-01-eins', titel: 'Eins', datei: 'M1.pdf', seiten: [1, 10] },
+        { id: 'm01-02-zwei', titel: 'Zwei!', datei: 'M1.pdf', seiten: [11, 20] },
+      ],
+    });
+    expect(vergleich.neue).toEqual([]);
+    expect(vergleich.fehlende).toEqual([]);
+    expect(vergleich.verschobene).toEqual([]);
+    expect(vergleich.unveraendert).toBe(1);
+    expect(vergleich.andererTitel).toEqual([{ id: 'm01-02-zwei', alt: 'Zwei', neu: 'Zwei!' }]);
   });
 });
 
@@ -548,7 +619,7 @@ describe('leseFolienEin - was nicht geht', () => {
     const wurzel = temp();
     const orte = [path.join(FIXTUREN, 'gibt-es-nicht.pdf')];
     try {
-      for (const kurzname of ['con', 'prn', 'aux', 'nul', 'com1', 'com9', 'lpt1', 'lpt9']) {
+      for (const kurzname of ['con', 'prn', 'aux', 'nul', 'com0', 'com1', 'com9', 'lpt0', 'lpt1', 'lpt9']) {
         const fehler = await abbruch(leseFolienEin({ orte, kurzname, titel: 'T', wurzel, gestempeltAm: STEMPEL, geladen }));
         expect(fehler).toBeInstanceOf(EinleseFehler);
         expect(fehler.message).toBe(`Der Kurzname ${kurzname} ist unter Windows reserviert — bitte einen anderen wählen.`);
@@ -650,6 +721,21 @@ describe('leseFolienEin - Originale und Lesefehler', () => {
     }
   });
 
+  it('meldet einen Dateifehler beim Lesen als solchen, nicht als kaputtes PDF', async () => {
+    const wurzel = temp();
+    try {
+      // Ein Ordner, der wie ein PDF heisst: Die Mappe bringt ihn mit, und das Lesen scheitert mit EISDIR.
+      const mappe = path.join(wurzel, 'mappe');
+      mkdirSync(path.join(mappe, 'ordner.pdf'), { recursive: true });
+      const fehler = await abbruch(einlesen(wurzel, [mappe]));
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      expect(fehler.message).toBe('ordner.pdf: lässt sich nicht öffnen (EISDIR).');
+      expect(readdirSync(wurzel).sort()).toEqual(['lehrplan', 'mappe']);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
   it('nennt bei einer gedrehten Seite die Datei', async () => {
     const wurzel = temp();
     try {
@@ -725,6 +811,23 @@ describe('leseFolienEin - erst rechnen, dann tauschen', () => {
     }
   });
 
+  it('raeumt ein .neu aus einem frueheren Lauf vorher weg: Fremdes landet nicht in quellen/<k>/', async () => {
+    const wurzel = temp();
+    try {
+      const halb = path.join(wurzel, 'quellen', '.fixture-vorlesung.neu');
+      for (const ordner of ['original', 'roh']) mkdirSync(path.join(halb, ordner), { recursive: true });
+      writeFileSync(path.join(halb, 'original', 'fremd.pdf'), 'fremd');
+      writeFileSync(path.join(halb, 'roh', 'd09-99-fremd.md'), '# fremd\n');
+      const aus = await einlesen(wurzel);
+      const quelle = path.join(wurzel, 'quellen', 'fixture-vorlesung');
+      expect(readdirSync(path.join(quelle, 'original')).sort()).toEqual(['folien-agenda.pdf', 'folien-laeufe.pdf']);
+      expect(readdirSync(path.join(quelle, 'roh')).sort()).toEqual(aus.abschnitte.map((a) => `${a.id}.md`).sort());
+      expect(readdirSync(path.join(wurzel, 'quellen'))).toEqual(['fixture-vorlesung']);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
   it('laesst quellen/<k>/ byte-gleich, wenn ein zweiter Lauf an einem PDF scheitert', async () => {
     const wurzel = temp();
     try {
@@ -753,6 +856,12 @@ describe('leseFolienEin - erst rechnen, dann tauschen', () => {
       ['', 'fixture-vorlesung.yaml ist kein gültiges YAML: expected a document, but the input is empty'],
       // Gueltiges YAML, aber kein Lehrplan: Der Grund ist der erste Mangel, ohne seinen Schlusspunkt.
       ['art: folien\n', 'quelle: fehlt'],
+      // Ohne Liste abschnitte gibt es nichts zu vergleichen. Der Grund ist nicht die leere
+      // Freigabe davor — die hat jeder wartende Lehrplan.
+      [
+        `art: folien\nquelle: "fixture-vorlesung"\ntitel: "T"\nstand: "sha256:${'a'.repeat(64)}"\ngeprueftVon: ""\ngeprueftAm: ""\nabschnitte: "keine"\n`,
+        'abschnitte: hat die falsche Form — erwartet eine Liste',
+      ],
     ];
     for (const [text, grund] of faelle) {
       const wurzel = temp();
@@ -768,6 +877,44 @@ describe('leseFolienEin - erst rechnen, dann tauschen', () => {
       } finally {
         rmSync(wurzel, { recursive: true, force: true });
       }
+    }
+  });
+
+  it('vergleicht auch mit einem inhaltlich ungueltigen Lehrplan und sagt, was ihm fehlt', async () => {
+    // Wartend und freigegeben: Die leere Freigabe ist kein Mangel, den die Warnung nennt.
+    for (const freigabe of [false, true]) {
+      const wurzel = temp();
+      try {
+        await einlesen(wurzel);
+        const pfad = path.join(wurzel, 'lehrplan', 'fixture-vorlesung.yaml');
+        // Der erste Abschnitt zeigt auf eine Lektion, die es unter dieser Wurzel nicht gibt.
+        let text = lies(pfad).replace('    status: offen', '    status: lektion\n    lektion: grundlagen-der-planung');
+        if (freigabe) text = text.replace('geprueftVon: ""', 'geprueftVon: "Daniel Nobs"').replace('geprueftAm: ""', 'geprueftAm: "2026-09-24"');
+        writeFileSync(pfad, text, 'utf8');
+        const aus = await einlesen(wurzel);
+        expect(readFileSync(pfad, 'utf8')).toBe(text);
+        expect(aus.lehrplan.geschrieben).toBe(false);
+        expect(vergleichInZeilen(aus.lehrplan.vergleich!)).toEqual(['keine Änderung']);
+        expect(aus.warnungen).toEqual([
+          'lehrplan/fixture-vorlesung.yaml ist ungültig: abschnitte.0.lektion: Die Lektion grundlagen-der-planung gibt es nicht ' +
+            '(inhalt/lektionen/grundlagen-der-planung.mdx). Der Lehrplan bleibt, wie er ist.',
+        ]);
+      } finally {
+        rmSync(wurzel, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('vergleicht mit einem wartenden Lehrplan ohne Warnung', async () => {
+    const wurzel = temp();
+    try {
+      await einlesen(wurzel);
+      const aus = await einlesen(wurzel);
+      expect(aus.lehrplan.geschrieben).toBe(false);
+      expect(vergleichInZeilen(aus.lehrplan.vergleich!)).toEqual(['keine Änderung']);
+      expect(aus.warnungen).toEqual([]);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
     }
   });
 
@@ -810,7 +957,7 @@ describe('leseFolienEin - erst rechnen, dann tauschen', () => {
     }
   });
 
-  it('haelt an, wenn ein frueherer Lauf quellen/.<k>.alt liegen liess', async () => {
+  it('haelt an einem liegengebliebenen .alt neben quellen/<k>/ an: Der Tausch war fertig, .alt kann weg', async () => {
     const wurzel = temp();
     try {
       await einlesen(wurzel);
@@ -821,9 +968,34 @@ describe('leseFolienEin - erst rechnen, dann tauschen', () => {
       const fehler = await abbruch(einlesen(wurzel));
       expect(fehler).toBeInstanceOf(EinleseFehler);
       expect(fehler.message).toBe(
-        'Ein früherer Lauf ist nicht zu Ende gekommen: quellen/.fixture-vorlesung.alt liegt noch da. Bitte ansehen und entfernen, dann neu einlesen.',
+        'quellen/.fixture-vorlesung.alt ist der Rest eines abgeschlossenen Laufs; der eingelesene Stand liegt in quellen/fixture-vorlesung/. ' +
+          'Bitte quellen/.fixture-vorlesung.alt löschen, dann neu einlesen.',
       );
       expect(schnappschuss(wurzel)).toEqual(vorher);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('haelt an einem .alt ohne quellen/<k>/ an, sagt, wie der alte Stand zurueckkommt, und fasst nichts an', async () => {
+    const wurzel = temp();
+    try {
+      // Der Zustand nach einem Doppelfehler: der alte Stand in .alt, der neue in .neu, quellen/<k>/ fehlt.
+      await einlesen(wurzel);
+      const quellen = path.join(wurzel, 'quellen');
+      renameSync(path.join(quellen, 'fixture-vorlesung'), path.join(quellen, '.fixture-vorlesung.alt'));
+      mkdirSync(path.join(quellen, '.fixture-vorlesung.neu'));
+      writeFileSync(path.join(quellen, '.fixture-vorlesung.neu', 'manifest.json'), '{}');
+      const vorher = schnappschuss(wurzel);
+      const fehler = await abbruch(einlesen(wurzel));
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      expect(fehler.message).toBe(
+        'quellen/fixture-vorlesung/ fehlt. Der letzte vollständige Stand liegt in quellen/.fixture-vorlesung.alt. ' +
+          'Wiederherstellen: quellen/.fixture-vorlesung.alt in quellen/fixture-vorlesung umbenennen, ' +
+          'quellen/.fixture-vorlesung.neu löschen (falls vorhanden), dann neu einlesen.',
+      );
+      expect(schnappschuss(wurzel)).toEqual(vorher);
+      expect(readdirSync(quellen).sort()).toEqual(['.fixture-vorlesung.alt', '.fixture-vorlesung.neu']);
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }
@@ -869,13 +1041,147 @@ describe('leseFolienEin - erst rechnen, dann tauschen', () => {
 });
 
 /**
+ * Das Einlesen, wenn die Platte nicht mitspielt: mit einem Dateisystem, das an
+ * genau einer Stelle scheitert — wie beim Tausch unten. Eine volle Platte oder
+ * eine gesperrte Datei laesst sich anders nicht zuverlaessig herbeifuehren.
+ */
+describe('leseFolienEin - wenn die Platte nicht mitspielt', () => {
+  it('legt beim Erstlauf nichts an, wenn sich das Neue endgueltig nicht einsetzen laesst', async () => {
+    const wurzel = temp();
+    try {
+      const dateisystem = umbenennenScheitertBei({ '.fixture-vorlesung.neu': 'EPERM' });
+      const fehler = await abbruch(einlesen(wurzel, undefined, dateisystem));
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      // Ohne die Frage nach einer geoeffneten Datei: Es gab noch keinen Ordner, aus dem eine offen sein koennte.
+      expect(fehler.message).toBe('quellen/fixture-vorlesung/ lässt sich nicht anlegen (EPERM). Nichts verändert.');
+      expect(readdirSync(path.join(wurzel, 'quellen'))).toEqual([]);
+      expect(readdirSync(path.join(wurzel, 'lehrplan'))).toEqual([]);
+      expect(dateisystem.wartezeiten).toEqual([100, 200, 400, 800]);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('bricht ab, wenn sich ein .neu aus einem frueheren Lauf nicht entfernen laesst, und veraendert nichts', async () => {
+    const wurzel = temp();
+    try {
+      await einlesen(wurzel);
+      const halb = path.join(wurzel, 'quellen', '.fixture-vorlesung.neu');
+      mkdirSync(path.join(halb, 'roh'), { recursive: true });
+      writeFileSync(path.join(halb, 'roh', 'halb.md'), '# halb\n');
+      const vorher = schnappschuss(wurzel);
+      const fehler = await abbruch(
+        einlesen(wurzel, undefined, {
+          rmSync: (pfad, optionen) => {
+            if (path.basename(pfad) === '.fixture-vorlesung.neu') throw systemfehler('EPERM', 'rmdir');
+            rmSync(pfad, optionen);
+          },
+        }),
+      );
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      expect(fehler.message).toBe(
+        'quellen/.fixture-vorlesung.neu aus einem früheren Lauf lässt sich nicht entfernen (EPERM). ' +
+          'Nichts verändert; bitte den Ordner von Hand löschen, dann neu einlesen.',
+      );
+      expect(schnappschuss(wurzel)).toEqual(vorher);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('raeumt .neu weg und veraendert nichts, wenn das Schreiben dorthin scheitert', async () => {
+    const wurzel = temp();
+    try {
+      await einlesen(wurzel);
+      const vorher = schnappschuss(wurzel);
+      const fehler = await abbruch(
+        einlesen(wurzel, undefined, {
+          writeFileSync: (pfad, daten, optionen) => {
+            // Die Originale passen noch, bei den Rohdateien ist die Platte voll.
+            if (path.basename(path.dirname(pfad)) === 'roh') throw systemfehler('ENOSPC', 'write');
+            writeFileSync(pfad, daten, optionen);
+          },
+        }),
+      );
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      expect(fehler.message).toBe('Schreiben nach quellen/.fixture-vorlesung.neu gescheitert (ENOSPC). Nichts verändert.');
+      expect(schnappschuss(wurzel)).toEqual(vorher);
+      expect(readdirSync(path.join(wurzel, 'quellen'))).toEqual(['fixture-vorlesung']);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('sagt, dass quellen/<k>/ neu ist, wenn danach der Lehrplan scheitert — und behaelt die Warnung zu .alt', async () => {
+    const wurzel = temp();
+    try {
+      await einlesen(wurzel);
+      const lehrplan = path.join(wurzel, 'lehrplan', 'fixture-vorlesung.yaml');
+      // Ohne Lehrplan legt der naechste Lauf das Geruest an.
+      rmSync(lehrplan);
+      const fehler = await abbruch(
+        einlesen(wurzel, undefined, {
+          rmSync: (pfad, optionen) => {
+            if (path.basename(pfad) === '.fixture-vorlesung.alt') throw systemfehler('EBUSY', 'rmdir');
+            rmSync(pfad, optionen);
+          },
+          writeFileSync: (pfad, daten, optionen) => {
+            if (pfad === lehrplan) throw systemfehler('EACCES', 'open');
+            writeFileSync(pfad, daten, optionen);
+          },
+        }),
+      );
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      expect(fehler.message).toBe(
+        'quellen/fixture-vorlesung/ ist neu eingelesen, aber lehrplan/fixture-vorlesung.yaml ließ sich nicht schreiben (EACCES).\n' +
+          'Warnung: quellen/.fixture-vorlesung.alt ließ sich nicht entfernen (EBUSY). Der neue Stand ist eingelesen; ' +
+          'bitte den Ordner von Hand löschen — bis dahin hält das nächste Einlesen dort an.',
+      );
+      expect(existsSync(lehrplan)).toBe(false);
+      expect(readdirSync(path.join(wurzel, 'quellen')).sort()).toEqual(['.fixture-vorlesung.alt', 'fixture-vorlesung']);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('laesst keinen halb geschriebenen Lehrplan liegen', async () => {
+    const wurzel = temp();
+    try {
+      const lehrplan = path.join(wurzel, 'lehrplan', 'fixture-vorlesung.yaml');
+      const fehler = await abbruch(
+        einlesen(wurzel, undefined, {
+          writeFileSync: (pfad, daten, optionen) => {
+            if (pfad === lehrplan) {
+              // Angelegt und zur Haelfte geschrieben, dann ist die Platte voll.
+              writeFileSync(pfad, String(daten).slice(0, 100), optionen);
+              throw systemfehler('ENOSPC', 'write');
+            }
+            writeFileSync(pfad, daten, optionen);
+          },
+        }),
+      );
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      expect(fehler.message).toBe(
+        'quellen/fixture-vorlesung/ ist neu eingelesen, aber lehrplan/fixture-vorlesung.yaml ließ sich nicht schreiben (ENOSPC).',
+      );
+      // Sonst hielte der naechste Lauf den Rest fuer einen Lehrplan und schriebe das Geruest nie.
+      expect(existsSync(lehrplan)).toBe(false);
+      expect(readdirSync(path.join(wurzel, 'quellen'))).toEqual(['fixture-vorlesung']);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
  * Der Tausch selbst, mit einem Dateisystem, das an einer Stelle scheitert.
  *
  * Unter Windows scheitert ein Umbenennen etwa, wenn ein PDF aus `original/`
  * noch im Betrachter offen ist. Zuverlaessig herbeifuehren laesst sich das in
  * einem Test nicht; deshalb nimmt `tausche` ein `renameSync` und ein `rmSync`
- * entgegen, die hier an genau einer Stelle einen Fehler werfen. Alles andere
- * geschieht wirklich auf der Platte.
+ * entgegen, die hier an genau einer Stelle einen Fehler werfen, und eine
+ * Wartefunktion, die nicht wirklich wartet. Alles andere geschieht wirklich
+ * auf der Platte.
  */
 describe('tausche', () => {
   /** quellen/k mit dem alten Stand und quellen/.k.neu mit dem neuen — wie kurz vor dem Tausch. */
@@ -889,19 +1195,6 @@ describe('tausche', () => {
     }
     return { wurzel, quellen };
   }
-
-  /** Ein Fehler, wie Node ihn fuer eine gesperrte Datei meldet. */
-  const gesperrt = (code: string) => Object.assign(new Error(`${code}: resource busy or locked`), { code });
-
-  /** Ein Dateisystem, dessen Umbenennen scheitert, wenn die Quelle so heisst wie ein Schluessel. */
-  const umbenennenScheitertBei = (codes: Record<string, string>) => ({
-    renameSync: (von: PathLike, nach: PathLike) => {
-      const code = codes[path.basename(String(von))];
-      if (code) throw gesperrt(code);
-      renameSync(von, nach);
-    },
-    rmSync,
-  });
 
   /** Der Fehler, den `lauf` wirft. */
   function abbruchSofort(lauf: () => unknown): Error {
@@ -951,8 +1244,9 @@ describe('tausche', () => {
       );
       expect(fehler).toBeInstanceOf(EinleseFehler);
       expect(fehler.message).toBe(
-        'quellen/k/ lässt sich nicht ersetzen (EBUSY), und der alte Stand ließ sich nicht zurücklegen (EPERM): ' +
-          'Er liegt in quellen/.k.alt, der neue in quellen/.k.neu. Bitte ansehen.',
+        'quellen/k/ lässt sich nicht ersetzen (EBUSY), und der alte Stand ließ sich nicht zurücklegen (EPERM). ' +
+          'Der alte Stand liegt in quellen/.k.alt, der neue in quellen/.k.neu. ' +
+          'Zurück zum alten Stand: quellen/.k.alt in quellen/k umbenennen, quellen/.k.neu löschen, dann neu einlesen.',
       );
       // Nichts geloescht: Der naechste Lauf haelt an .alt an, statt es zu ueberschreiben.
       expect(readdirSync(quellen).sort()).toEqual(['.k.alt', '.k.neu']);
@@ -967,10 +1261,14 @@ describe('tausche', () => {
     const { wurzel, quellen } = vorDemTausch();
     try {
       const neu = schnappschuss(path.join(quellen, '.k.neu'));
+      const mitgegeben: (RmOptions | undefined)[] = [];
       const dateisystem = {
         renameSync,
         rmSync: (pfad: PathLike, optionen?: RmOptions) => {
-          if (path.basename(String(pfad)) === '.k.alt') throw gesperrt('EBUSY');
+          if (path.basename(String(pfad)) === '.k.alt') {
+            mitgegeben.push(optionen);
+            throw systemfehler('EBUSY', 'rmdir');
+          }
           rmSync(pfad, optionen);
         },
       };
@@ -978,8 +1276,82 @@ describe('tausche', () => {
         'quellen/.k.alt ließ sich nicht entfernen (EBUSY). Der neue Stand ist eingelesen; ' +
           'bitte den Ordner von Hand löschen — bis dahin hält das nächste Einlesen dort an.',
       );
+      // Node fasst bei einer Sperre selbst nach, bevor der Fehler hier ankommt.
+      expect(mitgegeben).toEqual([{ recursive: true, force: true, maxRetries: 3, retryDelay: 100 }]);
       expect(schnappschuss(path.join(quellen, 'k'))).toEqual(neu);
       expect(readdirSync(quellen).sort()).toEqual(['.k.alt', 'k']);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('versucht es nach einer fluechtigen Sperre wieder und tauscht dann', () => {
+    const { wurzel, quellen } = vorDemTausch();
+    try {
+      const neu = schnappschuss(path.join(quellen, '.k.neu'));
+      // Wie ein Virenscanner, der die frisch geschriebenen Dateien kurz festhaelt.
+      const dateisystem = umbenennenScheitertBei({ '.k.neu': ['EPERM', 'EPERM'] });
+      expect(tausche(quellen, 'k', dateisystem)).toBeNull();
+      expect(schnappschuss(path.join(quellen, 'k'))).toEqual(neu);
+      expect(readdirSync(quellen)).toEqual(['k']);
+      expect(dateisystem.versuche).toEqual(['k', '.k.neu', '.k.neu', '.k.neu']);
+      expect(dateisystem.wartezeiten).toEqual([100, 200]);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('gibt nach fuenf Versuchen auf und rollt zurueck', () => {
+    const { wurzel, quellen } = vorDemTausch();
+    try {
+      const vorher = schnappschuss(path.join(quellen, 'k'));
+      // Ein sechster Versuch gelaenge — es gibt ihn nicht.
+      const dateisystem = umbenennenScheitertBei({ '.k.neu': Array<string>(5).fill('EPERM') });
+      const fehler = abbruchSofort(() => tausche(quellen, 'k', dateisystem));
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      expect(fehler.message).toBe('quellen/k/ lässt sich nicht ersetzen (EPERM) — ist eine Datei daraus noch geöffnet? Nichts verändert.');
+      expect(schnappschuss(path.join(quellen, 'k'))).toEqual(vorher);
+      expect(readdirSync(quellen)).toEqual(['k']);
+      expect(dateisystem.versuche).toEqual(['k', '.k.neu', '.k.neu', '.k.neu', '.k.neu', '.k.neu', '.k.alt']);
+      expect(dateisystem.wartezeiten).toEqual([100, 200, 400, 800]);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('versucht es bei einem Fehler, der keine Sperre ist, nicht wieder', () => {
+    const { wurzel, quellen } = vorDemTausch();
+    try {
+      const vorher = schnappschuss(path.join(quellen, 'k'));
+      const dateisystem = umbenennenScheitertBei({ '.k.neu': ['ENOENT'] });
+      const fehler = abbruchSofort(() => tausche(quellen, 'k', dateisystem));
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      expect(fehler.message).toBe('quellen/k/ lässt sich nicht ersetzen (ENOENT) — ist eine Datei daraus noch geöffnet? Nichts verändert.');
+      expect(dateisystem.versuche).toEqual(['k', '.k.neu', '.k.alt']);
+      expect(dateisystem.wartezeiten).toEqual([]);
+      expect(schnappschuss(path.join(quellen, 'k'))).toEqual(vorher);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('meldet den Fehler beim Umbenennen, auch wenn danach das Aufraeumen scheitert', () => {
+    const { wurzel, quellen } = vorDemTausch();
+    try {
+      const vorher = schnappschuss(path.join(quellen, 'k'));
+      const dateisystem = {
+        ...umbenennenScheitertBei({ '.k.neu': 'EBUSY' }),
+        rmSync: (pfad: PathLike, optionen?: RmOptions) => {
+          if (path.basename(String(pfad)) === '.k.neu') throw systemfehler('EPERM', 'rmdir');
+          rmSync(pfad, optionen);
+        },
+      };
+      const fehler = abbruchSofort(() => tausche(quellen, 'k', dateisystem));
+      expect(fehler).toBeInstanceOf(EinleseFehler);
+      expect(fehler.message).toBe('quellen/k/ lässt sich nicht ersetzen (EBUSY) — ist eine Datei daraus noch geöffnet? Nichts verändert.');
+      expect(schnappschuss(path.join(quellen, 'k'))).toEqual(vorher);
+      // .neu bleibt liegen; der naechste Lauf raeumt es vorher weg.
+      expect(readdirSync(quellen).sort()).toEqual(['.k.neu', 'k']);
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }
