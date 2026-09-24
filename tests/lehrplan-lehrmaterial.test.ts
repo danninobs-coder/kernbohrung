@@ -221,6 +221,27 @@ describe('Buch und Folien - wartet auf Freigabe', () => {
       'abschnitte.0.lektion: Die Lektion gibt-es-nicht gibt es nicht (inhalt/lektionen/gibt-es-nicht.mdx).',
     ]);
   });
+
+  /**
+   * `geprueftVon:` ohne Wert — so leert Durchgang A die Freigabe, und YAML
+   * liest daraus null. Dann bricht Zod am Feld ab und laesst die Pruefung
+   * ueber alle Abschnitte aus. Stuende danach nur der Freigabe-Mangel da,
+   * nennte die Karte die falsche Ursache.
+   */
+  const doppelt = [abschnitt({ seiten: [1, 27] }), abschnitt()];
+
+  it.each([
+    ['nicht gesetzt', folien({ geprueftVon: null, abschnitte: doppelt })],
+    ['nicht angelegt', ohneFeld(folien({ abschnitte: doppelt }), 'geprueftVon')],
+  ])('bleibt ungueltig, wenn geprueftVon %s ist und zwei Abschnitte dieselbe id haben — und zeigt beide Maengel', (_fall, daten) => {
+    const e = pruefeLehrplan(daten, LEKTIONEN);
+    if (e.ok) throw new Error('Erwartet war ein Fehlschlag.');
+    expect(e.wartet).toBeFalsy();
+    expect(e.maengel).toEqual([
+      'geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.',
+      'abschnitte.1.id: Zwei Abschnitte haben die id m07-2-vertragsarten.',
+    ]);
+  });
 });
 
 describe('Abschnitte - grund und lektion', () => {

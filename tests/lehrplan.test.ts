@@ -358,6 +358,39 @@ describe('pruefeLehrplan - wartet auf Freigabe', () => {
     expect(e.maengel.join(' ')).toMatch(/Review-Gate/);
     expect(e.maengel.join(' ')).toMatch(/40 Zeichen/);
   });
+
+  /**
+   * Steht geprueftVon als null da oder fehlt es, bricht Zod am Feld ab und
+   * laesst die Pruefung ueber den ganzen Lehrplan aus — hier die auf doppelte
+   * Prinzip-Ids. Der Mangel darf trotzdem nicht verschwinden.
+   */
+  const doppelt = [gut.prinzipien[0], { ...gut.prinzipien[1], id: gut.prinzipien[0].id }];
+  const { geprueftVon: _weg, ...ohnePruefer } = gut;
+
+  it.each([
+    ['nicht gesetzt', { ...gut, geprueftVon: null, prinzipien: doppelt }],
+    ['nicht angelegt', { ...ohnePruefer, prinzipien: doppelt }],
+  ])('bleibt ungueltig, wenn geprueftVon %s ist und zwei Prinzipien dieselbe id haben — und zeigt beide Maengel', (_fall, daten) => {
+    const e = pruefeLehrplan(daten, KEINE);
+    if (e.ok) throw new Error('Erwartet war ein Fehlschlag.');
+    expect(e.wartet).toBeFalsy();
+    expect(e.maengel).toEqual([
+      'geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.',
+      '(Wurzel): Zwei Prinzipien haben dieselbe id.',
+    ]);
+  });
+
+  /**
+   * Wartend heisst: Die Freigabe fehlt. Steht dort etwas in falscher Form, ist
+   * das ein Formfehler und kein fehlender Eintrag — sonst verlangte die Karte
+   * einen Eintrag, der schon dasteht.
+   */
+  it('wartet nicht, wenn die Freigabe in falscher Form dasteht — geprueftAm als Zahl', () => {
+    const e = pruefeLehrplan({ ...gut, geprueftAm: 20260924 }, KEINE);
+    if (e.ok) throw new Error('Erwartet war ein Fehlschlag.');
+    expect(e.wartet).toBeFalsy();
+    expect(e.maengel).toEqual(['geprueftAm: hat die falsche Form — erwartet Text.']);
+  });
 });
 
 describe('lehrplaeneAusTexten', () => {

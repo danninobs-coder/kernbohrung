@@ -100,9 +100,9 @@ const titelVon = (id: string) => lektionstitel.get(id) ?? id;
   <section class="karte bestand-warnung" data-warnung="ohne-lehrplan">
     <h2>Lektionen ohne Lehrplaneintrag</h2>
     <p>
-      Auf diese Lektionen zeigt kein Prinzip und kein Abschnitt eines gültigen Lehrplans. Ihre
-      Herkunft ist damit nicht geprüft, und sie zählen hier nicht als Abdeckung. Ob sie
-      nachgetragen oder entfernt werden, entscheidest du.
+      Auf diese Lektionen zeigt kein Prinzip und kein Abschnitt eines gültigen oder auf die
+      Freigabe wartenden Lehrplans. Ihre Herkunft ist damit nicht geprüft, und sie zählen hier
+      nicht als Abdeckung. Ob sie nachgetragen oder entfernt werden, entscheidest du.
     </p>
     <ul>
       {abdeckung.ohneLehrplan.map((id) => (

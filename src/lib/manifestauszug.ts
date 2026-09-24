@@ -33,7 +33,7 @@ export type Manifestauszug =
       readonly seiten: number;
       /** Seiten, auf denen nach dem Briefkopf kein Text steht, aber ein Bild. */
       readonly nurBild: number;
-      /** Seiten, deren Text nach einer zerfallenen Tabelle aussieht. */
+      /** Seiten mit Tabelle oder Grafik — ihr Text traegt die Anordnung nicht. */
       readonly tabellenverdacht: number;
     }
   | { readonly art: 'unlesbar'; readonly grund: string };

@@ -133,7 +133,7 @@ const SeiteSchema = z.number().int().min(1, 'Seiten zählen ab 1.');
 
 const AbschnittSchema = z
   .strictObject({
-    /** Reihenfolge-Praefix und Slug, etwa `m07-2-vertragsarten`. */
+    /** Reihenfolge-Praefix und Slug, etwa `m07-02-vertragsarten`. */
     id: IdSchema,
     titel: z.string().trim().min(1),
     /**
@@ -350,28 +350,54 @@ const FREIGABE = ['geprueftVon', 'geprueftAm'] as const;
 /** Ein Wert, der die Schranke von `geprueftVon` passiert — nur fuer den zweiten Lesedurchgang. */
 const FREIGABE_ERSATZ = 'wartet auf Freigabe';
 
-function nurDieFreigabeFehlt(fehler: readonly z.core.$ZodIssue[]): boolean {
-  return fehler.every((f) => f.path.length === 1 && FREIGABE.some((name) => f.path[0] === name));
+/** Die Maengel eines Lesedurchgangs, je mit dem Pfad vorn — so zeigt die Seite sie woertlich. */
+function alsMaengel(fehler: readonly z.core.$ZodIssue[]): string[] {
+  return fehler.map((m) => `${m.path.join('.') || '(Wurzel)'}: ${m.message}`);
 }
 
 /**
- * Liest denselben Lehrplan noch einmal, diesmal mit gefuellter Freigabe — nur
- * um an die uebrigen Felder zu kommen. Was zurueckkommt, traegt die Freigabe
- * so, wie sie im Lehrplan steht — leer, wo sie fehlt; der Ersatzwert
- * verlaesst die Funktion nie.
+ * Fehlt ein Freigabefeld wirklich? Nicht angelegt, `geprueftVon:` ohne Wert
+ * (YAML liest daraus null), leer oder nur Leerzeichen. Alles andere — etwa
+ * `geprueftAm: 20260924` als Zahl — steht schon da, nur in falscher Form.
  */
-function mitErsetzterFreigabe(daten: unknown): Lehrplan | null {
-  if (typeof daten !== 'object' || daten === null) return null;
+function fehltWirklich(wert: unknown): boolean {
+  return wert === undefined || wert === null || (typeof wert === 'string' && wert.trim() === '');
+}
+
+/**
+ * Betreffen alle Maengel die Freigabe, und fehlt sie dort wirklich? Ein
+ * Formfehler zaehlt nicht dazu: Sonst verlangte die Karte einen Eintrag, der
+ * schon dasteht.
+ */
+function nurDieFreigabeFehlt(fehler: readonly z.core.$ZodIssue[], roh: Readonly<Record<string, unknown>>): boolean {
+  return fehler.every(
+    (f) => f.path.length === 1 && FREIGABE.some((name) => f.path[0] === name && fehltWirklich(roh[name])),
+  );
+}
+
+/**
+ * Liest denselben Lehrplan noch einmal, diesmal mit gefuellter Freigabe. Das
+ * bringt zweierlei: die uebrigen Felder — und die Maengel, die der erste
+ * Lesedurchgang nicht sehen konnte. Steht die Freigabe als null da oder fehlt
+ * sie, bricht Zod an diesem Feld ab und laesst die Pruefungen ueber den ganzen
+ * Lehrplan aus: doppelte Ids, sich ueberschneidende Seitenbereiche. Die meldet
+ * erst dieser Lesedurchgang.
+ *
+ * Ein Lehrplan, der zurueckkommt, traegt die Freigabe so, wie sie im Lehrplan
+ * steht — leer, wo sie fehlt; der Ersatzwert verlaesst die Funktion nie.
+ */
+function mitErsetzterFreigabe(
+  roh: Readonly<Record<string, unknown>>,
+): { ok: true; lehrplan: Lehrplan } | { ok: false; maengel: string[] } {
   const zweit = LehrplanSchema.safeParse(
-    { ...(daten as Record<string, unknown>), geprueftVon: FREIGABE_ERSATZ, geprueftAm: FREIGABE_ERSATZ },
+    { ...roh, geprueftVon: FREIGABE_ERSATZ, geprueftAm: FREIGABE_ERSATZ },
     { error: deutscheMeldung },
   );
-  if (!zweit.success) return null;
+  if (!zweit.success) return { ok: false, maengel: alsMaengel(zweit.error.issues) };
   const lehrplan = zweit.data;
-  const roh = daten as Record<string, unknown>;
   lehrplan.geprueftVon = typeof roh.geprueftVon === 'string' ? roh.geprueftVon.trim() : '';
   lehrplan.geprueftAm = typeof roh.geprueftAm === 'string' ? roh.geprueftAm.trim() : '';
-  return lehrplan;
+  return { ok: true, lehrplan };
 }
 
 /**
@@ -390,13 +416,19 @@ export function pruefeLehrplan(daten: unknown, lektionsIds: ReadonlySet<string>)
     return maengel.length > 0 ? { ok: false, maengel } : { ok: true, lehrplan: geprueft.data };
   }
 
-  const maengel = geprueft.error.issues.map((m) => `${m.path.join('.') || '(Wurzel)'}: ${m.message}`);
+  const maengel = alsMaengel(geprueft.error.issues);
   // Fehlt ausser der Freigabe nichts, ist der Lehrplan lesbar — und wartend.
   // Kommt dabei ein weiterer Mangel heraus, bleibt er ungueltig und zeigt alle.
-  const lehrplan = nurDieFreigabeFehlt(geprueft.error.issues) ? mitErsetzterFreigabe(daten) : null;
-  if (lehrplan === null) return { ok: false, maengel };
-  const weitere = pruefeLektionen(lehrplan, lektionsIds);
-  return weitere.length > 0 ? { ok: false, maengel: [...maengel, ...weitere] } : { ok: false, wartet: true, lehrplan, maengel };
+  const roh = typeof daten === 'object' && daten !== null ? (daten as Readonly<Record<string, unknown>>) : null;
+  if (roh === null || !nurDieFreigabeFehlt(geprueft.error.issues, roh)) return { ok: false, maengel };
+  const zweit = mitErsetzterFreigabe(roh);
+  // Alle Maengel, keiner doppelt — erst die Freigabe, dann die uebrigen, wie
+  // Zod sie in einem Lauf meldet, wenn die Freigabe leer statt null ist.
+  if (!zweit.ok) return { ok: false, maengel: [...new Set([...maengel, ...zweit.maengel])] };
+  const weitere = pruefeLektionen(zweit.lehrplan, lektionsIds);
+  return weitere.length > 0
+    ? { ok: false, maengel: [...maengel, ...weitere] }
+    : { ok: false, wartet: true, lehrplan: zweit.lehrplan, maengel };
 }
 
 /**

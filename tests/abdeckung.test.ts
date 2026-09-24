@@ -232,10 +232,16 @@ describe('der heutige Bestand', () => {
   /**
    * Haelt fest, was gemessen wurde: zwei Lehrplaene — das Repo mit sechs
    * Prinzipien, drei davon mit Lektion, und die eingelesene Vorlesung mit
-   * zweiundzwanzig offenen Abschnitten, die auf die Freigabe wartet. Dazu
-   * zwei Lektionen ohne Lehrplaneintrag. Aendert sich der Bestand — eine
-   * neue Lektion, ein neuer Lehrplan —, wird dieser Test nachgezogen, und
-   * der Commit sagt warum.
+   * zweiundzwanzig offenen Abschnitten. Dazu zwei Lektionen ohne
+   * Lehrplaneintrag. Aendert sich der Bestand — eine neue Lektion, ein neuer
+   * Lehrplan —, wird dieser Test nachgezogen, und der Commit sagt warum.
+   *
+   * Bewusst nicht festgehalten ist die Freigabe: weder, ob ein Lehrplan unter
+   * `gueltig` oder unter `wartend` steht, noch, was seine Karte bei `freigabe`
+   * traegt. Die Freigabe traegt ein Mensch von Hand ein, und das ist kein
+   * Wechsel im Bestand. Hielte der Test sie fest, waere er gleich danach rot —
+   * und mit ihm der Veroeffentlichungs-Workflow. Deshalb laeuft alles hier
+   * ueber gueltige und wartende Lehrplaene zusammen.
    *
    * Ohne Manifeste: `quellen/` ist gitignored, und dieser Test laeuft auch
    * dort, wo nicht eingelesen wurde. Was das Manifest beitraegt, prueft die
@@ -255,13 +261,11 @@ describe('der heutige Bestand', () => {
     );
     const { gueltig, wartend, ungueltig } = lehrplaeneAusTexten(texte, lektionen);
     expect(ungueltig).toEqual([]);
-    expect(gueltig.map((l) => l.quelle)).toEqual(['awesome-llm-apps']);
-    expect(wartend.map((l) => l.quelle)).toEqual(['bauch-projektmanagement']);
 
     const { bestand, ohneLehrplan } = abdeckung([...gueltig, ...wartend], KEINE_MANIFESTE, lektionen);
-    expect(bestand.map((b) => [b.quelle, b.art, b.freigabe])).toEqual([
-      ['awesome-llm-apps', 'repo', 'erteilt'],
-      ['bauch-projektmanagement', 'folien', 'wartet'],
+    expect(bestand.map((b) => [b.quelle, b.art])).toEqual([
+      ['awesome-llm-apps', 'repo'],
+      ['bauch-projektmanagement', 'folien'],
     ]);
     expect(bestand[0]?.zaehlung).toEqual({ gesamt: 6, mitLektion: 3, offen: 3, beauftragt: 0, abgelehnt: 0 });
     expect(bestand[0]?.zeilen.filter((z) => z.status === 'lektion').map((z) => z.id)).toEqual([

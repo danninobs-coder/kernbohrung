@@ -6,9 +6,9 @@ import type { Status } from './lehrplan';
  * getestet, Zeichen fuer Zeichen.
  *
  * Die Regel fuer jeden Satz hier: Er behauptet nur, was die Daten tragen.
- * Deshalb „vermutlich zerfallen" und nicht „zerfallen" (das Manifest fuehrt
- * einen Verdacht), „unbekannt" statt einer Null, wo kein Manifest da ist, und
- * „keine … erkannt" statt „vollstaendig".
+ * Deshalb „mit Tabelle oder Grafik" und nicht „zerfallen" (das Manifest
+ * fuehrt einen Verdacht), „unbekannt" statt einer Null, wo kein Manifest da
+ * ist, und „keine … erkannt" statt „vollstaendig".
  */
 
 const ART_TEXT: Readonly<Record<Bestand['art'], string>> = {
