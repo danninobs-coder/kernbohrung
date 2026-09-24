@@ -107,8 +107,12 @@ Markierung „Wartet auf Freigabe"; der Compiler baut daraus keine Lektionen.
 Diese Fassung liest **Foliensätze als PDF**. Ein Hochformat mit viel Text wird
 als Buch erkannt und mit einer Meldung abgewiesen (`--art folien` überstimmt
 die Erkennung); EPUB kommt später. Material ohne Textebene bricht ab — OCR ist
-nicht Teil des Einlesens. Auf der Konsole steht nie Folientext: nur Zahlen,
-Dateinamen, Abschnitt-Ids und Abschnittstitel.
+nicht Teil des Einlesens —, ebenso ein PDF mit Passwort oder mit gedrehten
+Seiten; die Meldung nennt die Datei. Auf der Konsole steht nie Folientext: nur
+Zahlen, Dateinamen, Abschnitt-Ids und Abschnittstitel.
+
+Scheitert ein Lauf, bleibt `quellen/<kurzname>/` wie vorher: Das Einlesen baut
+den neuen Stand erst daneben auf und tauscht ihn dann in einem Schritt ein.
 
 ## Auf Android testen und weiterentwickeln
 

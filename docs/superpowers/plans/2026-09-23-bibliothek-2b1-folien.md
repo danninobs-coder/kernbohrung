@@ -5999,6 +5999,70 @@ Erwartet: sauberer Baum (`quellen/`, `handy/` und `dist/` sind gitignored) und e
 
 ---
 
+## Nachträge aus den Reviews und der Abnahme (2026-09-24)
+
+Jede Aufgabe ist einzeln reviewt; sieben Nacharbeiten kamen dazu. Die folgenden Abweichungen vom Plan oben sind beschlossen und getestet; maßgeblich sind seither der Code und seine Tests, nicht die Codeblöcke oben. Der Commit steht in Klammern.
+
+**Lehrplan und Freigabe**
+- Ein wartender Lehrplan trägt jedes Freigabefeld so, wie es im Lehrplan steht — getrimmt, sonst leer. Vorher wurden beide geleert, auch ein eingetragenes `geprueftVon` (26384a6).
+- Freigegebener und wartender Lehrplan sind in einem Aufruf von `abdeckung` getestet, samt Sortierung (26384a6).
+
+**`dokument.mjs`**
+- Eine gedrehte Seite (`/Rotate` ungleich 0) wird laut abgewiesen: „Seite n ist um g Grad gedreht …“. Vorher lieferte `liesSeiten` die Zeilen still in falscher Reihenfolge; am Material hat keine Seite eine Drehung (a34bf7b, seit 40c671c als `DokumentFehler`).
+- pdf.js lädt im Test einmal in `beforeAll` (Regel 20); Meldungen beim Laden werden eigens geprüft (a34bf7b, d26536d).
+- Inline-Bilder kommen in der fertigen Operatorliste nur als `paintInlineImageXObject` an — Kommentar am Bildfilter (a34bf7b).
+- Festgehalten: Beiwerk genau auf der 80-%-Schwelle, Beiwerk-Anteil 0 statt NaN, Median bei gerader Seitenzahl, Datei mit 0 Seiten, Hochformatseite in einer queren Quelle (d26536d).
+
+**Gliederer**
+- Ein Titel, aus dem kein Slug entsteht („---“, griechische Buchstaben), ergab eine ungültige Id wie `m07-02-`. Jetzt nimmt die Id den Rückfall `folien-a-b`; ein Titel ohne Buchstaben und Ziffern fällt auch als Titel zurück (6604212).
+- Festgehalten: 16 Folien bleiben `einzeln` (die Grenze 20 greift vor der gleichmäßigen Teilung), 30 → 15 + 15, 31 → 11 + 10 + 10; eine Agenda mit zwei Treffern unter 50 % greift nicht; ein Wort über 32 Zeichen wird gekürzt; ein Titellauf über die ganze Datei fällt auf gleichmäßig zurück (6604212).
+
+**Einlesen — die größte Änderung gegenüber Aufgabe 8**
+- Die Originale werden aus den gelesenen und gehashten Bytes geschrieben. Ein zweiter Lauf aus `quellen/<k>/original/` löschte vorher seine eigenen Eingaben, bevor er sie kopierte (40c671c).
+- Zwei Phasen: erst rechnen (nur lesen), dann in `quellen/.<k>.neu/` bauen und über `quellen/.<k>.alt` tauschen; bei einem Fehler wird zurückgerollt, und `quellen/<k>/` bleibt byte-gleich. Lesefehler kommen als `EinleseFehler` mit Dateinamen: „lässt sich nicht als PDF lesen (…)“, „ist mit einem Passwort geschützt …“, „lässt sich nicht öffnen (EBUSY)“. Gehört der Kurzname schon einer Quelle anderer Art, bricht das Einlesen ab (40c671c, 4c9f128).
+- Jedes Umbenennen im Tausch wird bei EPERM, EBUSY und EACCES bis zu fünfmal versucht (zusammen höchstens 1,5 s Warten): Unter Windows hält ein Virenscanner frisch geschriebene PDF oft kurz fest (4c9f128).
+- Ein liegengebliebenes `.alt` hält den nächsten Lauf an. Fehlt `quellen/<k>/`, sagt die Meldung, wie der alte Stand zurückkommt; ist es da, kann `.alt` weg. Plattenfehler außerhalb des Tauschs kommen als `EinleseFehler` mit Code und Zustand (4c9f128).
+- Der Vergleich meldet unter derselben Id auch eine geänderte Datei und einen geänderten Titel, und er läuft auch mit einem inhaltlich ungültigen Lehrplan (Warnung „ist ungültig: …“). Übersprungen wird er nur bei einem YAML-Fehler oder ohne Liste `abschnitte` (7ca4b29, 4c9f128).
+- Gerüst: `quelle` steht in Anführungszeichen, sonst läse YAML `--name 2024` als Zahl. Steuerzeichen stehen als `\xNN` bzw. `\uNNNN` (7ca4b29, 4c9f128).
+- Rohdateien: Beide Hinweise stehen hinter der Seitenmarke ihrer Folie, eine Folie mit Bild und Tabelle trägt beide. Aufgabe 8 oben zeigt noch die Warnzeile vor der Marke (7ca4b29).
+- Prozent mit Komma („57,2 %“); Dubletten ohne Groß-/Kleinschreibung, mit beiden Namen; reservierte Windows-Namen einschließlich `com0` und `lpt0` abgewiesen; das Id-Muster kommt aus `src/lib/lehrplan.ts` (7ca4b29, 4c9f128).
+
+**Umgebung**
+- `.gitattributes` mit `*.pdf binary` (26384a6); `hookTimeout: 20_000` neben `testTimeout` (4c9f128).
+
+**Kleine Ungenauigkeiten im Plan — der Code war jeweils richtig**
+- Aufgabe 0: `grep -c 'wartet'` trifft auch „erwartet“ und zählt 1 statt 0.
+- Mehrere Diff-Statistiken lagen um eine Zeile, mehrere Mutationsproben um einen Test in der Nachbardatei daneben.
+- Aufgabe 11: Die Abschnittszeilen auf der Konsole nennen zusätzlich Datei und Titel (`id — Datei, Folien a–b — Titel`); Ids und Bereiche wie erwartet.
+- Aufgabe 10: `.quelle-freigabe` steht in 15,5 px, `.vorbehalt` in 16 px. So steht es im Plan; falls dieselbe Lesegröße gemeint war, ist es nachzuziehen.
+
+**Zahlen am Ende**
+- 1009 Tests = BASIS 795 + 150 aus dem Plan + 64 aus den Nacharbeiten; `astro check` 0/0/0; Bau 9 Seiten; NUL-Prüfung 0 in 37 Textdateien (gemessen vor den letzten beiden Nacharbeiten).
+- Ende zu Ende am Material: 9 Originale, 199 Seiten, 22 Abschnitte, Stand `sha256:f99ba9465fd7…` — genau wie gemessen, 15,5 s. Der zweite Lauf meldet „keine Änderung“, der Lehrplan bleibt byte-gleich, kein `.neu` und kein `.alt` bleibt liegen.
+- Abnahme bei 375 px, Schritte 3 bis 9: alle Werte wie erwartet — Markierung 281 × 93, Aufklappknopf 281 × 103, 22 Zeilen ohne Überlauf, dunkler Modus aus Tokens, Bau ohne Manifest mit „unbekannt …“, mit eingetragener Freigabe verschwindet die Markierung. Private Handy-Version 10.
+
+**Aus dem Schlussreview (daf588e, 441c02a)**
+- „Wartet auf Freigabe“ gilt nur, wenn außer der Freigabe nichts fehlt. Steht die Freigabe als `null` da oder fehlt das Feld, bricht Zod 4 nach dem Typfehler ab und übersprang die Prüfung der Abschnitte; jetzt bringt der zweite Lauf die übrigen Mängel mit, und der Lehrplan ist ungültig mit allen Mängeln. Eine Freigabe in falscher Form (etwa eine Zahl) ist ein Formfehler, kein fehlender Eintrag (daf588e).
+- Der Bestandstest hält die Freigabe nicht mehr fest: Sie wird von Hand eingetragen und ist kein Bestandswechsel; sonst wäre `npm test` gleich nach der Freigabe rot (daf588e).
+- Die Warnung „Lektionen ohne Lehrplaneintrag“ sagt jetzt „eines gültigen oder auf die Freigabe wartenden Lehrplans“ (daf588e).
+- Ein Vertragstest schickt, was das Einlesen schreibt, durch dieselben Leser wie die Seite bis zur Lückenzeile. pdf.js lädt in allen Testdateien einmal vorab. Die Frage nach einer offenen Datei steht nur noch bei Sperrcodes; eine fehlende Mappe heißt „lässt sich nicht öffnen (ENOENT)“. Der Stand eines festen Fixture-Satzes steht als Literal im Test (441c02a).
+- Nirgends sonst vermerkt: Die gleichmäßige Teilung erzeugt keine Warnung, und der Beiwerk-Anteil steht nur auf der Konsole — das Manifest führt `beiwerkZeichen` ohne Gesamtzahl.
+
+**Für 2b-3**
+- Der Git-Weg prüft die Art nicht: `npm run ingest -- --git … --name bauch-projektmanagement` ersetzte `roh/` und das Manifest einer Folienquelle. Abgeleitete Daten, aus dem Materialordner wiederherstellbar — trotzdem vor dem Formular abfangen.
+- Veröffentlichung: Ein Lauf des Pages-Workflows machte die 22 Abschnittstitel und den Namen des Dozenten öffentlich. Vor dem nächsten Lauf bewusst entscheiden.
+
+**Für 2c zusätzlich zu den offenen Fragen unten**
+- Bevor der Compiler die Vorlesung anfasst, trägt ein Mensch `geprueftVon` und `geprueftAm` in `lehrplan/bauch-projektmanagement.yaml` ein.
+- Die Lektion `pauschal-heisst-nicht-komplett` bekommt ihren Eintrag im Abschnitt `m07-03-risikomanagement` (Folien 27–35); dafür muss 2c festlegen, wie Abschnitt, Prinzipien und Lektion zusammenhängen.
+- Nach einem Neueinlesen ist `roh/` neu, der Lehrplan (nie überschrieben) nennt aber die alten Ids und Bereiche. Der Compiler bricht ab, wenn der Stand im Lehrplan nicht dem im Manifest gleicht oder eine Id in `manifest.roh` fehlt.
+- Folien mit weniger als 20 Zeichen ohne echtes Bild (Vektorgrafik, Text als Pfade) stehen nur als Seitenmarke in der Rohdatei und in keiner Liste; der Compiler sähe sie nie an. Am Material zählen; gibt es welche, eine eigene Liste führen.
+- Die Folienlisten `nurBild` und `tabellenverdacht` aus dem Manifest nehmen, nicht die Hinweise in der Rohdatei auslesen: Die Warnzeile beginnt mit `> `, und so kann auch eine Folienzeile beginnen.
+- `datei` ist ein bytegenauer Schlüssel (`M6  Kostenschätzung Sportcenter 26.pdf` mit zwei Leerzeichen): nie aus Titel oder HTML ableiten, immer gegen `originale[].datei` prüfen.
+- Durchgang A leert die Freigabe mit `""`, wie das Gerüst sie schreibt; seit daf588e ist auch `null` sicher.
+
+---
+
 ## Selbstprüfung gegen den Spec
 
 Nur der Umfang von 2b-1: Foliensätze im Terminal einlesen, bis der Bestand sie zeigt.
