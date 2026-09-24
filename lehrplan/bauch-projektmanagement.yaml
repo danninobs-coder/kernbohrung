@@ -1,0 +1,120 @@
+# Diese Datei hat das Einlesen angelegt (npm run ingest -- --folien … --name bauch-projektmanagement).
+# Die Freigabe traegt ein Mensch von Hand ein: geprueftVon und geprueftAm.
+# Bis dahin zeigt die Bibliothek die Zahlen und baut der Compiler keine Lektionen.
+art: folien
+quelle: "bauch-projektmanagement"
+titel: "Vorlesung Projektmanagement (Prof. Bauch, WBA Weimar 2026)"
+stand: "sha256:f99ba9465fd7f116b002a752e774b80ce205e1b741740e0e8c43e1abf6b4af38"
+geprueftVon: ""
+geprueftAm: ""
+abschnitte:
+  - id: m01-01-folien-1-14
+    titel: "M1 PM und Leistungsbilder 26, Folien 1–14"
+    datei: "M1 PM und Leistungsbilder 26.pdf"
+    seiten: [1, 14]
+    status: offen
+  - id: m01-02-ergaenzende-pm-leistungen-gem
+    titel: "Ergänzende PM- Leistungen gem. AHO Heft 19 Jan. 2018"
+    datei: "M1 PM und Leistungsbilder 26.pdf"
+    seiten: [15, 18]
+    status: offen
+  - id: m01-03-leistungen-building-information
+    titel: "Leistungen Building Information Modeling"
+    datei: "M1 PM und Leistungsbilder 26.pdf"
+    seiten: [19, 23]
+    status: offen
+  - id: m02-01-fallbeispiel-1-massnahmen
+    titel: "Fallbeispiel 1 Maßnahmen der Bestandsaufnahme und Restrukturierung"
+    datei: "M2 PM Beispiele Leistungsbilder 26.pdf"
+    seiten: [1, 7]
+    status: offen
+  - id: m02-02-fallbeispiel-2
+    titel: "Fallbeispiel 2 Bautenstandsermittlung bei komplexen Bauvorhaben"
+    datei: "M2 PM Beispiele Leistungsbilder 26.pdf"
+    seiten: [8, 19]
+    status: offen
+  - id: m02-03-fallbeispiel-3-beurteilung
+    titel: "Fallbeispiel 3 Beurteilung von Prozessabläufen und Technologien"
+    datei: "M2 PM Beispiele Leistungsbilder 26.pdf"
+    seiten: [20, 26]
+    status: offen
+  - id: m02-04-fallbeispiel-4-claims
+    titel: "Fallbeispiel 4 Claims im Honorarbereich"
+    datei: "M2 PM Beispiele Leistungsbilder 26.pdf"
+    seiten: [27, 29]
+    status: offen
+  - id: m03-01-folien-1-20
+    titel: "M3 PM Stakeholderanalyse 26, Folien 1–20"
+    datei: "M3 PM Stakeholderanalyse 26.pdf"
+    seiten: [1, 20]
+    status: offen
+  - id: m04-01-folien-1-5
+    titel: "M4 PM PSP 26, Folien 1–5"
+    datei: "M4 PM PSP 26.pdf"
+    seiten: [1, 5]
+    status: offen
+  - id: m04-02-grundlagen-grundsaetze
+    titel: "Grundlagen & Grundsätze"
+    datei: "M4 PM PSP 26.pdf"
+    seiten: [6, 9]
+    status: offen
+  - id: m04-03-beispiel-fuer-typ
+    titel: "Beispiel für typ. objektorientierte Gliederung eines Hochbauprojektes"
+    datei: "M4 PM PSP 26.pdf"
+    seiten: [10, 24]
+    status: offen
+  - id: m04-04-aufbauorganisation
+    titel: "Aufbauorganisation"
+    datei: "M4 PM PSP 26.pdf"
+    seiten: [25, 34]
+    status: offen
+  - id: m04-05-hilfsmittel
+    titel: "Hilfsmittel für die Projektkoordination"
+    datei: "M4 PM PSP 26.pdf"
+    seiten: [35, 45]
+    status: offen
+  - id: m05-01-folien-1-19
+    titel: "M5 PM Kommunikation 26, Folien 1–19"
+    datei: "M5 PM Kommunikation 26.pdf"
+    seiten: [1, 19]
+    status: offen
+  - id: m05-02-projektkommunikation
+    titel: "„Projektkommunikation“"
+    datei: "M5 PM Kommunikation 26.pdf"
+    seiten: [20, 24]
+    status: offen
+  - id: m05-03-wie-organisieren
+    titel: "Wie organisieren wir uns selbst?"
+    datei: "M5 PM Kommunikation 26.pdf"
+    seiten: [25, 31]
+    status: offen
+  - id: m06-01-folien-1-1
+    titel: "M6 Kostenschätzung Sportcenter 26, Folien 1–1"
+    datei: "M6  Kostenschätzung Sportcenter 26.pdf"
+    seiten: [1, 1]
+    status: offen
+  - id: m07-01-begriffsbestimmungen
+    titel: "Begriffsbestimmungen"
+    datei: "M7 Risikomanagement 26.pdf"
+    seiten: [1, 5]
+    status: offen
+  - id: m07-02-prozess-des-risikomanagements
+    titel: "Prozess des Risikomanagements"
+    datei: "M7 Risikomanagement 26.pdf"
+    seiten: [6, 26]
+    status: offen
+  - id: m07-03-risikomanagement
+    titel: "Risikomanagement und Vertragswesen"
+    datei: "M7 Risikomanagement 26.pdf"
+    seiten: [27, 35]
+    status: offen
+  - id: m09-01-folien-1-13
+    titel: "M9 Leistungsstandsmessung 26, Folien 1–13"
+    datei: "M9 Leistungsstandsmessung 26.pdf"
+    seiten: [1, 13]
+    status: offen
+  - id: m10-01-folien-1-2
+    titel: "M10 Steuerungsmöglichkeiten 26, Folien 1–2"
+    datei: "M10 Steuerungsmöglichkeiten 26.pdf"
+    seiten: [1, 2]
+    status: offen
