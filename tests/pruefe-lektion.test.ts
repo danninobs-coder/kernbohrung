@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import { pruefeLektionsText } from '../werkzeug/pruefe-lektion.mjs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { pruefeLektionsText, pruefeWortlaut } from '../werkzeug/pruefe-lektion.mjs';
+import { baueIndex, rohFolien } from '../werkzeug/wortlaut.mjs';
 
 /**
  * Die Schranke, die entscheidet, was ausgeliefert wird.
@@ -174,5 +179,139 @@ describe('pruefeLektionsText', () => {
     const e = pruefeLektionsText(mitWidget);
     if (!e.ok) throw new Error(`Erwartet war Erfolg, gemeldet wurde:\n  ${e.maengel.join('\n  ')}`);
     expect(e.ok).toBe(true);
+  });
+});
+
+/**
+ * Der Wortlaut: dreizehn Woerter am Stueck wie in einer Rohdatei sind ein
+ * Mangel. Die Rohdateien hier sind synthetisch, ihr Text ist erfunden; kein
+ * Test liest `quellen/` im Projekt.
+ */
+const SATZ = 'Die Bauleiterin prüft morgens die Lieferscheine, bevor die Kolonne mit der Arbeit beginnt.';
+
+/** Eine Rohdatei in der Form des Einlesens: Kopf, dann Seitenmarken. */
+const ROH = [
+  '# Probe',
+  '',
+  'Probe.pdf, Folien 4–5',
+  '',
+  '— Folie 4 —',
+  'Morgens auf der Baustelle',
+  '',
+  '— Folie 5 —',
+  'Die Bauleiterin prüft morgens die Lieferscheine,',
+  'bevor die Kolonne mit der Arbeit beginnt.',
+  '',
+].join('\n');
+
+/** `gute` mit dem Satz als eigenem Absatz: Der Rumpf hat davor vier eigene Woerter. */
+const abschrift = `${gute}\n${SATZ}\n`;
+
+const MELDUNG = 'Wortlaut: 13 Wörter am Stück wie in probe/x01-01-probe, Folie 5 — Feld rumpf, Wörter 5–17.';
+
+describe('pruefeWortlaut', () => {
+  it('meldet eine Abschrift mit Quelle, Folie, Feld und Wortbereich, nie mit Text', () => {
+    const index = baueIndex([{ quelle: 'probe', abschnitt: 'x01-01-probe', folien: rohFolien(ROH) }]);
+    const maengel = pruefeWortlaut(abschrift, index);
+    expect(maengel).toEqual([MELDUNG]);
+    expect(maengel[0]).not.toMatch(/Bauleiterin|Lieferscheine|Kolonne/);
+    expect(pruefeWortlaut(gute, index)).toEqual([]);
+  });
+
+  it('nennt bei einer Rohdatei ohne Seitenmarken keine Folie', () => {
+    const index = baueIndex([{ quelle: 'repo', abschnitt: 'variante', folien: rohFolien(`Ein Absatz.\n\n${SATZ}\n`) }]);
+    expect(pruefeWortlaut(abschrift, index)).toEqual([
+      'Wortlaut: 13 Wörter am Stück wie in repo/variante — Feld rumpf, Wörter 5–17.',
+    ]);
+  });
+});
+
+describe('werkzeug/pruefe-lektion.mjs', () => {
+  const SKRIPT = path.resolve(__dirname, '..', 'werkzeug', 'pruefe-lektion.mjs');
+
+  /** Startet die Pruefung mit `wurzel` als Arbeitsverzeichnis, wie `npm run pruefe-lektion` im Projekt. */
+  function pruefe(wurzel: string, ...dateien: string[]): { code: number | null; aus: string; fehler: string } {
+    const lauf = spawnSync(process.execPath, [SKRIPT, ...dateien], { cwd: wurzel, encoding: 'utf8' });
+    return { code: lauf.status, aus: lauf.stdout, fehler: lauf.stderr };
+  }
+
+  /** Ein Temp-Wurzelordner mit drei Lektionen, auf Wunsch mit zwei Rohdateien unter `quellen/`. */
+  function wurzel(mitRohdateien: boolean): string {
+    const ordner = mkdtempSync(path.join(tmpdir(), 'kernbohrung-pruefe-lektion-'));
+    writeFileSync(path.join(ordner, 'sauber.mdx'), gute, 'utf8');
+    writeFileSync(path.join(ordner, 'abschrift.mdx'), abschrift, 'utf8');
+    writeFileSync(path.join(ordner, 'beides.mdx'), `${gute}\n<GibtEsNicht foo={1} />\n\n${SATZ}\n`, 'utf8');
+    if (mitRohdateien) {
+      const roh = path.join(ordner, 'quellen', 'probe', 'roh');
+      mkdirSync(roh, { recursive: true });
+      writeFileSync(path.join(roh, 'x01-01-probe.md'), ROH, 'utf8');
+      writeFileSync(path.join(roh, 'x01-02-anderes.md'), '# Anderes\n\n— Folie 9 —\nNichts davon.\n', 'utf8');
+    }
+    return ordner;
+  }
+
+  it('meldet eine Abschrift woertlich als Mangel und endet mit 1', () => {
+    const w = wurzel(true);
+    try {
+      const { code, aus, fehler } = pruefe(w, 'abschrift.mdx');
+      expect(fehler).toBe(`abschrift.mdx: 1 Mangel/Mängel\n\n  - ${MELDUNG}\n`);
+      expect(aus).toBe('');
+      expect(code).toBe(1);
+    } finally {
+      rmSync(w, { recursive: true, force: true });
+    }
+  });
+
+  it('meldet ohne Treffer den Wortlaut in Ordnung und endet mit 0', () => {
+    const w = wurzel(true);
+    try {
+      const { code, aus, fehler } = pruefe(w, 'sauber.mdx');
+      expect(aus).toBe('sauber.mdx: in Ordnung\nWortlaut: in Ordnung (2 Rohdateien).\n');
+      expect(fehler).toBe('');
+      expect(code).toBe(0);
+    } finally {
+      rmSync(w, { recursive: true, force: true });
+    }
+  });
+
+  it('sagt ohne quellen/ nicht geprueft statt in Ordnung, und das ist kein Mangel', () => {
+    const w = wurzel(false);
+    try {
+      const { code, aus, fehler } = pruefe(w, 'sauber.mdx', 'abschrift.mdx');
+      expect(aus).toBe(
+        'sauber.mdx: in Ordnung\nabschrift.mdx: in Ordnung\nWortlaut nicht geprüft: keine Rohdateien am Rechner.\n',
+      );
+      expect(fehler).toBe('');
+      expect(code).toBe(0);
+    } finally {
+      rmSync(w, { recursive: true, force: true });
+    }
+  });
+
+  it('prueft mehrere Dateien in einem Aufruf, den Wortlaut nach Schema und Widgets', () => {
+    const w = wurzel(true);
+    try {
+      const { code, aus, fehler } = pruefe(w, 'sauber.mdx', 'abschrift.mdx', 'beides.mdx');
+      expect(aus).toBe('sauber.mdx: in Ordnung\n');
+      const zeilen = fehler.split('\n');
+      expect(zeilen.slice(0, 4)).toEqual(['abschrift.mdx: 1 Mangel/Mängel', '', `  - ${MELDUNG}`, 'beides.mdx: 2 Mangel/Mängel']);
+      expect(zeilen[5]).toMatch(/^ {2}- Unbekanntes Widget "GibtEsNicht"/);
+      expect(zeilen.slice(6)).toEqual([`  - ${MELDUNG}`, '']);
+      expect(code).toBe(1);
+    } finally {
+      rmSync(w, { recursive: true, force: true });
+    }
+  });
+
+  it('zeigt ohne Datei den Aufruf und endet mit 2', () => {
+    const w = wurzel(false);
+    try {
+      const { code, aus, fehler } = pruefe(w);
+      expect(fehler).toBe('Aufruf: node werkzeug/pruefe-lektion.mjs <datei.mdx> [<datei.mdx> …]\n');
+      expect(aus).toBe('');
+      expect(code).toBe(2);
+    } finally {
+      rmSync(w, { recursive: true, force: true });
+    }
   });
 });

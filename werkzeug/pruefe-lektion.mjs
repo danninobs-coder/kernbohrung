@@ -8,6 +8,9 @@ import { pathToFileURL } from 'node:url';
 import { load as yamlLesen } from 'js-yaml';
 import { LektionSchema } from '../src/content/schema.ts';
 import { pruefeWidget } from '../src/widgets/pruefung.ts';
+// Ein Kreis mit Absicht, siehe werkzeug/wortlaut.mjs: Der Abgleich liest die
+// Lektion mit FRONTMATTER und widgetAufrufe von hier.
+import { FENSTER, findeAbschriften, lektionFelder, liesRohIndex } from './wortlaut.mjs';
 
 /**
  * Prueft eine Lektion, bevor sie geschrieben wird.
@@ -15,6 +18,8 @@ import { pruefeWidget } from '../src/widgets/pruefung.ts';
  * Beide Schranken an einer Stelle: das Frontmatter gegen LektionSchema, jeder
  * Widget-Aufruf im Rumpf gegen pruefeWidget. Genau dafuer wurden beide Module
  * in Abschnitt 1 so geschnitten, dass ein reiner Node-Prozess sie laden kann.
+ * Die Kommandozeile prueft danach den Wortlaut gegen die Rohdateien
+ * (`pruefeWortlaut`).
  *
  * Die Typen stehen als JSDoc da, weil `astro check` mit `checkJs` auch
  * `werkzeug/` liest. Wie in `auswahl.mjs` sind `ok: true` und `ok: false`
@@ -35,8 +40,10 @@ import { pruefeWidget } from '../src/widgets/pruefung.ts';
  * Windows mit `autocrlf=true`, und `inhalt/lektionen/recall-vor-precision.mdx`
  * hat tatsaechlich CRLF. Ohne `\r?` findet das Muster dort keinen Kopf und die
  * Pruefung meldet „kein Frontmatter" — bei einer vollkommen gueltigen Datei.
+ *
+ * Exportiert fuer den Wortlaut-Abgleich, der die Lektion genauso zerlegt.
  */
-const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+export const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 /**
  * @param {string} text Inhalt einer .mdx-Datei
@@ -148,6 +155,23 @@ function werteProps(quelle) {
 }
 
 /**
+ * Der Wortlaut einer Lektion gegen den Index der Rohdateien (werkzeug/wortlaut.mjs):
+ * je Abschrift ein Mangel. Die Meldung nennt Quelle, Abschnitt, Folie, Feld
+ * und Wortbereich — nie den Text, denn der gehoert den Verfassern der Quelle.
+ * Eine Rohdatei ohne Seitenmarken (Folie 0) wird ohne Folie genannt.
+ *
+ * @param {string} text Inhalt einer .mdx-Datei
+ * @param {import('./wortlaut.mjs').Index} index
+ * @returns {string[]}
+ */
+export function pruefeWortlaut(text, index) {
+  return findeAbschriften(lektionFelder(text), index).map(({ feld, von, bis, quelle, abschnitt, folie }) => {
+    const fundort = folie === 0 ? `${quelle}/${abschnitt}` : `${quelle}/${abschnitt}, Folie ${folie}`;
+    return `Wortlaut: ${FENSTER} Wörter am Stück wie in ${fundort} — Feld ${feld}, Wörter ${von}–${bis}.`;
+  });
+}
+
+/**
  * Wurde die Datei direkt aufgerufen, oder nur importiert?
  *
  * `import.meta.url === \`file://${process.argv[1]}\`` — der naheliegende
@@ -162,17 +186,32 @@ const direktAufgerufen =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (direktAufgerufen) {
-  const datei = process.argv[2];
-  if (!datei) {
-    console.error('Aufruf: node werkzeug/pruefe-lektion.mjs <datei.mdx>');
-    process.exit(2);
-  }
-  const ergebnis = pruefeLektionsText(readFileSync(datei, 'utf8'));
-  if (ergebnis.ok) {
-    console.log(`${datei}: in Ordnung`);
+  const dateien = process.argv.slice(2);
+  if (dateien.length === 0) {
+    console.error('Aufruf: node werkzeug/pruefe-lektion.mjs <datei.mdx> [<datei.mdx> …]');
+    process.exitCode = 2;
   } else {
-    console.error(`${datei}: ${ergebnis.maengel.length} Mangel/Mängel\n`);
-    for (const m of ergebnis.maengel) console.error(`  - ${m}`);
-    process.exit(1);
+    // Der Index einmal je Aufruf, nicht je Datei: Er umfasst alle Rohdateien
+    // unter quellen/ im Arbeitsverzeichnis, auch Nachbarabschnitte, und fehlt
+    // quellen/ (ein Klon von GitHub), heisst es „nicht geprueft".
+    const roh = liesRohIndex(process.cwd());
+    let abschriften = 0;
+    for (const datei of dateien) {
+      const text = readFileSync(datei, 'utf8');
+      const ergebnis = pruefeLektionsText(text);
+      const wortlaut = roh === null ? [] : pruefeWortlaut(text, roh.index);
+      abschriften += wortlaut.length;
+      const maengel = [...(ergebnis.ok ? [] : ergebnis.maengel), ...wortlaut];
+      if (maengel.length === 0) {
+        console.log(`${datei}: in Ordnung`);
+      } else {
+        console.error(`${datei}: ${maengel.length} Mangel/Mängel\n`);
+        for (const m of maengel) console.error(`  - ${m}`);
+        process.exitCode = 1;
+      }
+    }
+    // Ohne Rohdateien kein Mangel — aber auch kein „in Ordnung".
+    if (roh === null) console.log('Wortlaut nicht geprüft: keine Rohdateien am Rechner.');
+    else if (abschriften === 0) console.log(`Wortlaut: in Ordnung (${roh.dateien} Rohdateien).`);
   }
 }
