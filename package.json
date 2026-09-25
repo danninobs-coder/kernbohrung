@@ -13,6 +13,7 @@
     "preview:handy": "astro preview --host",
     "check": "astro check",
     "ingest": "node werkzeug/ingest.mjs",
+    "auftrag": "node werkzeug/auftrag.mjs",
     "fixtures": "node werkzeug/fixtures/erzeuge.mjs tests/fixtures",
     "pruefe-lektion": "node werkzeug/pruefe-lektion.mjs",
     "test": "vitest run",
