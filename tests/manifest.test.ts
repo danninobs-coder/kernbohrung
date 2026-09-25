@@ -6,6 +6,7 @@ import {
   baueManifest,
   dateiHash,
   inhaltsHash,
+  liesDokumentManifest,
   MANIFEST_FASSUNG,
   MANIFEST_FASSUNG_DOKUMENT,
   standAusHashes,
@@ -261,5 +262,74 @@ describe('baueDokumentManifest', () => {
     expect(() => baueDokumentManifest({ art: 'folien', originale: ohne, roh, gestempeltAm: 'jetzt' })).toThrow(
       /dateiHash fehlt fuer "M7.pdf"/,
     );
+  });
+});
+
+/**
+ * Das Gegenstueck zu `baueDokumentManifest`: Die Werkzeuge lesen das Manifest
+ * der Fassung 3 zurueck — `ansicht` den Folienbereich eines Abschnitts,
+ * `pruefe-quelle` den Stand und die Seitenlisten. Es wirft nie; was nicht
+ * passt, kommt als Grund zurueck, den ein Werkzeug in seinen Satz setzt.
+ */
+describe('liesDokumentManifest', () => {
+  const originale = [
+    { datei: 'M7.pdf', dateiHash: 'sha256:' + 'a'.repeat(64), seiten: 35, gliederung: 'agenda', beiwerkZeichen: 6676 },
+    { datei: 'M9.pdf', dateiHash: 'sha256:' + 'b'.repeat(64), seiten: 13, gliederung: 'einzeln', beiwerkZeichen: 2643 },
+  ];
+  const roh = [
+    { id: 'm07-01-begriff', datei: 'M7.pdf', seiten: [1, 5] as [number, number], nurBild: [], tabellenverdacht: [2] },
+    { id: 'm07-02-prozess', datei: 'M7.pdf', seiten: [6, 35] as [number, number], nurBild: [16, 19], tabellenverdacht: [17, 26] },
+    { id: 'm09-01-folien-1-13', datei: 'M9.pdf', seiten: [1, 13] as [number, number], nurBild: [13], tabellenverdacht: [5, 7] },
+  ];
+  const manifest = () => baueDokumentManifest({ art: 'folien', originale, roh, gestempeltAm: '2026-09-23T08:00:00.000Z' });
+  /** Wie das Einlesen es auf die Platte schreibt. */
+  const alsText = (wert: unknown) => `${JSON.stringify(wert, null, 2)}\n`;
+
+  it('liest das Manifest, wie baueDokumentManifest es baut', () => {
+    expect(liesDokumentManifest(alsText(manifest()))).toEqual({
+      ok: true,
+      manifest: {
+        stand: standAusHashes(originale.map((o) => o.dateiHash)),
+        art: 'folien',
+        originale: [
+          { datei: 'M7.pdf', seiten: 35 },
+          { datei: 'M9.pdf', seiten: 13 },
+        ],
+        roh,
+      },
+    });
+  });
+
+  it('nennt kaputtes JSON als Grund', () => {
+    expect(liesDokumentManifest('{ "fassung": 3,')).toEqual({ ok: false, grund: 'kein gültiges JSON' });
+  });
+
+  it('nennt eine andere Fassung beim Namen', () => {
+    expect(liesDokumentManifest(alsText({ ...manifest(), fassung: 2 }))).toEqual({
+      ok: false,
+      grund: 'Fassung 2, erwartet 3',
+    });
+  });
+
+  it('meldet ein Manifest der Fassung 3, dem ein Feld fehlt', () => {
+    const ohneRoh: Record<string, unknown> = { ...manifest() };
+    delete ohneRoh.roh;
+    expect(liesDokumentManifest(alsText(ohneRoh))).toEqual({ ok: false, grund: 'Fassung 3, aber unvollständig' });
+  });
+
+  it('meldet ein falsch geformtes Feld genauso', () => {
+    // Ein Folienbereich, der rueckwaerts laeuft, ist keiner — ansicht und
+    // pruefe-quelle rechnen mit von <= bis.
+    const rueckwaerts = manifest();
+    rueckwaerts.roh[0].seiten = [5, 1];
+    expect(liesDokumentManifest(alsText(rueckwaerts))).toEqual({ ok: false, grund: 'Fassung 3, aber unvollständig' });
+    const seitenAlsText = { ...manifest(), originale: [{ datei: 'M7.pdf', seiten: '35' }] };
+    expect(liesDokumentManifest(alsText(seitenAlsText))).toEqual({ ok: false, grund: 'Fassung 3, aber unvollständig' });
+  });
+
+  it('sagt es, wenn gar keine Fassung dasteht', () => {
+    // Wortlaut wie in leseManifestauszug: „Fassung undefined" hilft niemandem.
+    expect(liesDokumentManifest('{}')).toEqual({ ok: false, grund: 'ohne Fassung' });
+    expect(liesDokumentManifest('null')).toEqual({ ok: false, grund: 'ohne Fassung' });
   });
 });

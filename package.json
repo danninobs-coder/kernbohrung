@@ -14,6 +14,7 @@
     "check": "astro check",
     "ingest": "node werkzeug/ingest.mjs",
     "auftrag": "node werkzeug/auftrag.mjs",
+    "ansicht": "node werkzeug/ansicht.mjs",
     "fixtures": "node werkzeug/fixtures/erzeuge.mjs tests/fixtures",
     "pruefe-lektion": "node werkzeug/pruefe-lektion.mjs",
     "test": "vitest run",
