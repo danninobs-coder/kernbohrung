@@ -82,19 +82,22 @@ const GeprueftVonSchema = z
   .trim()
   .min(1, 'geprueftVon fehlt — der Lehrplan ist das Review-Gate.');
 
-const PrinzipSchema = z.strictObject({
+const WidgetSchema = z
+  .string()
+  .refine((n) => Object.prototype.hasOwnProperty.call(widgetPruefungen, n), 'kein bekannter Widget-Typ.');
+
+/**
+ * Ein Prinzip, wie es ein Repo-Lehrplan traegt. Seine Id benennt zugleich
+ * seine Lektion: `inhalt/lektionen/<id>.mdx`, bei Repos wie bei Lehrmaterial.
+ */
+const RepoPrinzipSchema = z.strictObject({
   id: IdSchema,
   satz: z.string().trim().min(1).max(200, 'Ein Prinzip ist ein Satz, kein Absatz.'),
   warumNichtOffensichtlich: z.string().trim().min(1),
   belege: z
     .array(z.string().trim().min(1))
     .min(1, 'Jedes Prinzip braucht mindestens einen Beleg.'),
-  widget: z
-    .string()
-    .refine(
-      (n) => Object.prototype.hasOwnProperty.call(widgetPruefungen, n),
-      'kein bekannter Widget-Typ.',
-    ),
+  widget: WidgetSchema,
   /**
    * Die Quelle behauptet etwas, das sich nicht belegen laesst oder dem Stand
    * der Forschung widerspricht. Ein Satz. Er wandert in die Lektion und steht
@@ -111,6 +114,12 @@ const PrinzipSchema = z.strictObject({
     .optional(),
 });
 
+/**
+ * Das Prinzip bei Buch und Folien: dieselbe Form, nur `widget` optional. Eine
+ * Folienlektion hat oft kein Widget — ihre Interaktion sind die Aufgaben.
+ */
+const LehrmaterialPrinzipSchema = RepoPrinzipSchema.extend({ widget: WidgetSchema.optional() });
+
 const RepoSchema = z
   .strictObject({
     art: z.literal('repo'),
@@ -119,7 +128,7 @@ const RepoSchema = z
     geprueftVon: GeprueftVonSchema,
     geprueftAm: z.string().trim().min(1),
     prinzipien: z
-      .array(PrinzipSchema)
+      .array(RepoPrinzipSchema)
       .min(2)
       .max(HOECHSTZAHL, `höchstens ${HOECHSTZAHL} Prinzipien — verdichten, nicht katalogisieren.`),
   })
@@ -131,34 +140,50 @@ const RepoSchema = z
 /** Seitenzahlen zaehlen ab 1, wie im Original. */
 const SeiteSchema = z.number().int().min(1, 'Seiten zählen ab 1.');
 
+/**
+ * Migration statt „unbekanntes Feld": Bis Plan 2c-1 nannte ein Abschnitt
+ * seine eine Lektion. Jetzt hat er je Prinzip eine, und die Lektion traegt
+ * die Id ihres Prinzips — wie bei Repos.
+ */
+const LEKTION_ENTFAELLT =
+  'lektion gibt es nicht mehr: Die Lektionen eines Abschnitts sind die seiner Prinzipien (Lektion-Id = Prinzip-Id).';
+
 const AbschnittSchema = z
-  .strictObject({
-    /** Reihenfolge-Praefix und Slug, etwa `m07-02-vertragsarten`. */
-    id: IdSchema,
-    titel: z.string().trim().min(1),
-    /**
-     * Immer Pflicht, nicht erst bei mehreren Originalen: Wie viele Originale
-     * es gibt, steht im Manifest, und das kennt dieses Schema nicht. Und der
-     * Compiler muss fuer jede Bildseite wissen, welche Datei er oeffnet.
-     */
-    datei: z.string().trim().min(1),
-    seiten: z
-      .tuple([SeiteSchema, SeiteSchema])
-      .refine(([von, bis]) => von <= bis, 'seiten: erst die erste, dann die letzte Seite.'),
-    status: z.enum(STATUS),
-    grund: z.string().trim().min(1).optional(),
-    lektion: IdSchema.optional(),
-    prinzipien: z
-      .array(PrinzipSchema)
-      .max(
-        HOECHSTZAHL_JE_ABSCHNITT,
-        `höchstens ${HOECHSTZAHL_JE_ABSCHNITT} Prinzipien je Abschnitt — ein Abschnitt mit mehr ist katalogisiert, nicht destilliert.`,
-      )
-      .default([]),
-  })
-  // Beide Richtungen, je fuer grund und lektion: Ein Grund ohne Ablehnung
-  // waere eine Begruendung fuer nichts, eine Lektion neben `offen` eine
-  // Abdeckung, die niemand beschlossen hat.
+  .strictObject(
+    {
+      /** Reihenfolge-Praefix und Slug, etwa `m07-02-vertragsarten`. */
+      id: IdSchema,
+      titel: z.string().trim().min(1),
+      /**
+       * Immer Pflicht, nicht erst bei mehreren Originalen: Wie viele Originale
+       * es gibt, steht im Manifest, und das kennt dieses Schema nicht. Und der
+       * Compiler muss fuer jede Bildseite wissen, welche Datei er oeffnet.
+       */
+      datei: z.string().trim().min(1),
+      seiten: z
+        .tuple([SeiteSchema, SeiteSchema])
+        .refine(([von, bis]) => von <= bis, 'seiten: erst die erste, dann die letzte Seite.'),
+      status: z.enum(STATUS),
+      grund: z.string().trim().min(1).optional(),
+      prinzipien: z
+        .array(LehrmaterialPrinzipSchema)
+        .max(
+          HOECHSTZAHL_JE_ABSCHNITT,
+          `höchstens ${HOECHSTZAHL_JE_ABSCHNITT} Prinzipien je Abschnitt — ein Abschnitt mit mehr ist katalogisiert, nicht destilliert.`,
+        )
+        .default([]),
+    },
+    {
+      error: (iss) =>
+        iss.code === 'unrecognized_keys' && iss.keys.includes('lektion') ? LEKTION_ENTFAELLT : undefined,
+    },
+  )
+  // Beide Richtungen fuer grund: Ein Grund ohne Ablehnung waere eine
+  // Begruendung fuer nichts. Und der Status sagt, ob es Prinzipien gibt:
+  // `offen` noch keine, `beauftragt` null bis drei (vor Durchgang A keine,
+  // danach mindestens eines), `lektion` mindestens eines — zu jedem gibt es
+  // die Lektion gleicher Id, das prueft `pruefeLektionen` —, `abgelehnt`
+  // keines. Verworfene Prinzipien streicht der Mensch am Review-Gate.
   .superRefine((a, ctx) => {
     if (a.status === 'abgelehnt' && a.grund === undefined) {
       ctx.addIssue({ code: 'custom', path: ['grund'], message: 'Ein abgelehnter Abschnitt braucht einen Grund.' });
@@ -166,23 +191,37 @@ const AbschnittSchema = z
     if (a.status !== 'abgelehnt' && a.grund !== undefined) {
       ctx.addIssue({ code: 'custom', path: ['grund'], message: 'grund steht nur bei status abgelehnt.' });
     }
-    if (a.status === 'lektion' && a.lektion === undefined) {
-      ctx.addIssue({ code: 'custom', path: ['lektion'], message: 'Ein Abschnitt mit status lektion nennt seine Lektion.' });
+    if (a.status === 'offen' && a.prinzipien.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['prinzipien'],
+        message: 'Ein offener Abschnitt hat noch keine Prinzipien — erst beauftragen, dann Durchgang A.',
+      });
     }
-    if (a.status !== 'lektion' && a.lektion !== undefined) {
-      ctx.addIssue({ code: 'custom', path: ['lektion'], message: 'lektion steht nur bei status lektion.' });
+    if (a.status === 'abgelehnt' && a.prinzipien.length > 0) {
+      ctx.addIssue({ code: 'custom', path: ['prinzipien'], message: 'Ein abgelehnter Abschnitt hat keine Prinzipien.' });
+    }
+    if (a.status === 'lektion' && a.prinzipien.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['prinzipien'],
+        message: 'Ein Abschnitt mit status lektion braucht mindestens ein Prinzip — seine Lektionen tragen dessen id.',
+      });
     }
   });
 
 type AbschnittRoh = z.infer<typeof AbschnittSchema>;
 
 /**
- * Regeln ueber mehrere Abschnitte: eindeutige Ids, und je Datei steigen die
- * Seitenbereiche auf, ohne sich zu ueberschneiden. Sich beruehrende Bereiche
- * ueberschneiden sich — `[1, 5]` und `[5, 9]` teilen Seite 5.
+ * Regeln ueber mehrere Abschnitte: eindeutige Ids — der Abschnitte und der
+ * Prinzipien, denn eine Prinzip-Id benennt eine Lektionsdatei —, und je Datei
+ * steigen die Seitenbereiche auf, ohne sich zu ueberschneiden. Sich
+ * beruehrende Bereiche ueberschneiden sich — `[1, 5]` und `[5, 9]` teilen
+ * Seite 5.
  */
 function pruefeAbschnitte(l: { abschnitte: readonly AbschnittRoh[] }, ctx: z.RefinementCtx): void {
   const ids = new Set<string>();
+  const prinzipIds = new Set<string>();
   const ende = new Map<string, number>();
   l.abschnitte.forEach((a, i) => {
     if (ids.has(a.id)) {
@@ -199,6 +238,17 @@ function pruefeAbschnitte(l: { abschnitte: readonly AbschnittRoh[] }, ctx: z.Ref
       });
     }
     ende.set(a.datei, Math.max(bisher ?? 0, a.seiten[1]));
+
+    a.prinzipien.forEach((p, j) => {
+      if (prinzipIds.has(p.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['abschnitte', i, 'prinzipien', j, 'id'],
+          message: `Zwei Prinzipien haben die id ${p.id}.`,
+        });
+      }
+      prinzipIds.add(p.id);
+    });
   });
 }
 
@@ -259,7 +309,17 @@ export const LehrplanSchema = z.discriminatedUnion('art', [RepoSchema, BuchSchem
 export type Lehrplan = z.infer<typeof LehrplanSchema>;
 type Lehrmaterial = Extract<Lehrplan, { art: 'buch' | 'folien' }>;
 export type Abschnitt = Lehrmaterial['abschnitte'][number];
-export type Prinzip = z.infer<typeof PrinzipSchema>;
+/** Die Form mit optionalem `widget` — ein Prinzip aus einem Repo passt hinein. */
+export type Prinzip = z.infer<typeof LehrmaterialPrinzipSchema>;
+
+/**
+ * Die Ids aller Prinzipien eines Lehrplans, in ihrer Reihenfolge. Jede
+ * benennt eine Lektion: `inhalt/lektionen/<id>.mdx`. Eine Lektion hat einen
+ * Lehrplaneintrag, wenn ein gueltiger oder wartender Lehrplan ihre Id traegt.
+ */
+export function prinzipIdsVon(l: Lehrplan): string[] {
+  return (l.art === 'repo' ? l.prinzipien : l.abschnitte.flatMap((a) => a.prinzipien)).map((p) => p.id);
+}
 
 /**
  * Das Ergebnis der Pruefung. Drei Faelle, nicht zwei: Ein Lehrplan, dem als
@@ -295,8 +355,8 @@ const localeErrorDe = z.locales?.de?.().localeError;
  * `ctx.addIssue({ message })`) gewinnt bei Zod 4 immer zuerst — das ist hier
  * mit einem kleinen Vorlauf-Test geprueft, nicht angenommen. Die Meldungen im
  * Schema selbst (`vorbehalt`, `geprueftVon`, `ART_FEHLT`, die Obergrenzen,
- * das Id-Muster, Seiten, `grund`/`lektion`, doppelte Ids, Ueberschneidung)
- * bleiben deshalb unveraendert.
+ * das Id-Muster, Seiten, `grund`, Status und Prinzipien, das alte Feld
+ * `lektion`, doppelte Ids, Ueberschneidung) bleiben deshalb unveraendert.
  */
 const deutscheMeldung: z.core.$ZodErrorMap = (iss) => {
   switch (iss.code) {
@@ -332,15 +392,21 @@ const deutscheMeldung: z.core.$ZodErrorMap = (iss) => {
 };
 
 /**
- * Die Lektionen, auf die ein Lehrplan aus Lehrmaterial zeigt, muessen es
- * geben. Das kann Zod nicht wissen; deshalb steht die Pruefung hier.
+ * Ein Abschnitt aus Lehrmaterial mit `status: lektion` hat zu jedem seiner
+ * Prinzipien die Lektion gleicher Id. Das kann Zod nicht wissen; deshalb
+ * steht die Pruefung hier. Unter `beauftragt` fehlen Lektionen noch zu Recht:
+ * Das ist der Zustand nach Durchgang A.
  */
 function pruefeLektionen(lehrplan: Lehrplan, lektionsIds: ReadonlySet<string>): string[] {
   if (lehrplan.art === 'repo') return [];
   return lehrplan.abschnitte.flatMap((a, i) =>
-    a.lektion !== undefined && !lektionsIds.has(a.lektion)
-      ? [`abschnitte.${i}.lektion: Die Lektion ${a.lektion} gibt es nicht (inhalt/lektionen/${a.lektion}.mdx).`]
-      : [],
+    a.status !== 'lektion'
+      ? []
+      : a.prinzipien.flatMap((p, j) =>
+          lektionsIds.has(p.id)
+            ? []
+            : [`abschnitte.${i}.prinzipien.${j}.id: Die Lektion ${p.id} gibt es nicht (inhalt/lektionen/${p.id}.mdx).`],
+        ),
   );
 }
 
@@ -403,11 +469,11 @@ function mitErsetzterFreigabe(
 /**
  * Prueft einen geladenen Lehrplan. Wirft nie.
  *
- * `lektionsIds` sind die Lektionen, die es gibt. Ein Abschnitt mit
- * `status: lektion` muss auf eine davon zeigen — das kann Zod allein nicht
- * wissen, deshalb steht die Pruefung hier und nicht im Schema. Wer eine leere
- * Menge hereinreicht, bekommt jeden solchen Abschnitt als Mangel: Die Pruefung
- * faellt im Zweifel durch, nie durch.
+ * `lektionsIds` sind die Lektionen, die es gibt. Zu jedem Prinzip eines
+ * Abschnitts mit `status: lektion` muss es die Lektion gleicher Id geben —
+ * das kann Zod allein nicht wissen, deshalb steht die Pruefung hier und nicht
+ * im Schema. Wer eine leere Menge hereinreicht, bekommt jedes solche Prinzip
+ * als Mangel: Die Pruefung faellt im Zweifel durch, nie durch.
  */
 export function pruefeLehrplan(daten: unknown, lektionsIds: ReadonlySet<string>): Befund {
   const geprueft = LehrplanSchema.safeParse(daten, { error: deutscheMeldung });
@@ -472,6 +538,13 @@ export type Ungueltig = { readonly datei: string; readonly maengel: readonly str
  * `ungueltig`, und die Seite zeigt ihn als Warnung. Fehlt ihm nur die
  * Freigabe — der Zustand zwischen Durchgang A und dem Menschen —, steht er in
  * `wartend`: mit seinen Zahlen auf der Seite, aber markiert.
+ *
+ * Prinzip-Ids sind ueber alle Lehrplaene eindeutig, denn jede benennt eine
+ * Lektionsdatei. Traegt ein Lehrplan eine Id, die schon ein frueherer
+ * gueltiger oder wartender traegt, wird er ungueltig — mit einem Mangel je
+ * doppelter Id, hinter den Maengeln, die er als wartender schon hat. Seine
+ * Ids zaehlen dann fuer die spaeteren nicht mehr mit: Ein ungueltiger
+ * Lehrplan traegt nichts.
  */
 export function lehrplaeneAusTexten(
   texte: Readonly<Record<string, string>>,
@@ -480,13 +553,30 @@ export function lehrplaeneAusTexten(
   const gueltig: Lehrplan[] = [];
   const wartend: Lehrplan[] = [];
   const ungueltig: Ungueltig[] = [];
+  /** Prinzip-Id -> die Datei des frueheren Lehrplans, der sie traegt. */
+  const traeger = new Map<string, string>();
   const eintraege = Object.entries(texte).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   for (const [pfad, text] of eintraege) {
     const datei = pfad.slice(pfad.lastIndexOf('/') + 1);
     const befund = lehrplanAusYaml(text, lektionsIds, datei);
+    if (!befund.ok && !befund.wartet) {
+      ungueltig.push({ datei, maengel: befund.maengel });
+      continue;
+    }
+    const ids = prinzipIdsVon(befund.lehrplan);
+    const doppelt = ids.flatMap((id) => {
+      const andereDatei = traeger.get(id);
+      return andereDatei === undefined
+        ? []
+        : [`(Wurzel): Die Prinzip-Id ${id} steht schon in ${andereDatei}; Lektion und Prinzip teilen sich die Id.`];
+    });
+    if (doppelt.length > 0) {
+      ungueltig.push({ datei, maengel: [...(befund.ok ? [] : befund.maengel), ...doppelt] });
+      continue;
+    }
+    for (const id of ids) traeger.set(id, datei);
     if (befund.ok) gueltig.push(befund.lehrplan);
-    else if (befund.wartet) wartend.push(befund.lehrplan);
-    else ungueltig.push({ datei, maengel: befund.maengel });
+    else wartend.push(befund.lehrplan);
   }
   return { gueltig, wartend, ungueltig };
 }

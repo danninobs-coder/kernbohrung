@@ -3,7 +3,13 @@ import { describe, it, expect } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { ART_FEHLT, HOECHSTZAHL, HOECHSTZAHL_JE_ABSCHNITT, pruefeLehrplan } from '../src/lib/lehrplan';
+import {
+  ART_FEHLT,
+  HOECHSTZAHL,
+  HOECHSTZAHL_JE_ABSCHNITT,
+  lehrplaeneAusTexten,
+  pruefeLehrplan,
+} from '../src/lib/lehrplan';
 import { liesLehrplan } from '../werkzeug/lehrplan.mjs';
 
 /**
@@ -14,9 +20,13 @@ import { liesLehrplan } from '../werkzeug/lehrplan.mjs';
  * Abschnitt kaputt machen will, reicht den ganzen Abschnitt herein. Im Umbau
  * der Aufgabenfamilie blieben zweimal Schemaregeln ohne Test, weil eine Hilfe
  * die Eingaben von selbst gueltig machte.
+ *
+ * Eine Lektion je Prinzip, Lektion-Id = Prinzip-Id — wie bei Repos. Ein
+ * Abschnitt fuehrt keine eigene Lektion; seine Lektionen sind die seiner
+ * Prinzipien.
  */
 
-const LEKTIONEN = new Set(['pauschal-heisst-nicht-komplett']);
+const LEKTIONEN = new Set(['pauschal-heisst-nicht-komplett', 'einheitspreis-folgt-der-menge']);
 
 const prinzip = {
   id: 'pauschal-verlagert-mengenrisiko',
@@ -24,6 +34,24 @@ const prinzip = {
   warumNichtOffensichtlich: 'Pauschal klingt nach komplett.',
   belege: ['m07-2-vertragsarten'],
   widget: 'Pipeline',
+};
+
+/** Das Prinzip oben unter einer anderen id — sie benennt zugleich seine Lektion. */
+function prinzipMit(id: string): Record<string, unknown> {
+  return { ...prinzip, id };
+}
+
+/** Ein fuer sich gueltiger Repo-Lehrplan — fuer den Vergleich mit dem Repo. */
+const repoBasis = {
+  art: 'repo',
+  quelle: 'awesome-llm-apps',
+  stand: 'a13701eae315a81e1011a4304a6b5e741ea0a984',
+  geprueftVon: 'Daniel Nobs',
+  geprueftAm: '2026-09-02',
+  prinzipien: [
+    { id: 'p-1', satz: 'Satz.', warumNichtOffensichtlich: 'Weil.', belege: ['b'], widget: 'Pipeline' },
+    { id: 'p-2', satz: 'Satz.', warumNichtOffensichtlich: 'Weil.', belege: ['b'], widget: 'Pipeline' },
+  ],
 };
 
 const basisAbschnitt = {
@@ -211,14 +239,14 @@ describe('Buch und Folien - wartet auf Freigabe', () => {
   it('bleibt ungueltig, wenn daneben eine Lektion fehlt — und zeigt beide Maengel', () => {
     const daten = folien({
       geprueftVon: '',
-      abschnitte: [abschnitt({ status: 'lektion', lektion: 'gibt-es-nicht' })],
+      abschnitte: [abschnitt({ status: 'lektion', prinzipien: [prinzipMit('gibt-es-nicht')] })],
     });
     const e = pruefeLehrplan(daten, LEKTIONEN);
     if (e.ok) throw new Error('Erwartet war ein Fehlschlag.');
     expect(e.wartet).toBeFalsy();
     expect(e.maengel).toEqual([
       'geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.',
-      'abschnitte.0.lektion: Die Lektion gibt-es-nicht gibt es nicht (inhalt/lektionen/gibt-es-nicht.mdx).',
+      'abschnitte.0.prinzipien.0.id: Die Lektion gibt-es-nicht gibt es nicht (inhalt/lektionen/gibt-es-nicht.mdx).',
     ]);
   });
 
@@ -244,7 +272,7 @@ describe('Buch und Folien - wartet auf Freigabe', () => {
   });
 });
 
-describe('Abschnitte - grund und lektion', () => {
+describe('Abschnitte - grund', () => {
   it('verlangt einen Grund, wenn ein Abschnitt abgelehnt ist', () => {
     expect(maengelVon(mitAbschnitten(abschnitt({ status: 'abgelehnt' })))).toMatch(
       /Ein abgelehnter Abschnitt braucht einen Grund\./,
@@ -275,68 +303,140 @@ describe('Abschnitte - grund und lektion', () => {
     );
   });
 
-  it('verlangt die Lektion, wenn der Status lektion ist', () => {
-    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'lektion' })))).toMatch(
-      /Ein Abschnitt mit status lektion nennt seine Lektion\./,
-    );
-  });
-
-  it('weist eine Lektion neben einem anderen Status zurueck', () => {
-    expect(
-      maengelVon(mitAbschnitten(abschnitt({ status: 'offen', lektion: 'pauschal-heisst-nicht-komplett' }))),
-    ).toMatch(/lektion steht nur bei status lektion\./);
-  });
-
-  it('meldet lektion: null bei status lektion auf Deutsch — ein leeres YAML-Feld, nicht die fehlende Lektion', () => {
-    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'lektion', lektion: null })))).toBe(
-      'abschnitte.0.lektion: ist leer.',
-    );
-  });
-
-  // Bisher nur mit status: offen getestet (oben). Abgelehnt und beauftragt
-  // brauchen die eigene Probe: Bei abgelehnt muss der Abschnitt zugleich
-  // einen Grund tragen, sonst greift die andere Regel zuerst.
-  it('weist eine Lektion bei status abgelehnt zurueck, auch mit Grund', () => {
+  // Spiegelbildlich: grund bisher nur bei offen/beauftragt geprueft (oben).
+  // Bei status lektion muss der Abschnitt zugleich ein Prinzip tragen, zu dem
+  // es die Lektion gibt — sonst greift eine andere Regel zuerst.
+  it('weist einen Grund bei status lektion zurueck, auch mit Prinzip und Lektion', () => {
     expect(
       maengelVon(
         mitAbschnitten(
-          abschnitt({ status: 'abgelehnt', grund: 'reine Titelfolien', lektion: 'pauschal-heisst-nicht-komplett' }),
+          abschnitt({ status: 'lektion', prinzipien: [prinzipMit('pauschal-heisst-nicht-komplett')], grund: 'irgendwas' }),
         ),
-      ),
-    ).toBe('abschnitte.0.lektion: lektion steht nur bei status lektion.');
-  });
-
-  it('weist eine Lektion bei status beauftragt zurueck', () => {
-    expect(
-      maengelVon(mitAbschnitten(abschnitt({ status: 'beauftragt', lektion: 'pauschal-heisst-nicht-komplett' }))),
-    ).toBe('abschnitte.0.lektion: lektion steht nur bei status lektion.');
-  });
-
-  // Spiegelbildlich: grund bisher nur bei offen/beauftragt geprueft (oben).
-  // Bei status lektion muss der Abschnitt zugleich eine Lektion tragen.
-  it('weist einen Grund bei status lektion zurueck, auch mit Lektion', () => {
-    expect(
-      maengelVon(
-        mitAbschnitten(abschnitt({ status: 'lektion', lektion: 'pauschal-heisst-nicht-komplett', grund: 'irgendwas' })),
       ),
     ).toBe('abschnitte.0.grund: grund steht nur bei status abgelehnt.');
   });
+});
 
-  it('nimmt einen Abschnitt mit einer Lektion an, die es gibt', () => {
-    expect(gilt(mitAbschnitten(abschnitt({ status: 'lektion', lektion: 'pauschal-heisst-nicht-komplett' })))).toBe(
+/**
+ * Was der Status ueber die Prinzipien sagt: `offen` hat noch keine,
+ * `beauftragt` null bis drei — vor Durchgang A keine, danach mindestens
+ * eines —, `lektion` mindestens eines und `abgelehnt` keines. Verworfene
+ * Prinzipien streicht der Mensch am Review-Gate; ein Feld dafuer gibt es nicht.
+ */
+describe('Abschnitte - Status und Prinzipien', () => {
+  it('weist Prinzipien bei status offen zurueck — erst beauftragen, dann Durchgang A', () => {
+    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'offen', prinzipien: [prinzip] })))).toBe(
+      'abschnitte.0.prinzipien: Ein offener Abschnitt hat noch keine Prinzipien — erst beauftragen, dann Durchgang A.',
+    );
+  });
+
+  // Mit Grund: Ohne ihn griffe die Regel zum Grund zuerst.
+  it('weist Prinzipien bei status abgelehnt zurueck, auch mit Grund', () => {
+    expect(
+      maengelVon(mitAbschnitten(abschnitt({ status: 'abgelehnt', grund: 'reine Titelfolien', prinzipien: [prinzip] }))),
+    ).toBe('abschnitte.0.prinzipien: Ein abgelehnter Abschnitt hat keine Prinzipien.');
+  });
+
+  it('verlangt bei status lektion mindestens ein Prinzip', () => {
+    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'lektion' })))).toBe(
+      'abschnitte.0.prinzipien: Ein Abschnitt mit status lektion braucht mindestens ein Prinzip — seine Lektionen tragen dessen id.',
+    );
+  });
+
+  it('meldet prinzipien: null bei status lektion auf Deutsch — ein leeres YAML-Feld, nicht das fehlende Prinzip', () => {
+    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'lektion', prinzipien: null })))).toBe(
+      'abschnitte.0.prinzipien: ist leer.',
+    );
+  });
+
+  it('nimmt Prinzipien bei status beauftragt an, auch ohne ihre Lektionen — der Zustand nach Durchgang A', () => {
+    const ohneLektion = [prinzipMit('gibt-es-nicht'), prinzipMit('auch-nicht')];
+    expect(gilt(mitAbschnitten(abschnitt({ status: 'beauftragt', prinzipien: ohneLektion })))).toBe(true);
+  });
+
+  it('nimmt status beauftragt ohne Prinzipien an — der Zustand vor Durchgang A', () => {
+    expect(gilt(mitAbschnitten(abschnitt({ status: 'beauftragt' })))).toBe(true);
+  });
+});
+
+/**
+ * Eine Lektion je Prinzip, Lektion-Id = Prinzip-Id. Ein Abschnitt mit
+ * `status: lektion` ist erst dann fertig, wenn es zu jedem seiner Prinzipien
+ * die Lektion gibt.
+ */
+describe('Abschnitte - die Lektionen ihrer Prinzipien', () => {
+  /** Ein Abschnitt mit status lektion und je einem Prinzip dieser Ids, sonst unveraendert. */
+  const mitLektionen = (...ids: string[]) => abschnitt({ status: 'lektion', prinzipien: ids.map(prinzipMit) });
+
+  it('nimmt einen Abschnitt an, zu dessen Prinzip es die Lektion gibt', () => {
+    expect(gilt(mitAbschnitten(mitLektionen('pauschal-heisst-nicht-komplett')))).toBe(true);
+  });
+
+  it('nimmt einen Abschnitt mit zwei Prinzipien an, zu denen es beide Lektionen gibt', () => {
+    expect(gilt(mitAbschnitten(mitLektionen('pauschal-heisst-nicht-komplett', 'einheitspreis-folgt-der-menge')))).toBe(
       true,
     );
   });
 
-  it('weist eine Lektion zurueck, die es nicht gibt, und nennt die Datei', () => {
-    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'lektion', lektion: 'gibt-es-nicht' })))).toBe(
-      'abschnitte.0.lektion: Die Lektion gibt-es-nicht gibt es nicht (inhalt/lektionen/gibt-es-nicht.mdx).',
+  it('weist ein Prinzip zurueck, dessen Lektion es nicht gibt, und nennt die Datei', () => {
+    expect(maengelVon(mitAbschnitten(mitLektionen('gibt-es-nicht')))).toBe(
+      'abschnitte.0.prinzipien.0.id: Die Lektion gibt-es-nicht gibt es nicht (inhalt/lektionen/gibt-es-nicht.mdx).',
+    );
+  });
+
+  it('nennt von zwei Prinzipien genau das, dessen Lektion fehlt', () => {
+    expect(maengelVon(mitAbschnitten(mitLektionen('pauschal-heisst-nicht-komplett', 'gibt-es-nicht')))).toBe(
+      'abschnitte.0.prinzipien.1.id: Die Lektion gibt-es-nicht gibt es nicht (inhalt/lektionen/gibt-es-nicht.mdx).',
     );
   });
 
   it('faellt ohne bekannte Lektionen durch, nie durch', () => {
-    const daten = mitAbschnitten(abschnitt({ status: 'lektion', lektion: 'pauschal-heisst-nicht-komplett' }));
-    expect(maengelVon(daten, new Set())).toMatch(/gibt es nicht/);
+    expect(maengelVon(mitAbschnitten(mitLektionen('pauschal-heisst-nicht-komplett')), new Set())).toMatch(
+      /gibt es nicht/,
+    );
+  });
+
+  it('weist das alte Feld lektion zurueck und sagt, wo die Lektionen jetzt stehen', () => {
+    expect(maengelVon(mitAbschnitten(abschnitt({ lektion: 'x' })))).toBe(
+      'abschnitte.0: lektion gibt es nicht mehr: Die Lektionen eines Abschnitts sind die seiner Prinzipien (Lektion-Id = Prinzip-Id).',
+    );
+  });
+
+  it('nennt bei einem Abschnitt in der alten Form beides: was weg muss und was fehlt', () => {
+    expect(
+      maengelVon(mitAbschnitten(abschnitt({ status: 'lektion', lektion: 'pauschal-heisst-nicht-komplett' }))),
+    ).toBe(
+      'abschnitte.0: lektion gibt es nicht mehr: Die Lektionen eines Abschnitts sind die seiner Prinzipien (Lektion-Id = Prinzip-Id).' +
+        ' | abschnitte.0.prinzipien: Ein Abschnitt mit status lektion braucht mindestens ein Prinzip — seine Lektionen tragen dessen id.',
+    );
+  });
+});
+
+/**
+ * Eine Folienlektion hat oft kein Widget — ihre Interaktion sind die
+ * Aufgaben. Bei Buch und Folien ist `widget` deshalb optional; bei Repos
+ * bleibt es Pflicht.
+ */
+describe('Prinzipien - widget', () => {
+  it('nimmt ein Prinzip ohne widget bei Folien an und verlangt es im Repo wie bisher', () => {
+    const ohneWidget = ohneFeld(prinzip, 'widget');
+    expect(gilt(mitAbschnitten(abschnitt({ status: 'beauftragt', prinzipien: [ohneWidget] })))).toBe(true);
+    const repo = { ...repoBasis, prinzipien: [ohneFeld(repoBasis.prinzipien[0], 'widget'), repoBasis.prinzipien[1]] };
+    expect(maengelVon(repo)).toBe('prinzipien.0.widget: fehlt.');
+  });
+
+  it('prueft ein widget bei Folien, wenn es dasteht', () => {
+    const falsch = { ...prinzip, widget: 'GibtEsNicht' };
+    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'beauftragt', prinzipien: [falsch] })))).toBe(
+      'abschnitte.0.prinzipien.0.widget: kein bekannter Widget-Typ.',
+    );
+  });
+
+  it('weist ein Fremdfeld im Prinzip eines Abschnitts zurueck — bis auf widget die Form des Repos', () => {
+    const mitNotiz = { ...prinzip, notiz: 'nebenbei' };
+    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'beauftragt', prinzipien: [mitNotiz] })))).toBe(
+      'abschnitte.0.prinzipien.0: unbekanntes Feld: notiz.',
+    );
   });
 });
 
@@ -380,24 +480,42 @@ describe('Abschnitte untereinander', () => {
       false,
     );
   });
+
+  // Die Prinzip-Id benennt die Lektionsdatei: Zwei Prinzipien mit derselben
+  // Id teilten sich eine Lektion.
+  it('weist dieselbe Prinzip-Id in zwei Abschnitten zurueck — am zweiten Vorkommen', () => {
+    const erster = abschnitt({ id: 'm1', seiten: [1, 5], status: 'beauftragt', prinzipien: [prinzip] });
+    const zweiter = abschnitt({ id: 'm2', seiten: [6, 9], status: 'beauftragt', prinzipien: [prinzipMit('anderes'), prinzip] });
+    expect(maengelVon(mitAbschnitten(erster, zweiter))).toBe(
+      'abschnitte.1.prinzipien.1.id: Zwei Prinzipien haben die id pauschal-verlagert-mengenrisiko.',
+    );
+  });
+
+  it('weist dieselbe Prinzip-Id auch im selben Abschnitt zurueck', () => {
+    expect(maengelVon(mitAbschnitten(abschnitt({ status: 'beauftragt', prinzipien: [prinzip, prinzip] })))).toBe(
+      'abschnitte.0.prinzipien.1.id: Zwei Prinzipien haben die id pauschal-verlagert-mengenrisiko.',
+    );
+  });
 });
 
+/** Prinzipien stehen hier unter `beauftragt`: Ein offener Abschnitt hat noch keine. */
 describe('Prinzipien je Abschnitt', () => {
   const prinzipien = (n: number) => Array.from({ length: n }, (_, i) => ({ ...prinzip, id: `prinzip-${i}` }));
+  const beauftragt = (aenderung: Record<string, unknown>) => abschnitt({ status: 'beauftragt', ...aenderung });
 
   it(`nimmt bis zu ${HOECHSTZAHL_JE_ABSCHNITT} Prinzipien je Abschnitt an`, () => {
-    expect(gilt(mitAbschnitten(abschnitt({ prinzipien: prinzipien(HOECHSTZAHL_JE_ABSCHNITT) })))).toBe(true);
+    expect(gilt(mitAbschnitten(beauftragt({ prinzipien: prinzipien(HOECHSTZAHL_JE_ABSCHNITT) })))).toBe(true);
   });
 
   it('weist das vierte Prinzip zurueck und sagt warum', () => {
-    expect(maengelVon(mitAbschnitten(abschnitt({ prinzipien: prinzipien(HOECHSTZAHL_JE_ABSCHNITT + 1) })))).toMatch(
+    expect(maengelVon(mitAbschnitten(beauftragt({ prinzipien: prinzipien(HOECHSTZAHL_JE_ABSCHNITT + 1) })))).toMatch(
       /höchstens 3 Prinzipien je Abschnitt — ein Abschnitt mit mehr ist katalogisiert, nicht destilliert\./,
     );
   });
 
   it('prueft ein Prinzip im Abschnitt wie im Repo — auch seinen Vorbehalt', () => {
     const langer = { ...prinzip, vorbehalt: 'Wort '.repeat(45).trim() };
-    expect(maengelVon(mitAbschnitten(abschnitt({ prinzipien: [langer] })))).toMatch(/Ein Vorbehalt ist ein Satz/);
+    expect(maengelVon(mitAbschnitten(beauftragt({ prinzipien: [langer] })))).toMatch(/Ein Vorbehalt ist ein Satz/);
   });
 
   it(`erlaubt insgesamt mehr als ${HOECHSTZAHL} Prinzipien — die Obergrenze fuer Repos gilt hier nicht`, () => {
@@ -407,13 +525,73 @@ describe('Prinzipien je Abschnitt', () => {
     // insgesamt zu verdichten.
     expect(4 * HOECHSTZAHL_JE_ABSCHNITT).toBeGreaterThan(HOECHSTZAHL);
     const vierAbschnitte = Array.from({ length: 4 }, (_, i) =>
-      abschnitt({
+      beauftragt({
         id: `m07-${i}`,
         seiten: [i * 10 + 1, i * 10 + 9],
         prinzipien: prinzipien(HOECHSTZAHL_JE_ABSCHNITT).map((p, j) => ({ ...p, id: `a${i}-prinzip-${j}` })),
       }),
     );
     expect(gilt(mitAbschnitten(...vierAbschnitte))).toBe(true);
+  });
+});
+
+/**
+ * Prinzip-Ids benennen Lektionsdateien — deshalb sind sie ueber alle
+ * Lehrplaene eindeutig, nicht nur in einem. Es behaelt sie der Lehrplan, der
+ * nach Pfad zuerst kommt; der spaetere wird ungueltig.
+ */
+describe('lehrplaeneAusTexten - Prinzip-Ids ueber alle Lehrplaene', () => {
+  /** Ein Folien-Lehrplan als Text — JSON ist gueltiges YAML —, mit einem beauftragten Abschnitt. */
+  const mitPrinzipien = (quelle: string, aenderung: Record<string, unknown>, ...ids: string[]) =>
+    JSON.stringify(
+      folien({ quelle, abschnitte: [abschnitt({ status: 'beauftragt', prinzipien: ids.map(prinzipMit) })], ...aenderung }),
+    );
+  const schonIn = (id: string, datei: string) =>
+    `(Wurzel): Die Prinzip-Id ${id} steht schon in ${datei}; Lektion und Prinzip teilen sich die Id.`;
+
+  it('weist den spaeteren von zwei Folien-Lehrplaenen mit derselben Prinzip-Id zurueck — der fruehere bleibt gueltig', () => {
+    // In umgekehrter Reihenfolge hereingereicht: Es zaehlt der Pfad, nicht die Eingabe.
+    const { gueltig, wartend, ungueltig } = lehrplaeneAusTexten(
+      {
+        '/lehrplan/b.yaml': mitPrinzipien('b', {}, 'geteilt'),
+        '/lehrplan/a.yaml': mitPrinzipien('a', {}, 'geteilt'),
+      },
+      LEKTIONEN,
+    );
+    expect(gueltig.map((l) => l.quelle)).toEqual(['a']);
+    expect(wartend).toEqual([]);
+    expect(ungueltig).toEqual([{ datei: 'b.yaml', maengel: [schonIn('geteilt', 'a.yaml')] }]);
+  });
+
+  it('gilt auch zwischen Repo und Folien — mit einem Mangel je doppelter Id', () => {
+    const { gueltig, ungueltig } = lehrplaeneAusTexten(
+      {
+        '/lehrplan/awesome.yaml': JSON.stringify(repoBasis),
+        '/lehrplan/bauch.yaml': mitPrinzipien('bauch', {}, 'p-2', 'eigenes', 'p-1'),
+      },
+      LEKTIONEN,
+    );
+    expect(gueltig.map((l) => l.art)).toEqual(['repo']);
+    expect(ungueltig).toEqual([
+      { datei: 'bauch.yaml', maengel: [schonIn('p-2', 'awesome.yaml'), schonIn('p-1', 'awesome.yaml')] },
+    ]);
+  });
+
+  it('zaehlt einen wartenden Lehrplan mit — ein wartender mit doppelter Id wird ungueltig und zeigt alle Maengel', () => {
+    const { wartend, ungueltig } = lehrplaeneAusTexten(
+      {
+        '/lehrplan/a.yaml': mitPrinzipien('a', { geprueftVon: '' }, 'geteilt'),
+        '/lehrplan/b.yaml': mitPrinzipien('b', { geprueftVon: '' }, 'geteilt'),
+      },
+      LEKTIONEN,
+    );
+    expect(wartend.map((l) => l.quelle)).toEqual(['a']);
+    expect(ungueltig).toEqual([
+      {
+        datei: 'b.yaml',
+        maengel: ['geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.', schonIn('geteilt', 'a.yaml')],
+      },
+    ]);
   });
 });
 
@@ -430,7 +608,11 @@ abschnitte:
     datei: M7 Risikomanagement 26.pdf
     seiten: [28, 34]
     status: lektion
-    lektion: pauschal-heisst-nicht-komplett
+    prinzipien:
+      - id: pauschal-heisst-nicht-komplett
+        satz: Ein Pauschalpreis verlagert das Mengenrisiko, nicht das Vollständigkeitsrisiko.
+        warumNichtOffensichtlich: Pauschal klingt nach komplett.
+        belege: [m07-2-vertragsarten]
 `;
 
   /** Legt Lehrplan und Lektionsordner in einem Wegwerfordner an. */
@@ -484,7 +666,11 @@ abschnitte:
     datei: M7 Risikomanagement 26.pdf
     seiten: [28, 34]
     status: lektion
-    lektion: ${lektion}
+    prinzipien:
+      - id: ${lektion}
+        satz: Ein Pauschalpreis verlagert das Mengenrisiko, nicht das Vollständigkeitsrisiko.
+        warumNichtOffensichtlich: Pauschal klingt nach komplett.
+        belege: [m07-2-vertragsarten]
 `;
 
   function mitLehrplan(lektion: string, pruefe: (datei: string) => void): void {
@@ -517,25 +703,24 @@ abschnitte:
 });
 
 describe('keine englische Meldung', () => {
-  /** Ein fuer sich gueltiger Repo-Lehrplan, nur fuer diese Tabelle. */
-  const repoBasis = {
-    art: 'repo',
-    quelle: 'awesome-llm-apps',
-    stand: 'a13701eae315a81e1011a4304a6b5e741ea0a984',
-    geprueftVon: 'Daniel Nobs',
-    geprueftAm: '2026-09-02',
-    prinzipien: [
-      { id: 'p-1', satz: 'Satz.', warumNichtOffensichtlich: 'Weil.', belege: ['b'], widget: 'Pipeline' },
-      { id: 'p-2', satz: 'Satz.', warumNichtOffensichtlich: 'Weil.', belege: ['b'], widget: 'Pipeline' },
-    ],
-  };
-
   // Jede Zeile ist fuer sich schon anderswo exakt geprueft; die Tabelle
   // prueft nur den einen Belang: nie ein Wort aus Zods englischer Vorlage.
   it.each<[string, unknown]>([
     ['grund: null bei abgelehnt', mitAbschnitten(abschnitt({ status: 'abgelehnt', grund: null }))],
     ['leerer grund bei abgelehnt', mitAbschnitten(abschnitt({ status: 'abgelehnt', grund: '' }))],
-    ['lektion: null bei status lektion', mitAbschnitten(abschnitt({ status: 'lektion', lektion: null }))],
+    ['altes Feld lektion: null bei status lektion', mitAbschnitten(abschnitt({ status: 'lektion', lektion: null }))],
+    ['altes Feld lektion', mitAbschnitten(abschnitt({ lektion: 'x' }))],
+    ['Prinzip bei status offen', mitAbschnitten(abschnitt({ status: 'offen', prinzipien: [prinzip] }))],
+    [
+      'Prinzip bei status abgelehnt',
+      mitAbschnitten(abschnitt({ status: 'abgelehnt', grund: 'reine Titelfolien', prinzipien: [prinzip] })),
+    ],
+    ['status lektion ohne Prinzip', mitAbschnitten(abschnitt({ status: 'lektion' }))],
+    [
+      'status lektion, die Lektion fehlt',
+      mitAbschnitten(abschnitt({ status: 'lektion', prinzipien: [prinzipMit('gibt-es-nicht')] })),
+    ],
+    ['dieselbe Prinzip-Id zweimal', mitAbschnitten(abschnitt({ status: 'beauftragt', prinzipien: [prinzip, prinzip] }))],
     ['prinzipien: null im Abschnitt', mitAbschnitten(abschnitt({ prinzipien: null }))],
     ['unbekannter status', mitAbschnitten(abschnitt({ status: 'fertig' }))],
     ['Folien mit isbn', folien({ isbn: '978-3-658-00000-0' })],

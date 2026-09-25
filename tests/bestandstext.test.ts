@@ -41,6 +41,7 @@ const zeile = (aenderung: Partial<Zeile> = {}): Zeile => ({
   id: 'm07-2',
   titel: 'Vertragsarten',
   status: 'offen',
+  lektionen: [],
   datei: 'M7 Risikomanagement 26.pdf',
   seiten: [28, 34],
   vorbehalte: [],

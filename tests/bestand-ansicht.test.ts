@@ -38,10 +38,16 @@ const repo: Quellenbestand = {
       id: 'kein-boden-ist-ein-boden',
       titel: 'Wer keine Relevanzschwelle setzt, hat sie auf minus unendlich gesetzt.',
       status: 'lektion',
-      lektion: 'kein-boden-ist-ein-boden',
+      lektionen: ['kein-boden-ist-ein-boden'],
       vorbehalte: [],
     },
-    { id: 'vertrauen-ist-herkunft', titel: 'Vertrauen hängt an der Herkunft.', status: 'offen', vorbehalte: [] },
+    {
+      id: 'vertrauen-ist-herkunft',
+      titel: 'Vertrauen hängt an der Herkunft.',
+      status: 'offen',
+      lektionen: [],
+      vorbehalte: [],
+    },
   ],
 };
 
@@ -58,7 +64,7 @@ const folien: Quellenbestand = {
       id: 'm07-2-vertragsarten',
       titel: 'Risikomanagement und Vertragswesen',
       status: 'lektion',
-      lektion: 'pauschal-heisst-nicht-komplett',
+      lektionen: ['pauschal-heisst-nicht-komplett'],
       datei: 'M7 Risikomanagement 26.pdf',
       seiten: [28, 34],
       vorbehalte: ['Für die Behaltensquoten gibt es keine belastbare Studie.'],
@@ -67,6 +73,7 @@ const folien: Quellenbestand = {
       id: 'm07-3-titel',
       titel: 'Titelfolien',
       status: 'abgelehnt',
+      lektionen: [],
       grund: 'reine Titelfolien',
       datei: 'M7 Risikomanagement 26.pdf',
       seiten: [35, 35],
@@ -77,9 +84,13 @@ const folien: Quellenbestand = {
 
 const nichts: Abdeckung = { bestand: [], ohneLehrplan: [] };
 
-async function rendere(abdeckung: Abdeckung, ungueltig: readonly Ungueltig[] = []): Promise<string> {
+async function rendere(
+  abdeckung: Abdeckung,
+  ungueltig: readonly Ungueltig[] = [],
+  lektionstitel: ReadonlyMap<string, string> = TITEL,
+): Promise<string> {
   const container = await AstroContainer.create();
-  return container.renderToString(Bestand, { props: { abdeckung, ungueltig, lektionstitel: TITEL } });
+  return container.renderToString(Bestand, { props: { abdeckung, ungueltig, lektionstitel } });
 }
 
 /** Das Stueck HTML einer Zeile — damit ein Treffer nicht aus der Nachbarzeile stammt. */
@@ -115,6 +126,56 @@ describe('Bestand - die Karte einer Quelle', () => {
     const zeile = zeileMit(await rendere({ bestand: [repo], ohneLehrplan: [] }), 'offen');
     expect(zeile).toContain('<span class="zeile-marke">offen</span>');
     expect(zeile).not.toContain('<a ');
+  });
+
+  /**
+   * Eine Lektion je Prinzip: Ein Abschnitt mit zwei Prinzipien hat zwei
+   * Lektionen, und seine Zeile verweist auf beide — jeder Verweis mit
+   * Trennzeichen, sonst liefen die Titel beim Vorlesen ineinander.
+   */
+  it('verweist bei einem Abschnitt mit zwei Lektionen auf beide', async () => {
+    const zweiLektionen: Quellenbestand = {
+      ...folien,
+      zeilen: [
+        {
+          id: 'm07-03-risikomanagement',
+          titel: 'Risikomanagement',
+          status: 'lektion',
+          lektionen: ['a', 'b'],
+          datei: 'M7 Risikomanagement 26.pdf',
+          seiten: [27, 35],
+          vorbehalte: [],
+        },
+      ],
+    };
+    const titel = new Map([
+      ['a', 'A'],
+      ['b', 'B'],
+    ]);
+    const zeile = zeileMit(await rendere({ bestand: [zweiLektionen], ohneLehrplan: [] }, [], titel), 'lektion');
+    expect(zeile).toContain(
+      '<p class="zeile-status"><span class="zeile-marke">mit Lektion</span> · <a href="/lektion/a/">A</a> · <a href="/lektion/b/">B</a></p>',
+    );
+  });
+
+  it('zeigt bei einer Zeile ohne Lektion nur die Marke', async () => {
+    // Beauftragt, nach Durchgang A: Prinzipien stehen da, Lektionen noch nicht.
+    const beauftragt: Quellenbestand = {
+      ...folien,
+      zeilen: [
+        {
+          id: 'm07-04-vertragsarten',
+          titel: 'Vertragsarten',
+          status: 'beauftragt',
+          lektionen: [],
+          datei: 'M7 Risikomanagement 26.pdf',
+          seiten: [36, 40],
+          vorbehalte: [],
+        },
+      ],
+    };
+    const zeile = zeileMit(await rendere({ bestand: [beauftragt], ohneLehrplan: [] }), 'beauftragt');
+    expect(zeile).toContain('<p class="zeile-status"><span class="zeile-marke">beauftragt</span></p>');
   });
 
   it('zeigt bei Folien Fundstelle, Grund und Vorbehalt', async () => {

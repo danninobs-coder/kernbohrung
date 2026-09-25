@@ -1,4 +1,4 @@
-import type { Abschnitt, Lehrplan, Prinzip, Status } from './lehrplan';
+import { prinzipIdsVon, type Abschnitt, type Lehrplan, type Prinzip, type Status } from './lehrplan';
 import type { Manifestauszug } from './manifestauszug';
 
 /**
@@ -6,12 +6,13 @@ import type { Manifestauszug } from './manifestauszug';
  *
  * Rein — kein Dateizugriff, kein Astro. Das Einlesen passiert in der Seite
  * /bibliothek zur Bauzeit; hier wird nur verrechnet. Die Lehrplaene sind
- * gegen dieselben `lektionsIds` geprueft (`pruefeLehrplan`): Ein Abschnitt
- * mit `status: lektion` zeigt deshalb auf eine Lektion, die es gibt.
+ * gegen dieselben `lektionsIds` geprueft (`pruefeLehrplan`): Zu jedem Prinzip
+ * eines Abschnitts mit `status: lektion` gibt es deshalb die Lektion.
  *
- * Fuer Repos gilt ein Prinzip als abgedeckt, wenn es eine Lektion mit
- * derselben Id gibt. Fuer Buch und Folien zaehlt der Status, den der Lehrplan
- * je Abschnitt fuehrt.
+ * Eine Lektion je Prinzip, Lektion-Id = Prinzip-Id — bei Repos wie bei Buch
+ * und Folien. Fuer Repos gilt ein Prinzip als abgedeckt, wenn es seine
+ * Lektion gibt. Fuer Buch und Folien zaehlt der Status, den der Lehrplan je
+ * Abschnitt fuehrt; die Zeile nennt dazu die Lektionen seiner Prinzipien.
  */
 
 export type Zeile = {
@@ -20,8 +21,12 @@ export type Zeile = {
   /** Der Satz des Prinzips oder der Titel des Abschnitts. */
   readonly titel: string;
   readonly status: Status;
-  /** Die Lektion, auf die die Zeile zeigt — nur bei `lektion`. */
-  readonly lektion?: string;
+  /**
+   * Die Lektionen der Zeile, die es gibt: beim Repo die des Prinzips oder
+   * keine, bei Buch und Folien die der Prinzipien des Abschnitts — bei
+   * `lektion` also alle.
+   */
+  readonly lektionen: readonly string[];
   /** Warum abgelehnt — nur bei `abgelehnt`. */
   readonly grund?: string;
   /** Wo der Abschnitt im Original steht — nur bei Buch und Folien. */
@@ -87,8 +92,8 @@ export type Abdeckung = {
   /** Eine Karte je Quelle, nach Kurzname sortiert. */
   readonly bestand: readonly Bestand[];
   /**
-   * Lektionen, auf die kein Prinzip und kein Abschnitt zeigt, sortiert. Die
-   * Seite zeigt sie als Warnung und nie als Abdeckung: Eine Lektion, deren
+   * Lektionen, deren Id kein Prinzip eines der Lehrplaene traegt, sortiert.
+   * Die Seite zeigt sie als Warnung und nie als Abdeckung: Eine Lektion, deren
    * Herkunft kein Lehrplan kennt, ist genau die Behauptung ohne Quelle, die
    * das Projekt ausschliesst.
    */
@@ -115,18 +120,19 @@ function zeilenAusPrinzipien(prinzipien: readonly Prinzip[], lektionsIds: Readon
       id: p.id,
       titel: p.satz,
       status: abgedeckt ? 'lektion' : 'offen',
-      lektion: abgedeckt ? p.id : undefined,
+      lektionen: abgedeckt ? [p.id] : [],
       vorbehalte: vorbehalteVon([p]),
     };
   });
 }
 
-function zeilenAusAbschnitten(abschnitte: readonly Abschnitt[]): Zeile[] {
+function zeilenAusAbschnitten(abschnitte: readonly Abschnitt[], lektionsIds: ReadonlySet<string>): Zeile[] {
   return abschnitte.map((a) => ({
     id: a.id,
     titel: a.titel,
     status: a.status,
-    lektion: a.lektion,
+    // Auch unter `beauftragt`: Mitten in Durchgang B steht die erste Lektion schon da.
+    lektionen: a.prinzipien.map((p) => p.id).filter((id) => lektionsIds.has(id)),
     grund: a.grund,
     datei: a.datei,
     seiten: a.seiten,
@@ -191,7 +197,9 @@ export function abdeckung(
     .sort((a, b) => vergleiche(a.quelle, b.quelle))
     .map((l): Bestand => {
       const zeilen =
-        l.art === 'repo' ? zeilenAusPrinzipien(l.prinzipien, lektionsIds) : zeilenAusAbschnitten(l.abschnitte);
+        l.art === 'repo'
+          ? zeilenAusPrinzipien(l.prinzipien, lektionsIds)
+          : zeilenAusAbschnitten(l.abschnitte, lektionsIds);
       return {
         quelle: l.quelle,
         art: l.art,
@@ -206,7 +214,9 @@ export function abdeckung(
       };
     });
 
-  const bekannt = new Set(bestand.flatMap((b) => b.zeilen.flatMap((z) => (z.lektion === undefined ? [] : [z.lektion]))));
+  // Jede Prinzip-Id, nicht nur die der fertigen Zeilen: Auch die Lektion
+  // eines Prinzips unter `beauftragt` hat ihren Lehrplaneintrag.
+  const bekannt = new Set(lehrplaene.flatMap(prinzipIdsVon));
   const ohneLehrplan = [...lektionsIds].filter((id) => !bekannt.has(id)).sort(vergleiche);
   return { bestand, ohneLehrplan };
 }

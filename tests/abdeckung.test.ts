@@ -72,9 +72,12 @@ function abschnitt(id: string, von: number, status: string, extra: Record<string
   return { id, titel: `Titel ${id}`, datei: 'M7.pdf', seiten: [von, von + 1], status, ...extra };
 }
 
-/** Fuenf Abschnitte, je einer pro Status und ein zweiter offener. */
+/**
+ * Fuenf Abschnitte, je einer pro Status und ein zweiter offener. Die Lektion
+ * des ersten ist die seines Prinzips: Lektion-Id = Prinzip-Id.
+ */
 const fuenf = [
-  abschnitt('m7-1', 1, 'lektion', { lektion: 'pauschal-heisst-nicht-komplett' }),
+  abschnitt('m7-1', 1, 'lektion', { prinzipien: [prinzip('pauschal-heisst-nicht-komplett')] }),
   abschnitt('m7-2', 3, 'offen'),
   abschnitt('m7-3', 5, 'offen'),
   abschnitt('m7-4', 7, 'beauftragt'),
@@ -89,10 +92,10 @@ describe('abdeckung - Repo', () => {
       LEKTIONEN,
     );
     expect(bestand[0]?.zaehlung).toEqual({ gesamt: 3, mitLektion: 2, offen: 1, beauftragt: 0, abgelehnt: 0 });
-    expect(bestand[0]?.zeilen.map((z) => [z.id, z.status, z.lektion])).toEqual([
-      ['lektion-a', 'lektion', 'lektion-a'],
-      ['fehlt-noch', 'offen', undefined],
-      ['lektion-b', 'lektion', 'lektion-b'],
+    expect(bestand[0]?.zeilen.map((z) => [z.id, z.status, z.lektionen])).toEqual([
+      ['lektion-a', 'lektion', ['lektion-a']],
+      ['fehlt-noch', 'offen', []],
+      ['lektion-b', 'lektion', ['lektion-b']],
     ]);
   });
 
@@ -118,17 +121,18 @@ describe('abdeckung - Buch und Folien', () => {
     expect(bestand[0]?.zaehlung).toEqual({ gesamt: 5, mitLektion: 1, offen: 2, beauftragt: 1, abgelehnt: 1 });
   });
 
-  it('uebernimmt Titel, Grund, Lektion, Datei und Seiten in die Zeile', () => {
+  it('uebernimmt Titel, Grund, Lektionen, Datei und Seiten in die Zeile', () => {
     const { bestand } = abdeckung([lehrmaterial('folien', fuenf)], KEINE_MANIFESTE, LEKTIONEN);
     const [lektion, offen, , , abgelehnt] = bestand[0]?.zeilen ?? [];
-    expect(lektion).toMatchObject({ titel: 'Titel m7-1', status: 'lektion', lektion: 'pauschal-heisst-nicht-komplett', datei: 'M7.pdf', seiten: [1, 2] });
-    expect(offen?.lektion).toBeUndefined();
+    expect(lektion).toMatchObject({ titel: 'Titel m7-1', status: 'lektion', lektionen: ['pauschal-heisst-nicht-komplett'], datei: 'M7.pdf', seiten: [1, 2] });
+    expect(offen?.lektionen).toEqual([]);
     expect(abgelehnt).toMatchObject({ status: 'abgelehnt', grund: 'reine Titelfolien' });
     expect(bestand[0]?.titel).toBe('Projektmanagement');
   });
 
   it('sammelt die Vorbehalte aller Prinzipien eines Abschnitts', () => {
-    const mitDreien = abschnitt('m7-1', 1, 'offen', {
+    // Beauftragt: Ein offener Abschnitt hat noch keine Prinzipien.
+    const mitDreien = abschnitt('m7-1', 1, 'beauftragt', {
       prinzipien: [prinzip('p-1', 'Erster Vorbehalt.'), prinzip('p-2'), prinzip('p-3', 'Zweiter Vorbehalt.')],
     });
     const { bestand } = abdeckung([lehrmaterial('folien', [mitDreien])], KEINE_MANIFESTE, LEKTIONEN);
@@ -144,8 +148,36 @@ describe('abdeckung - Buch und Folien', () => {
   });
 });
 
+/**
+ * Eine Lektion je Prinzip, auch bei Lehrmaterial: Die Zeile eines Abschnitts
+ * fuehrt die Lektionen seiner Prinzipien, die es gibt. Gezaehlt wird weiter
+ * je Abschnitt.
+ */
+describe('abdeckung - eine Lektion je Prinzip', () => {
+  it('fuehrt bei einem Abschnitt mit zwei Prinzipien beide Lektionen — und zaehlt den Abschnitt einmal', () => {
+    const zwei = abschnitt('m7-1', 1, 'lektion', { prinzipien: [prinzip('lektion-a'), prinzip('lektion-b')] });
+    const { bestand } = abdeckung([lehrmaterial('folien', [zwei])], KEINE_MANIFESTE, LEKTIONEN);
+    expect(bestand[0]?.zeilen[0]?.lektionen).toEqual(['lektion-a', 'lektion-b']);
+    expect(bestand[0]?.zaehlung).toEqual({ gesamt: 1, mitLektion: 1, offen: 0, beauftragt: 0, abgelehnt: 0 });
+  });
+
+  it('fuehrt bei einem beauftragten Abschnitt, dessen Prinzip noch keine Lektion hat, keine', () => {
+    const beauftragt = abschnitt('m7-1', 1, 'beauftragt', { prinzipien: [prinzip('fehlt-noch')] });
+    const { bestand } = abdeckung([lehrmaterial('folien', [beauftragt])], KEINE_MANIFESTE, LEKTIONEN);
+    expect(bestand[0]?.zeilen[0]).toMatchObject({ status: 'beauftragt', lektionen: [] });
+  });
+
+  it('zaehlt eine Lektion, deren Id nur ein Prinzip eines beauftragten Abschnitts traegt, nicht zu denen ohne Lehrplaneintrag', () => {
+    // Mitten in Durchgang B: Die erste Lektion ist geschrieben, der Abschnitt noch beauftragt.
+    const beauftragt = abschnitt('m7-1', 1, 'beauftragt', { prinzipien: [prinzip('lektion-a')] });
+    const { bestand, ohneLehrplan } = abdeckung([lehrmaterial('folien', [beauftragt])], KEINE_MANIFESTE, LEKTIONEN);
+    expect(bestand[0]?.zeilen[0]?.lektionen).toEqual(['lektion-a']);
+    expect(ohneLehrplan).toEqual(['lektion-b', 'pauschal-heisst-nicht-komplett']);
+  });
+});
+
 describe('abdeckung - Lektionen ohne Lehrplaneintrag', () => {
-  it('nennt Lektionen, auf die kein Prinzip und kein Abschnitt zeigt — sortiert', () => {
+  it('nennt Lektionen, deren Id kein Prinzip traegt — sortiert', () => {
     const lektionen = new Set(['z-lektion', 'lektion-a', 'a-lektion', 'pauschal-heisst-nicht-komplett']);
     const { ohneLehrplan } = abdeckung(
       [repo('r', prinzip('lektion-a'), prinzip('p-2')), lehrmaterial('folien', fuenf)],
@@ -289,7 +321,7 @@ describe('der heutige Bestand', () => {
  * `geprueftVon`, ein freigegebener hat dort einen Namen stehen.
  */
 describe('abdeckung - Freigabe', () => {
-  const lektionsAbschnitt = abschnitt('m7-1', 1, 'lektion', { lektion: 'pauschal-heisst-nicht-komplett' });
+  const lektionsAbschnitt = abschnitt('m7-1', 1, 'lektion', { prinzipien: [prinzip('pauschal-heisst-nicht-komplett')] });
   const wartendeFolien = {
     art: 'folien',
     quelle: 'bauch-projektmanagement',

@@ -58,13 +58,12 @@ const titelVon = (id: string) => lektionstitel.get(id) ?? id;
           <li class="zeile" data-status={z.status}>
             <p class="zeile-titel">{z.titel}</p>
             {fundstelle(b.art, z) !== null && <p class="zeile-fundstelle">{fundstelle(b.art, z)}</p>}
-            {/* Marke und Verweis auf einer Zeile im Quelltext: Astro loescht
+            {/* Marke und Verweise auf einer Zeile im Quelltext: Astro loescht
                 Leerraum mit Zeilenumbruch zwischen zwei Elementen, und
-                vorgelesen hiesse es dann „mit LektionKein Boden…“. */}
+                vorgelesen hiesse es dann „mit LektionKein Boden…“. Je
+                Lektion ein Verweis — eine Lektion je Prinzip. */}
             <p class="zeile-status">
-              <span class="zeile-marke">{STATUS_TEXT[z.status]}</span>{z.lektion !== undefined && (
-                <> · <a href={`${basis}lektion/${z.lektion}/`}>{titelVon(z.lektion)}</a></>
-              )}
+              <span class="zeile-marke">{STATUS_TEXT[z.status]}</span>{z.lektionen.map((id) => <> · <a href={`${basis}lektion/${id}/`}>{titelVon(id)}</a></>)}
             </p>
             {z.grund !== undefined && (
               <p class="zeile-grund"><strong>Grund:</strong> {z.grund}</p>

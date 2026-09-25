@@ -939,8 +939,16 @@ describe('leseFolienEin - erst rechnen, dann tauschen', () => {
       try {
         await einlesen(wurzel);
         const pfad = path.join(wurzel, 'lehrplan', 'fixture-vorlesung.yaml');
-        // Der erste Abschnitt zeigt auf eine Lektion, die es unter dieser Wurzel nicht gibt.
-        let text = lies(pfad).replace('    status: offen', '    status: lektion\n    lektion: grundlagen-der-planung');
+        // Der erste Abschnitt hat ein Prinzip, dessen Lektion es unter dieser Wurzel nicht gibt.
+        const prinzip = [
+          '    status: lektion',
+          '    prinzipien:',
+          '      - id: grundlagen-der-planung',
+          '        satz: "Wer plant, legt fest, was er spaeter pruefen kann."',
+          '        warumNichtOffensichtlich: "Planen klingt nach Vorhersagen."',
+          '        belege: ["d01-01-grundlagen-der-planung.md"]',
+        ].join('\n');
+        let text = lies(pfad).replace('    status: offen', prinzip);
         if (freigabe) text = text.replace('geprueftVon: ""', 'geprueftVon: "Daniel Nobs"').replace('geprueftAm: ""', 'geprueftAm: "2026-09-24"');
         writeFileSync(pfad, text, 'utf8');
         const aus = await einlesen(wurzel);
@@ -948,7 +956,7 @@ describe('leseFolienEin - erst rechnen, dann tauschen', () => {
         expect(aus.lehrplan.geschrieben).toBe(false);
         expect(vergleichInZeilen(aus.lehrplan.vergleich!)).toEqual(['keine Änderung']);
         expect(aus.warnungen).toEqual([
-          'lehrplan/fixture-vorlesung.yaml ist ungültig: abschnitte.0.lektion: Die Lektion grundlagen-der-planung gibt es nicht ' +
+          'lehrplan/fixture-vorlesung.yaml ist ungültig: abschnitte.0.prinzipien.0.id: Die Lektion grundlagen-der-planung gibt es nicht ' +
             '(inhalt/lektionen/grundlagen-der-planung.mdx). Der Lehrplan bleibt, wie er ist.',
         ]);
       } finally {

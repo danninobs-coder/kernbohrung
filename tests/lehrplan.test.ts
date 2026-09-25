@@ -441,6 +441,29 @@ describe('lehrplaeneAusTexten', () => {
     expect(ungueltig.map((u) => u.datei)).toEqual(['a.yaml', 'b.yaml']);
   });
 
+  /**
+   * Prinzip-Ids benennen Lektionsdateien und sind deshalb ueber alle
+   * Lehrplaene eindeutig. Bisher zaehlte dieselbe Id in zwei Repo-Lehrplaenen
+   * eine Lektion doppelt; jetzt behaelt sie der Lehrplan, der nach Pfad zuerst
+   * kommt.
+   */
+  it('weist von zwei Repo-Lehrplaenen mit denselben Prinzip-Ids den spaeteren zurueck — je Id ein Mangel', () => {
+    const { gueltig, ungueltig } = lehrplaeneAusTexten(
+      { '/lehrplan/zweiter.yaml': yaml({ quelle: 'zweiter' }), '/lehrplan/erster.yaml': yaml({ quelle: 'erster' }) },
+      KEINE,
+    );
+    expect(gueltig.map((l) => l.quelle)).toEqual(['erster']);
+    expect(ungueltig).toEqual([
+      {
+        datei: 'zweiter.yaml',
+        maengel: [
+          '(Wurzel): Die Prinzip-Id recall-vor-precision steht schon in erster.yaml; Lektion und Prinzip teilen sich die Id.',
+          '(Wurzel): Die Prinzip-Id kontext-ist-knapp steht schon in erster.yaml; Lektion und Prinzip teilen sich die Id.',
+        ],
+      },
+    ]);
+  });
+
   it('liefert drei leere Listen, wenn es keinen Lehrplan gibt', () => {
     expect(lehrplaeneAusTexten({}, KEINE)).toEqual({ gueltig: [], wartend: [], ungueltig: [] });
   });
