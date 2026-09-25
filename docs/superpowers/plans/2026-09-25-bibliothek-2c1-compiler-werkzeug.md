@@ -320,11 +320,12 @@ export function liesRohIndex(wurzel)     // quellen/*/roh/*.md → { index, date
 
 ```js
 /** Vor Durchgang A und vor Durchgang B. Rein ueber Texte. */
-export function pruefeVor({ kurzname, lehrplanText, manifestText, lektionsIds })
+export function pruefeVor({ kurzname, lehrplanText, manifestText, lektionsIds, andere })
+// andere: { datei: string, text: string }[] — die uebrigen lehrplan/*.yaml, fuer die Pruefung der Prinzip-Ids ueber alle Lehrplaene
 // → { ok: boolean, maengel: string[], auftrag: { id, titel, datei, seiten:[von,bis], roh: string, nurBild: number[], tabellenverdacht: number[] }[] }
 
 /** Nach Durchgang B. */
-export function pruefeNach({ kurzname, lehrplanText, lektionsIds, wortlaut })
+export function pruefeNach({ kurzname, lehrplanText, lektionsIds, wortlaut, andere })
 // wortlaut: { ids: string[] mit Treffern je Lektion } oder null (nicht geprueft)
 // → { ok: boolean, maengel: string[], hinweise: string[] }
 
@@ -343,12 +344,14 @@ export async function fuehreAus(argv, wurzel, schreibe = (z) => console.log(z))
 - Abschnitt fehlt im Manifest: `Abschnitt ${id} steht nicht im Manifest.`
 - Datei nicht bytegenau im Manifest: `Abschnitt ${id}: die Datei ${JSON.stringify(datei)} steht nicht im Manifest.`
 - kein Auftrag: `Kein Abschnitt ist beauftragt — erst npm run auftrag.`
+- eine Prinzip-Id dieses Lehrplans steht auch in einem anderen Lehrplan (gültig oder wartend, alle übrigen `lehrplan/*.yaml`): `Prinzip ${id}: die Id steht schon in ${datei}; Lektion und Prinzip teilen sich die Id.` — so sieht der Compiler eine Doppelung, bevor Durchgang B die Lektion eines anderen Lehrplans überschreibt (die Seite prüft das nur beim Bau).
 
 `auftrag` enthält je beauftragtem Abschnitt `roh: 'quellen/<k>/roh/<id>.md'` und die Folienlisten **aus dem Manifest**.
 
 `pruefeNach` — Mängel, wörtlich:
 - ein Abschnitt steht noch auf `beauftragt`: `Abschnitt ${id} steht noch auf beauftragt — jeder Abschnitt endet als lektion oder abgelehnt.`
 - der Lehrplan ist ungültig (etwa eine Lektion fehlt): je Mangel `lehrplan/${k}.yaml: ${mangel}`
+- eine Prinzip-Id steht auch in einem anderen Lehrplan: derselbe Satz wie bei `pruefeVor`.
 - ein Wortlaut-Treffer: `Lektion ${id}: Wortlaut zu nah an der Quelle — npm run pruefe-lektion -- inhalt/lektionen/${id}.mdx zeigt die Stelle.`
 - Hinweis (kein Mangel), wenn nicht geprüft: `Wortlaut nicht geprüft: keine Rohdateien am Rechner.`
 - `pruefeNach` verlangt die Freigabe nicht erneut (sie wurde vor Durchgang B gesetzt), meldet einen wartenden Lehrplan aber als Mangel: `lehrplan/${k}.yaml wartet auf Freigabe — Durchgang B beginnt erst nach der Freigabe.`
@@ -370,6 +373,7 @@ bzw. für `--nach`: `lehrplan/<k>.yaml: kein Abschnitt mehr beauftragt, alle Lek
 4. Abschnitt fehlt im Manifest; Datei mit zwei Leerzeichen im Lehrplan, im Manifest mit einem → jeweils wörtlich (`JSON.stringify` zeigt die Leerzeichen).
 5. Kein Abschnitt beauftragt → wörtlich.
 6. Repo-Lehrplan → wörtlich.
+6a. Eine Prinzip-Id, die auch in einem anderen Lehrplan steht (`andere`) → wörtlich, in `pruefeVor` und `pruefeNach`; ein anderer Lehrplan, der sich nicht lesen lässt, zählt nicht mit.
 7. `pruefeNach`: ein Abschnitt noch `beauftragt` → wörtlich; alles `lektion`/`abgelehnt` mit vorhandenen Lektionen → `ok`; Wortlaut-Treffer → wörtlich; `wortlaut: null` → Hinweis, `ok`.
 8. `fuehreAus` `--vor`: Ausgabe wörtlich, Exit 0; Aufruf-Hilfe Exit 2; Mangel Exit 1. `--nach` ebenso.
 
@@ -455,8 +459,8 @@ Die drei Prüfungen aus A5 gelten: mehrfach tragend, nicht offensichtlich, entsc
         vorbehalt: "Nur, wenn die Quelle etwas ohne Beleg behauptet."   # sonst weglassen
 ```
 
-- **Die Id des Prinzips wird die Id der Lektion.** Sie ist über alle Lehrpläne eindeutig; die Prüfung meldet eine Doppelung.
-- **Gibt es zu einem Prinzip schon eine Lektion**, übernimm ihre Id und ihren Satz, statt eine zweite zu planen. Heute gilt das für `pauschal-heisst-nicht-komplett` in `m07-03-risikomanagement`.
+- **Die Id des Prinzips wird die Id der Lektion.** Sie ist über alle Lehrpläne eindeutig; `npm run pruefe-quelle` meldet eine Doppelung.
+- **Gibt es zu einem Prinzip schon eine Lektion ohne Lehrplaneintrag** (auf der Bibliotheksseite unter „Lektionen ohne Lehrplaneintrag“), übernimm ihre Id und ihren Satz, statt eine zweite zu planen. Heute gilt das für `pauschal-heisst-nicht-komplett` in `m07-03-risikomanagement`. Eine Lektion, die schon zu einem anderen Lehrplan gehört, überschreibst du nie.
 - **`vorbehalt`**, wenn die Quelle etwas behauptet, das sich nicht belegen lässt oder dem Stand der Forschung widerspricht. Prüfungsstoff bleibt lernbar, ohne dass die App ihn als gesichert ausgibt. Eine Quelle für den Vorbehalt prüfst du, statt sie aus dem Gedächtnis zu zitieren (bei Studien die DOI gegen Crossref).
 - **Ablehnen mit Grund**, wenn ein Abschnitt nichts Lernbares trägt — etwa reine Titelfolien oder nur Bildbeispiele ohne Aussage: `status: abgelehnt`, `grund: "…"`, keine Prinzipien.
 - **Schreibfehler der Quelle** in Fachbegriffen: Die Lektion nutzt den richtigen Begriff, die Abweichung kommt als Notiz in die Herkunft.
