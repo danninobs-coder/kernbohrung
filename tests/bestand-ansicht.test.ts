@@ -225,7 +225,7 @@ describe('Bestand - Warnungen und leerer Bestand', () => {
     const html = await rendere({ bestand: [repo], ohneLehrplan: ['recall-vor-precision'] });
     expect(html).toContain('<h2>Lektionen ohne Lehrplaneintrag</h2>');
     expect(html).toContain(
-      'Auf diese Lektionen zeigt kein Prinzip und kein Abschnitt eines gültigen oder auf die Freigabe wartenden Lehrplans. Ihre Herkunft ist damit nicht geprüft, und sie zählen hier nicht als Abdeckung. Ob sie nachgetragen oder entfernt werden, entscheidest du.',
+      'Auf diese Lektionen zeigt kein Prinzip eines gültigen oder auf die Freigabe wartenden Lehrplans. Ihre Herkunft ist damit nicht geprüft, und sie zählen hier nicht als Abdeckung. Ob sie nachgetragen oder entfernt werden, entscheidest du.',
     );
     expect(html).toContain('<a href="/lektion/recall-vor-precision/">Recall und Precision sind zwei Probleme, nicht eins</a>');
   });

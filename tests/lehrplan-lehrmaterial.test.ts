@@ -253,22 +253,29 @@ describe('Buch und Folien - wartet auf Freigabe', () => {
   /**
    * `geprueftVon:` ohne Wert — so leert Durchgang A die Freigabe, und YAML
    * liest daraus null. Dann bricht Zod am Feld ab und laesst die Pruefung
-   * ueber alle Abschnitte aus. Stuende danach nur der Freigabe-Mangel da,
+   * ueber alle Abschnitte aus — auch die Pruefung auf doppelte Prinzip-Ids
+   * innerhalb desselben Lehrplans. Stuende danach nur der Freigabe-Mangel da,
    * nennte die Karte die falsche Ursache.
    */
   const doppelt = [abschnitt({ seiten: [1, 27] }), abschnitt()];
+  const doppeltePrinzipId = [
+    abschnitt({ id: 'm07-1-risiko', seiten: [1, 27], status: 'beauftragt', prinzipien: [prinzip] }),
+    abschnitt({ status: 'beauftragt', prinzipien: [prinzip] }),
+  ];
 
   it.each([
-    ['nicht gesetzt', folien({ geprueftVon: null, abschnitte: doppelt })],
-    ['nicht angelegt', ohneFeld(folien({ abschnitte: doppelt }), 'geprueftVon')],
-  ])('bleibt ungueltig, wenn geprueftVon %s ist und zwei Abschnitte dieselbe id haben — und zeigt beide Maengel', (_fall, daten) => {
+    ['nicht gesetzt', folien({ geprueftVon: null, abschnitte: doppelt }), 'abschnitte.1.id: Zwei Abschnitte haben die id m07-2-vertragsarten.'],
+    ['nicht angelegt', ohneFeld(folien({ abschnitte: doppelt }), 'geprueftVon'), 'abschnitte.1.id: Zwei Abschnitte haben die id m07-2-vertragsarten.'],
+    [
+      'nicht gesetzt, mit doppelter Prinzip-Id statt doppelter Abschnitt-Id',
+      folien({ geprueftVon: null, abschnitte: doppeltePrinzipId }),
+      'abschnitte.1.prinzipien.0.id: Zwei Prinzipien haben die id pauschal-verlagert-mengenrisiko.',
+    ],
+  ])('bleibt ungueltig, wenn geprueftVon %s ist — und zeigt beide Maengel', (_fall, daten, zweiterMangel) => {
     const e = pruefeLehrplan(daten, LEKTIONEN);
     if (e.ok) throw new Error('Erwartet war ein Fehlschlag.');
     expect(e.wartet).toBeFalsy();
-    expect(e.maengel).toEqual([
-      'geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.',
-      'abschnitte.1.id: Zwei Abschnitte haben die id m07-2-vertragsarten.',
-    ]);
+    expect(e.maengel).toEqual(['geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.', zweiterMangel]);
   });
 });
 
@@ -538,7 +545,9 @@ describe('Prinzipien je Abschnitt', () => {
 /**
  * Prinzip-Ids benennen Lektionsdateien — deshalb sind sie ueber alle
  * Lehrplaene eindeutig, nicht nur in einem. Es behaelt sie der Lehrplan, der
- * nach Pfad zuerst kommt; der spaetere wird ungueltig.
+ * zuerst an der Reihe ist: erst alle freigegebenen in Pfad-Reihenfolge, dann
+ * alle wartenden in Pfad-Reihenfolge. Ein Lehrplan mit einer schon
+ * vergebenen Id wird ungueltig.
  */
 describe('lehrplaeneAusTexten - Prinzip-Ids ueber alle Lehrplaene', () => {
   /** Ein Folien-Lehrplan als Text — JSON ist gueltiges YAML —, mit einem beauftragten Abschnitt. */
@@ -592,6 +601,50 @@ describe('lehrplaeneAusTexten - Prinzip-Ids ueber alle Lehrplaene', () => {
         maengel: ['geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.', schonIn('geteilt', 'a.yaml')],
       },
     ]);
+  });
+
+  /**
+   * Freigegebene Lehrplaene gehen zuerst: Sie geben ihre Ids ab, bevor ein
+   * wartender Lehrplan an der Reihe ist — auch wenn dessen Datei nach Pfad
+   * frueher kommt. Sonst koennte ein Folien-Lehrplan, der noch auf die
+   * Freigabe wartet, einen laengst freigegebenen Lehrplan verdraengen, nur
+   * weil sein Dateiname alphabetisch vorn steht.
+   */
+  it('laesst einen wartenden Lehrplan nicht vor einem freigegebenen mit gleicher Id gewinnen, auch wenn er nach Pfad frueher kommt', () => {
+    const { gueltig, wartend, ungueltig } = lehrplaeneAusTexten(
+      {
+        '/lehrplan/a.yaml': mitPrinzipien('a', { geprueftVon: '' }, 'geteilt'),
+        '/lehrplan/b.yaml': mitPrinzipien('b', {}, 'geteilt'),
+      },
+      LEKTIONEN,
+    );
+    expect(gueltig.map((l) => l.quelle)).toEqual(['b']);
+    expect(wartend).toEqual([]);
+    expect(ungueltig).toEqual([
+      {
+        datei: 'a.yaml',
+        maengel: ['geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.', schonIn('geteilt', 'b.yaml')],
+      },
+    ]);
+  });
+
+  /**
+   * Ein Lehrplan, der selbst wegen einer doppelten Id ungueltig wird, traegt
+   * danach keine Ids mehr — auch nicht die, in denen er der einzige Traeger
+   * war. b faellt wegen X durch; c bekommt Y trotzdem, als haette es b nie
+   * gegeben.
+   */
+  it('gibt eine Id wieder frei, wenn ihr Lehrplan wegen einer anderen doppelten Id ungueltig wird', () => {
+    const { gueltig, ungueltig } = lehrplaeneAusTexten(
+      {
+        '/lehrplan/a.yaml': mitPrinzipien('a', {}, 'x'),
+        '/lehrplan/b.yaml': mitPrinzipien('b', {}, 'x', 'y'),
+        '/lehrplan/c.yaml': mitPrinzipien('c', {}, 'y'),
+      },
+      LEKTIONEN,
+    );
+    expect(gueltig.map((l) => l.quelle)).toEqual(['a', 'c']);
+    expect(ungueltig).toEqual([{ datei: 'b.yaml', maengel: [schonIn('x', 'a.yaml')] }]);
   });
 });
 

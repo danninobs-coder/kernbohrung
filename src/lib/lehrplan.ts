@@ -540,30 +540,39 @@ export type Ungueltig = { readonly datei: string; readonly maengel: readonly str
  * `wartend`: mit seinen Zahlen auf der Seite, aber markiert.
  *
  * Prinzip-Ids sind ueber alle Lehrplaene eindeutig, denn jede benennt eine
- * Lektionsdatei. Traegt ein Lehrplan eine Id, die schon ein frueherer
- * gueltiger oder wartender traegt, wird er ungueltig — mit einem Mangel je
- * doppelter Id, hinter den Maengeln, die er als wartender schon hat. Seine
- * Ids zaehlen dann fuer die spaeteren nicht mehr mit: Ein ungueltiger
- * Lehrplan traegt nichts.
+ * Lektionsdatei. Vergeben wird zweistufig, nicht nur nach Pfad: zuerst
+ * bekommen die gueltigen (freigegebenen) Lehrplaene ihre Ids, in
+ * Pfad-Reihenfolge, danach die wartenden, ebenfalls in Pfad-Reihenfolge — ein
+ * freigegebener Lehrplan verliert seine Id also nie an einen wartenden, nur
+ * weil dessen Datei alphabetisch frueher kommt. Traegt ein Lehrplan eine Id,
+ * die schon ein frueherer derselben oder der vorigen Stufe traegt, wird er
+ * ungueltig — mit einem Mangel je doppelter Id, hinter den Maengeln, die er
+ * als wartender schon hat. Seine Ids zaehlen dann fuer die spaeteren nicht
+ * mehr mit: Ein ungueltiger Lehrplan traegt nichts, auch dann nicht, wenn
+ * gerade eine doppelte Id ihn selbst ungueltig gemacht hat — traegt ein
+ * Lehrplan b zwei Ids X und Y und faellt wegen X durch, bleibt Y frei fuer
+ * einen spaeteren Lehrplan c, als haette es b nie gegeben. Die Ausgabe-Listen
+ * (`gueltig`, `wartend`, `ungueltig`) bleiben trotz der zwei Stufen in
+ * Pfad-Reihenfolge.
  */
 export function lehrplaeneAusTexten(
   texte: Readonly<Record<string, string>>,
   lektionsIds: ReadonlySet<string>,
 ): { gueltig: Lehrplan[]; wartend: Lehrplan[]; ungueltig: Ungueltig[] } {
-  const gueltig: Lehrplan[] = [];
-  const wartend: Lehrplan[] = [];
-  const ungueltig: Ungueltig[] = [];
-  /** Prinzip-Id -> die Datei des frueheren Lehrplans, der sie traegt. */
-  const traeger = new Map<string, string>();
   const eintraege = Object.entries(texte).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  for (const [pfad, text] of eintraege) {
+  const gelesen = eintraege.map(([pfad, text]) => {
     const datei = pfad.slice(pfad.lastIndexOf('/') + 1);
-    const befund = lehrplanAusYaml(text, lektionsIds, datei);
-    if (!befund.ok && !befund.wartet) {
-      ungueltig.push({ datei, maengel: befund.maengel });
-      continue;
-    }
-    const ids = prinzipIdsVon(befund.lehrplan);
+    return { datei, befund: lehrplanAusYaml(text, lektionsIds, datei) };
+  });
+
+  /** Prinzip-Id -> die Datei des Lehrplans, der sie traegt. */
+  const traeger = new Map<string, string>();
+  /** Datei -> ihre Maengel durch Ids, die schon eine andere Datei traegt. */
+  const doppelteIds = new Map<string, string[]>();
+
+  /** Traegt die Ids eines gueltigen oder wartenden Lehrplans ein, wenn keine Id schon vergeben ist. */
+  function eintragen(datei: string, lehrplan: Lehrplan): void {
+    const ids = prinzipIdsVon(lehrplan);
     const doppelt = ids.flatMap((id) => {
       const andereDatei = traeger.get(id);
       return andereDatei === undefined
@@ -571,10 +580,38 @@ export function lehrplaeneAusTexten(
         : [`(Wurzel): Die Prinzip-Id ${id} steht schon in ${andereDatei}; Lektion und Prinzip teilen sich die Id.`];
     });
     if (doppelt.length > 0) {
+      doppelteIds.set(datei, doppelt);
+      return;
+    }
+    for (const id of ids) traeger.set(id, datei);
+  }
+
+  // Erste Stufe: die gueltigen (freigegebenen) Lehrplaene, in Pfad-Reihenfolge.
+  for (const { datei, befund } of gelesen) {
+    if (befund.ok) eintragen(datei, befund.lehrplan);
+  }
+  // Zweite Stufe: die wartenden, ebenfalls in Pfad-Reihenfolge — sie bekommen
+  // eine Id nur, wenn keine freigegebene Datei sie schon traegt.
+  for (const { datei, befund } of gelesen) {
+    if (!befund.ok && befund.wartet) eintragen(datei, befund.lehrplan);
+  }
+
+  // Dritter Durchgang, nur zum Einsammeln: Die zwei Stufen oben vergeben die
+  // Ids, entscheiden also ueber gueltig/ungueltig — aber die Ausgabe-Listen
+  // sollen in Pfad-Reihenfolge bleiben, nicht in Stufen-Reihenfolge.
+  const gueltig: Lehrplan[] = [];
+  const wartend: Lehrplan[] = [];
+  const ungueltig: Ungueltig[] = [];
+  for (const { datei, befund } of gelesen) {
+    if (!befund.ok && !befund.wartet) {
+      ungueltig.push({ datei, maengel: befund.maengel });
+      continue;
+    }
+    const doppelt = doppelteIds.get(datei);
+    if (doppelt !== undefined) {
       ungueltig.push({ datei, maengel: [...(befund.ok ? [] : befund.maengel), ...doppelt] });
       continue;
     }
-    for (const id of ids) traeger.set(id, datei);
     if (befund.ok) gueltig.push(befund.lehrplan);
     else wartend.push(befund.lehrplan);
   }
