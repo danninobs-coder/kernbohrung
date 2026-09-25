@@ -27,7 +27,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ID as ID_MUSTER } from '../src/lib/lehrplan.ts';
 import { ladePdfjs } from './adapter/dokument.mjs';
-import { liesDokumentManifest } from './manifest.mjs';
+import { liesDokumentManifest } from './dokument-manifest.mjs';
 
 const AUFRUF = 'Aufruf: npm run ansicht -- --name <kurzname> <abschnitt-id> [--folien 16,19-23]';
 
@@ -110,6 +110,25 @@ async function canvasLaden(ladeCanvas) {
 }
 
 /**
+ * Ob `datei` ein blosser Dateiname ist -- ohne Pfadanteil davor.
+ *
+ * Vier eigene Pruefungen statt allein `path.basename`: Das Manifest ist
+ * fremde Eingabe (ein alter Stand, von Hand editiert), und `eintrag.datei`
+ * geht sonst ungeprueft in `path.join(quelle, 'original', eintrag.datei)`
+ * ein -- ein `..` oder ein absoluter Pfad darin liese ausserhalb von
+ * quellen/<k>/original/.
+ *
+ * @param {string} datei
+ * @returns {boolean}
+ */
+function istEinDateiname(datei) {
+  if (datei === '.' || datei === '..') return false;
+  if (datei.includes('/') || datei.includes('\\')) return false;
+  if (/^[A-Za-z]:/.test(datei)) return false;
+  return path.basename(datei) === datei;
+}
+
+/**
  * @typedef {{ folie: number, pfad: string, breite: number, hoehe: number }} Bild
  */
 
@@ -171,6 +190,11 @@ export async function rendereFolien({
   const [von, bis] = eintrag.seiten;
   const auswahl =
     folien === undefined ? Array.from({ length: bis - von + 1 }, (_, i) => von + i) : folienAuswahl(folien, eintrag.seiten);
+  if (!istEinDateiname(eintrag.datei)) {
+    throw new AnsichtFehler(
+      `Das Manifest nennt als Datei ${JSON.stringify(eintrag.datei)} — erwartet ist ein Dateiname ohne Pfad.`,
+    );
+  }
   const originalPfad = path.join(quelle, 'original', eintrag.datei);
   if (!existsSync(originalPfad)) {
     throw new AnsichtFehler(`Das Original ${eintrag.datei} fehlt unter quellen/${kurzname}/original/.`);

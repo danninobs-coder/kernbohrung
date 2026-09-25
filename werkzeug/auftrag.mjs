@@ -31,8 +31,37 @@ export class AuftragFehler extends Error {}
  */
 const ABSCHNITT_ANKER = /^ {2}- id: (\S+)\r?$/gm;
 
-/** Die Statuszeile eines Abschnitts, vier Leerzeichen Einzug. */
-const STATUS_OFFEN = /^ {4}status: offen\r?$/m;
+/**
+ * Die Statuszeile eines Abschnitts, vier Leerzeichen Einzug: `status: offen`
+ * ohne Anfuehrungszeichen, mit doppelten oder mit einfachen, wahlweise mit
+ * Kommentar dahinter. Gruppe 1 haelt das Anfuehrungszeichen (leer, wenn
+ * keines da ist) und erzwingt per Rueckverweis (`\1`) dieselbe Art vorn und
+ * hinten -- `status: "offen'` waere kein Treffer.
+ *
+ * Global, damit ein Block sich auf mehr als einen Treffer pruefen laesst
+ * (siehe `beauftrage`): Findet sich in einem Abschnitt keine oder mehr als
+ * eine Statuszeile, ist das ein Mangel, kein Programmfehler -- die Form kann
+ * von Hand abweichen, ohne dass js-yaml sich daran stoert.
+ *
+ * Ersetzt wird mit `.replace('offen', 'beauftragt')` auf dem ganzen Treffer:
+ * Das erste "offen" darin ist immer der Wert, eines im Kommentar kaeme erst
+ * danach.
+ */
+const STATUS_OFFEN = /^ {4}status: (["']?)offen\1[ \t]*(?:#.*)?\r?$/gm;
+
+/**
+ * Der Code eines gescheiterten Dateizugriffs (`ENOENT`, `EISDIR`, …), sonst
+ * der Name des Fehlers. Gleiches Muster wie `fehlercode` in
+ * werkzeug/adapter/folien.mjs.
+ *
+ * @param {unknown} fehler
+ * @returns {string}
+ */
+function fehlercode(fehler) {
+  if (!(fehler instanceof Error)) return String(fehler);
+  const code = /** @type {Error & { code?: unknown }} */ (fehler).code;
+  return typeof code === 'string' ? code : fehler.name;
+}
 
 /**
  * Die Abschnitte eines Textes, erkannt an ihrer Ankerzeile, mit dem Ende
@@ -88,7 +117,13 @@ function statusUebersicht(abschnitte) {
  * (Kopfkommentar, Anfuehrungszeichen, Reihenfolge, CRLF oder LF). Danach
  * liest es den neuen Text mit js-yaml und prueft: Genau die genannten
  * Abschnitte haben den Status gewechselt, sonst ist nichts anders. Scheitert
- * das, ist es ein Programmierfehler (Stapelabzug) -- kein Mangel.
+ * diese Gegenprobe, ist es ein Programmierfehler (Stapelabzug) -- kein Mangel.
+ *
+ * Findet sich fuer einen laut YAML offenen Abschnitt keine eindeutige
+ * status-Zeile im Text (weder die drei erkannten Formen noch mehr als eine
+ * davon), ist das dagegen ein Mangel: Die Form kann von Hand abweichen, ohne
+ * dass js-yaml sich daran stoert, und das darf das Werkzeug nicht mit einem
+ * Stapelabzug quittieren.
  *
  * Alles oder nichts: Gibt es einen Mangel, aendert sich nichts.
  *
@@ -141,17 +176,21 @@ export function beauftrage(text, ids) {
   const betroffeneAnker = abschnittAnker(text).filter((a) => geaendertSet.has(a.id));
 
   /** @type {{ start: number, ende: number, ersatz: string }[]} */
-  const ersetzungen = betroffeneAnker.map((a) => {
+  const ersetzungen = [];
+  for (const a of betroffeneAnker) {
     const block = text.slice(a.start, a.blockEnde);
-    const treffer = STATUS_OFFEN.exec(block);
-    if (!treffer) {
-      // Kann nach den Pruefungen oben nicht eintreten: statusJeId meldete
-      // 'offen' fuer diese Id, also stand die Zeile im selben Text.
-      throw new Error(`Programmfehler in beauftrage: keine status: offen-Zeile im Abschnitt ${a.id} gefunden.`);
+    const treffer = [...block.matchAll(STATUS_OFFEN)];
+    if (treffer.length !== 1) {
+      maengel.push(
+        `Abschnitt ${a.id}: die Zeile status lässt sich nicht sicher finden — bitte von Hand auf beauftragt setzen.`,
+      );
+      continue;
     }
-    const start = a.start + treffer.index;
-    return { start, ende: start + treffer[0].length, ersatz: treffer[0].replace('offen', 'beauftragt') };
-  });
+    const [einziger] = treffer;
+    const start = a.start + /** @type {number} */ (einziger.index);
+    ersetzungen.push({ start, ende: start + einziger[0].length, ersatz: einziger[0].replace('offen', 'beauftragt') });
+  }
+  if (maengel.length > 0) return { ok: false, maengel };
   ersetzungen.sort((x, y) => x.start - y.start);
 
   let neuerText = '';
@@ -196,8 +235,9 @@ export function beauftrageDatei({ wurzel, kurzname, ids }) {
   let text;
   try {
     text = readFileSync(datei, 'utf8');
-  } catch {
-    throw new AuftragFehler(`${relDatei} gibt es nicht — erst einlesen.`);
+  } catch (fehler) {
+    if (fehlercode(fehler) === 'ENOENT') throw new AuftragFehler(`${relDatei} gibt es nicht — erst einlesen.`);
+    throw new AuftragFehler(`${relDatei} lässt sich nicht lesen (${fehlercode(fehler)}).`);
   }
 
   const ergebnis = beauftrage(text, ids);
@@ -258,7 +298,9 @@ export async function fuehreAus(argv, wurzel, schreibe = (zeile) => console.log(
     return 0;
   } catch (fehler) {
     if (!(fehler instanceof AuftragFehler)) throw fehler;
-    schreibe(fehler.message);
+    // beauftrageDatei fasst mehrere Maengel mit '\n' zu einer message
+    // zusammen; hier wird je Zeile ein eigener schreibe()-Aufruf daraus.
+    for (const zeile of fehler.message.split('\n')) schreibe(zeile);
     return 1;
   }
 }

@@ -6,11 +6,11 @@ import {
   baueManifest,
   dateiHash,
   inhaltsHash,
-  liesDokumentManifest,
   MANIFEST_FASSUNG,
   MANIFEST_FASSUNG_DOKUMENT,
   standAusHashes,
 } from '../werkzeug/manifest.mjs';
+import { liesDokumentManifest } from '../werkzeug/dokument-manifest.mjs';
 
 const FIXTUREN = path.resolve(__dirname, 'fixtures');
 

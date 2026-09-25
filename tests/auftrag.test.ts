@@ -122,6 +122,33 @@ describe('beauftrage', () => {
     expect(ergebnis.text).toContain('status: beauftragt\r\n');
   });
 
+  it('erkennt status: offen mit Anfuehrungszeichen oder Kommentar und bewahrt die Form', () => {
+    for (const roh of [
+      '    status: "offen"',
+      `    status: 'offen'`,
+      '    status: offen  # noch nicht dran',
+    ] as const) {
+      const text = lehrplanText([{ id: 'a1', status: 'offen' }]).replace('    status: offen', roh);
+      const ergebnis = beauftrage(text, ['a1']);
+      if (!ergebnis.ok) throw new Error(ergebnis.maengel.join('\n'));
+      expect(ergebnis.geaendert).toEqual(['a1']);
+      // Nur "offen" wird zu "beauftragt" -- Anfuehrungszeichen und Kommentar bleiben stehen.
+      expect(ergebnis.text).toBe(text.replace('offen', 'beauftragt'));
+    }
+  });
+
+  it('meldet einen Mangel statt abzustuerzen, wenn sich die status-Zeile nicht sicher finden laesst', () => {
+    // Gueltiges YAML -- js-yaml liest den Wert als "offen" --, aber drei
+    // Leerzeichen statt einem passen zu keinem der drei erkannten Muster: ein
+    // Fall, den die Erkennung nicht erraten soll.
+    const text = lehrplanText([{ id: 'a1', status: 'offen' }]).replace('    status: offen', '    status:   offen');
+    const ergebnis = beauftrage(text, ['a1']);
+    expect(ergebnis).toEqual({
+      ok: false,
+      maengel: ['Abschnitt a1: die Zeile status lässt sich nicht sicher finden — bitte von Hand auf beauftragt setzen.'],
+    });
+  });
+
   it('beauftragt mehrere Ids und meldet sie in der Reihenfolge des Lehrplans', () => {
     const text = lehrplanText([
       { id: 'a1', status: 'offen' },
@@ -284,6 +311,22 @@ describe('beauftrageDatei', () => {
       rmSync(wurzel, { recursive: true, force: true });
     }
   });
+
+  it('unterscheidet ENOENT von anderen Lesefehlern', () => {
+    const wurzel = temp();
+    try {
+      const kurzname = 'ist-ein-ordner';
+      // Ein Ordner an der Stelle der Datei: readFileSync scheitert mit
+      // EISDIR, nicht mit ENOENT -- der Lehrplan gibt es ja, nur lesen laesst
+      // er sich nicht.
+      mkdirSync(path.join(wurzel, 'lehrplan', `${kurzname}.yaml`), { recursive: true });
+      expect(() => beauftrageDatei({ wurzel, kurzname, ids: ['x'] })).toThrow(
+        `lehrplan/${kurzname}.yaml lässt sich nicht lesen (EISDIR).`,
+      );
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('fuehreAus', () => {
@@ -369,6 +412,29 @@ describe('fuehreAus', () => {
       const { code, zeilen } = await lauf(['--name', 'nicht-eingelesen', 'a1'], wurzel);
       expect(code).toBe(1);
       expect(zeilen).toEqual(['lehrplan/nicht-eingelesen.yaml gibt es nicht — erst einlesen.']);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('meldet mehrere Maengel als je eigene Zeile, nicht als eine mit eingebettetem Zeilenumbruch', async () => {
+    const wurzel = temp();
+    try {
+      const kurzname = 'fixture-zwei-maengel';
+      const geruest = lehrplanGeruest({
+        kurzname,
+        titel: 'Fixture Zwei Maengel',
+        stand: STAND,
+        abschnitte: [{ id: 'd01-01-erstes', titel: 'Erstes', datei: 'M1.pdf', seiten: [1, 10] }],
+      });
+      writeFileSync(path.join(wurzel, 'lehrplan', `${kurzname}.yaml`), geruest, 'utf8');
+
+      const { code, zeilen } = await lauf(['--name', kurzname, 'nicht-a', 'nicht-b'], wurzel);
+      expect(code).toBe(1);
+      expect(zeilen).toEqual([
+        'Abschnitt nicht-a gibt es in diesem Lehrplan nicht.',
+        'Abschnitt nicht-b gibt es in diesem Lehrplan nicht.',
+      ]);
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }

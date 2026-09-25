@@ -283,6 +283,27 @@ describe('rendereFolien - was fehlt', () => {
       rmSync(wurzel, { recursive: true, force: true });
     }
   });
+
+  it('prueft den Dateinamen aus dem Manifest, bevor es das Original liest', async () => {
+    const wurzel = kopie();
+    try {
+      for (const boese of ['../x.pdf', 'C:/x.pdf']) {
+        const manifest = JSON.parse(readFileSync(quelle(wurzel, 'manifest.json'), 'utf8'));
+        const eintrag = manifest.roh.find((r: any) => r.id === ABSCHNITT);
+        eintrag.datei = boese;
+        writeFileSync(quelle(wurzel, 'manifest.json'), JSON.stringify(manifest), 'utf8');
+
+        const fehler = await abbruch(rendereFolien({ wurzel, kurzname: KURZNAME, abschnitt: ABSCHNITT, geladen }));
+        expect(fehler).toBeInstanceOf(AnsichtFehler);
+        expect(fehler.message).toBe(
+          `Das Manifest nennt als Datei ${JSON.stringify(boese)} — erwartet ist ein Dateiname ohne Pfad.`,
+        );
+        expect(existsSync(quelle(wurzel, 'ansicht'))).toBe(false);
+      }
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('fuehreAus', () => {

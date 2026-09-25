@@ -212,6 +212,9 @@ if (direktAufgerufen) {
     }
     // Ohne Rohdateien kein Mangel — aber auch kein „in Ordnung".
     if (roh === null) console.log('Wortlaut nicht geprüft: keine Rohdateien am Rechner.');
-    else if (abschriften === 0) console.log(`Wortlaut: in Ordnung (${roh.dateien} Rohdateien).`);
+    else if (abschriften === 0) {
+      const wort = roh.dateien === 1 ? 'Rohdatei' : 'Rohdateien';
+      console.log(`Wortlaut: in Ordnung (${roh.dateien} ${wort}).`);
+    }
   }
 }

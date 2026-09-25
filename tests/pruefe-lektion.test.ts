@@ -274,6 +274,23 @@ describe('werkzeug/pruefe-lektion.mjs', () => {
     }
   });
 
+  it('meldet bei genau einer Rohdatei die Einzahl "1 Rohdatei", nicht "1 Rohdateien"', () => {
+    const ordner = mkdtempSync(path.join(tmpdir(), 'kernbohrung-pruefe-lektion-einzahl-'));
+    try {
+      writeFileSync(path.join(ordner, 'sauber.mdx'), gute, 'utf8');
+      const roh = path.join(ordner, 'quellen', 'probe', 'roh');
+      mkdirSync(roh, { recursive: true });
+      writeFileSync(path.join(roh, 'x01-01-probe.md'), ROH, 'utf8');
+
+      const { code, aus, fehler } = pruefe(ordner, 'sauber.mdx');
+      expect(aus).toBe('sauber.mdx: in Ordnung\nWortlaut: in Ordnung (1 Rohdatei).\n');
+      expect(fehler).toBe('');
+      expect(code).toBe(0);
+    } finally {
+      rmSync(ordner, { recursive: true, force: true });
+    }
+  });
+
   it('sagt ohne quellen/ nicht geprueft statt in Ordnung, und das ist kein Mangel', () => {
     const w = wurzel(false);
     try {
