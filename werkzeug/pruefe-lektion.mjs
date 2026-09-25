@@ -8,9 +8,14 @@ import { pathToFileURL } from 'node:url';
 import { load as yamlLesen } from 'js-yaml';
 import { LektionSchema } from '../src/content/schema.ts';
 import { pruefeWidget } from '../src/widgets/pruefung.ts';
-// Ein Kreis mit Absicht, siehe werkzeug/wortlaut.mjs: Der Abgleich liest die
-// Lektion mit FRONTMATTER und widgetAufrufe von hier.
 import { FENSTER, findeAbschriften, lektionFelder, liesRohIndex } from './wortlaut.mjs';
+// FRONTMATTER und widgetAufrufe stehen in werkzeug/lektion-lesen.mjs: Der
+// Wortlaut-Abgleich liest eine Lektion genauso wie diese Pruefung, ohne dass
+// eines der beiden Module das andere importiert. Weiterexportiert, damit ein
+// vorhandener Import von hier gueltig bleibt.
+import { FRONTMATTER, widgetAufrufe } from './lektion-lesen.mjs';
+
+export { FRONTMATTER, widgetAufrufe };
 
 /**
  * Prueft eine Lektion, bevor sie geschrieben wird.
@@ -32,18 +37,6 @@ import { FENSTER, findeAbschriften, lektionFelder, liesRohIndex } from './wortla
  * @typedef {{ ok: false, maengel: string[] }} Abgelehnt
  * @typedef {Angenommen | Abgelehnt} Befund
  */
-
-/**
- * Trennt Frontmatter vom Rumpf.
- *
- * `\r?` ist keine Vorsichtsmassnahme, sondern Pflicht: Das Projekt laeuft unter
- * Windows mit `autocrlf=true`, und `inhalt/lektionen/recall-vor-precision.mdx`
- * hat tatsaechlich CRLF. Ohne `\r?` findet das Muster dort keinen Kopf und die
- * Pruefung meldet „kein Frontmatter" — bei einer vollkommen gueltigen Datei.
- *
- * Exportiert fuer den Wortlaut-Abgleich, der die Lektion genauso zerlegt.
- */
-export const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 /**
  * @param {string} text Inhalt einer .mdx-Datei
@@ -99,62 +92,6 @@ export function pruefeLektionsText(text) {
 }
 
 /**
- * Ein gelesener Widget-Aufruf — oder die Meldung, dass er sich nicht lesen liess.
- *
- * @typedef {{ name: string, ok: true, props: unknown }} AufrufGelesen
- * @typedef {{ name: string, ok: false, fehler: string }} AufrufUnlesbar
- * @typedef {AufrufGelesen | AufrufUnlesbar} Aufruf
- */
-
-/**
- * Findet Widget-Aufrufe im MDX-Rumpf und wertet ihre Parameter aus.
- *
- * Die Parameter sind JSX-Ausdruecke aus Literalen — Objekte, Arrays, Strings,
- * Zahlen, Wahrheitswerte. Sie werden in einer Funktion ohne Zugriff auf die
- * Umgebung ausgewertet. Das ist eng genug fuer erzeugten Inhalt und ehrlicher
- * als ein selbstgebauter Halbparser, der bei geschachtelten Klammern falsch
- * liegt — und die stehen im echten Material: Der Pipeline-Aufruf in
- * `recall-vor-precision.mdx` schachtelt Objekte in Arrays in Objekte.
- *
- * Was hier laeuft, sind ausschliesslich Dateien aus dem eigenen Repo, zur
- * Bauzeit, ohne Netz und ohne Fremdeingabe. Eine Datei, die an dieser Stelle
- * etwas anderes als Literale enthaelt, ist ohnehin kein Kandidat fuer die
- * Auslieferung: Der Aufruf schlaegt dann fehl und wird als Mangel gemeldet.
- *
- * @param {string} rumpf
- * @returns {Generator<Aufruf>}
- */
-export function* widgetAufrufe(rumpf) {
-  const muster = /<([A-Z][A-Za-z0-9]*)\s([\s\S]*?)\/>/g;
-  let treffer;
-  while ((treffer = muster.exec(rumpf)) !== null) {
-    const name = treffer[1];
-    try {
-      yield { name, ok: true, props: werteProps(treffer[2]) };
-    } catch (fehler) {
-      const grund = fehler instanceof Error ? fehler.message : String(fehler);
-      yield { name, ok: false, fehler: `Parameter nicht auswertbar: ${grund}` };
-    }
-  }
-}
-
-/**
- * @param {string} quelle Der Text zwischen Widget-Namen und `/>`
- * @returns {unknown}
- */
-function werteProps(quelle) {
-  const paare = [];
-  const attribut =
-    /([a-zA-Z][a-zA-Z0-9]*)\s*=\s*(\{[\s\S]*?\}|"[^"]*"|'[^']*')(?=\s+[a-zA-Z]|\s*$)/g;
-  let t;
-  while ((t = attribut.exec(quelle)) !== null) {
-    const wert = t[2].startsWith('{') ? t[2].slice(1, -1) : t[2];
-    paare.push(`${JSON.stringify(t[1])}: (${wert})`);
-  }
-  return new Function(`"use strict"; return {${paare.join(',')}};`)();
-}
-
-/**
  * Der Wortlaut einer Lektion gegen den Index der Rohdateien (werkzeug/wortlaut.mjs):
  * je Abschrift ein Mangel. Die Meldung nennt Quelle, Abschnitt, Folie, Feld
  * und Wortbereich — nie den Text, denn der gehoert den Verfassern der Quelle.
@@ -185,6 +122,20 @@ export function pruefeWortlaut(text, index) {
 const direktAufgerufen =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 
+/**
+ * Der Code eines gescheiterten Dateizugriffs (`ENOENT`, `EISDIR`, …), sonst
+ * der Name des Fehlers. Gleiches Muster wie `fehlercode` in
+ * werkzeug/adapter/folien.mjs.
+ *
+ * @param {unknown} fehler
+ * @returns {string}
+ */
+function fehlercode(fehler) {
+  if (!(fehler instanceof Error)) return String(fehler);
+  const code = /** @type {Error & { code?: unknown }} */ (fehler).code;
+  return typeof code === 'string' ? code : fehler.name;
+}
+
 if (direktAufgerufen) {
   const dateien = process.argv.slice(2);
   if (dateien.length === 0) {
@@ -196,8 +147,23 @@ if (direktAufgerufen) {
     // quellen/ (ein Klon von GitHub), heisst es „nicht geprueft".
     const roh = liesRohIndex(process.cwd());
     let abschriften = 0;
+    // Eine fehlende oder unlesbare Datei bricht die uebrigen nicht ab: jede
+    // Datei einzeln abgefangen, am Ende Exit 2 statt des sonstigen 0/1 —
+    // sonst entfielen mit einer nicht aufgeloesten *.mdx (etwa unter
+    // PowerShell) alle folgenden Dateien und die Wortlaut-Zeile mit einem
+    // Stapelabzug.
+    let fehlendeDatei = false;
     for (const datei of dateien) {
-      const text = readFileSync(datei, 'utf8');
+      /** @type {string} */
+      let text;
+      try {
+        text = readFileSync(datei, 'utf8');
+      } catch (fehler) {
+        fehlendeDatei = true;
+        const code = fehlercode(fehler);
+        console.error(code === 'ENOENT' ? `${datei}: gibt es nicht.` : `${datei}: lässt sich nicht lesen (${code}).`);
+        continue;
+      }
       const ergebnis = pruefeLektionsText(text);
       const wortlaut = roh === null ? [] : pruefeWortlaut(text, roh.index);
       abschriften += wortlaut.length;
@@ -216,5 +182,6 @@ if (direktAufgerufen) {
       const wort = roh.dateien === 1 ? 'Rohdatei' : 'Rohdateien';
       console.log(`Wortlaut: in Ordnung (${roh.dateien} ${wort}).`);
     }
+    if (fehlendeDatei) process.exitCode = 2;
   }
 }

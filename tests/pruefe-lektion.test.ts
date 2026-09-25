@@ -320,6 +320,32 @@ describe('werkzeug/pruefe-lektion.mjs', () => {
     }
   });
 
+  // 5: fehlende Datei bricht die uebrigen nicht ab
+  it('meldet eine fehlende Datei einzeln und prueft die uebrigen trotzdem, Exit 2', () => {
+    const w = wurzel(true);
+    try {
+      const { code, aus, fehler } = pruefe(w, 'sauber.mdx', 'nicht-vorhanden.mdx');
+      expect(aus).toBe('sauber.mdx: in Ordnung\nWortlaut: in Ordnung (2 Rohdateien).\n');
+      expect(fehler).toBe('nicht-vorhanden.mdx: gibt es nicht.\n');
+      expect(code).toBe(2);
+    } finally {
+      rmSync(w, { recursive: true, force: true });
+    }
+  });
+
+  it('meldet einen anderen Lesefehler mit seinem Code, statt abzustuerzen', () => {
+    const w = wurzel(true);
+    try {
+      mkdirSync(path.join(w, 'unterordner'));
+      const { code, aus, fehler } = pruefe(w, 'sauber.mdx', 'unterordner');
+      expect(aus).toBe('sauber.mdx: in Ordnung\nWortlaut: in Ordnung (2 Rohdateien).\n');
+      expect(fehler).toBe('unterordner: lässt sich nicht lesen (EISDIR).\n');
+      expect(code).toBe(2);
+    } finally {
+      rmSync(w, { recursive: true, force: true });
+    }
+  });
+
   it('zeigt ohne Datei den Aufruf und endet mit 2', () => {
     const w = wurzel(false);
     try {

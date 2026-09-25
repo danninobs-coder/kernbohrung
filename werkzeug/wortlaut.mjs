@@ -13,8 +13,8 @@
  *
  * Schichten wie bei den anderen Werkzeugen: `woerter`, `rohFolien`,
  * `lektionFelder`, `baueIndex` und `findeAbschriften` sind reine Funktionen
- * ueber Texte, `liesRohIndex` liest unter einer Wurzel. Die Kommandozeile ist
- * `pruefe-lektion`.
+ * ueber Texte, `liesRohIndex` liest unter einer Wurzel. Eine eigene
+ * Kommandozeile prueft damit eine Lektion vor dem Schreiben.
  *
  * **Nie Text nach aussen.** Ein Treffer nennt Quelle, Abschnitt, Folie, Feld
  * und Wortbereich — nie die Woerter selbst. Das Material gehoert seinen
@@ -31,16 +31,14 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 // Namentlich, nicht als Vorgabe-Import: js-yaml 5 liefert unter `import` ein
-// ESM-Buendel ohne Default-Export. Siehe werkzeug/pruefe-lektion.mjs.
+// ESM-Buendel ohne Default-Export. Siehe die Schema-Pruefung der Lektion.
 import { load as yamlLesen, YAMLException } from 'js-yaml';
+import { BINDEWORT } from './adapter/dokument.mjs';
 import { NUR_BILD_ZEILE, WARNZEILE } from './adapter/folien.mjs';
-// Ein Kreis mit Absicht: `pruefe-lektion.mjs` ruft den Abgleich auf, und der
-// Abgleich zerlegt eine Lektion mit demselben Kopfmuster und demselben
-// Widget-Leser wie die Schema-Pruefung — so sehen beide dieselben Felder.
-// Keines der beiden Module ruft beim Laden etwas vom anderen auf, nur in
-// Funktionen; in jeder Ladereihenfolge ist der Kreis geschlossen, bevor er
-// gebraucht wird.
-import { FRONTMATTER, widgetAufrufe } from './pruefe-lektion.mjs';
+// Frontmatter trennen und Widget-Aufrufe auswerten stehen in
+// werkzeug/lektion-lesen.mjs: Die Schema-Pruefung der Lektion liest von dort
+// genauso wie dieser Abgleich — kein Modul importiert das andere.
+import { FRONTMATTER, widgetAufrufe } from './lektion-lesen.mjs';
 
 /** „Mehr als zwoelf Woerter": die Laenge eines Fensters. */
 export const FENSTER = 13;
@@ -62,8 +60,10 @@ export const MINDEST_FUNKTIONSWOERTER = 3;
  * In der Form, die `woerter` liefert: klein, ss statt Eszett. Ohne
  * Einzelbuchstaben, sonst zaehlten Aufzaehlungsbuchstaben (A bis E) als
  * Funktionswoerter. Die Liste ist deutsch wie die Lektionen und das gemessene
- * Material; ein englischer Satz traegt kaum eines davon, eine Abschrift aus
- * einer englischen Quelle faellt deshalb nicht auf.
+ * Material. Eine Abschrift aus einer englischen Quelle faellt trotzdem
+ * gelegentlich zufaellig auf: `in`, `an`, `so` und `was` sind auch englische
+ * Woerter — Ziel der Liste ist das nicht, nur ein Nebeneffekt der
+ * zufaelligen Ueberschneidung.
  */
 export const FUNKTIONSWOERTER = new Set(
   (
@@ -86,12 +86,32 @@ const UNSICHTBAR = /[\u00AD\u200B-\u200D\u2060\uFEFF]/g;
 /** Bindestrich oder Apostroph zwischen zwei Wortzeichen: Ein Kompositum ist ein Wort. */
 const BINDER = /([\p{L}\p{N}])[-\u2010\u2011'\u2019\u00B4]+(?=([\p{L}\p{N}]))/gu;
 
+/**
+ * Bindestrich am Zeilenende, dann ein Zeilenumbruch (mit Leerraum davor und
+ * danach), dann ein Wort. So steht ein Kompositum oft in einer Rohdatei:
+ * `Detail-` am Zeilenende, `Pauschalvertrag` am Anfang der naechsten Zeile —
+ * dasselbe Kompositum, das `zieheTrennungZusammen` (adapter/dokument.mjs)
+ * beim Einlesen selbst schon zusammenzieht, wenn die Zeile darunter direkt
+ * anschliesst. Das Folgewort wird mitgefangen, um es gegen BINDEWORT zu
+ * pruefen, ohne den Treffer zu verbrauchen.
+ */
+const ZEILENENDE_BINDESTRICH = /([\p{L}\p{N}])[-\u2010\u2011]+[ \t]*\r?\n[ \t]*(\p{L}+\.?)/gu;
+
 /** Tausender- und Dezimaltrenner zwischen Ziffern: 1.200.000 ist eine Zahl. */
 const ZIFFERNTRENNER = /(\p{N})[.,](?=\p{N})/gu;
 
 const WORT = /[\p{L}\p{N}]+/gu;
 const ZAHL = /^\p{N}+$/u;
 const ZIFFER = /^\p{N}$/u;
+
+/**
+ * Akut, linkes einfaches Anfuehrungszeichen und Modifikator-Apostroph vor
+ * NFKC auf den geraden Apostroph abbilden. NFKC zerlegt den Akut (´) sonst in
+ * Leerzeichen + kombinierenden Akzent, bevor BINDER ihn sieht — ein
+ * Apostroph-Kompositum wie `geht´s` faellt dann auseinander, obwohl BINDER
+ * denselben geraden Apostroph an anderer Stelle bereits verbindet.
+ */
+const APOSTROPH_VARIANTEN = /[´‘ʼ]/g;
 
 /**
  * Text -> Woerter. NFKC faltet Ligaturen, hochgestellte Ziffern und
@@ -101,11 +121,19 @@ const ZIFFER = /^\p{N}$/u;
  * trennt er (`1-2` sind zwei Zahlen). Alles ausser Buchstaben und Ziffern
  * trennt — auch Aufzaehlungszeichen aus Symbolschriften.
  *
+ * Ein Bindestrich direkt vor einem Zeilenumbruch verbindet ebenso mit dem
+ * Wort danach — ausser das Wort steht in BINDEWORT (adapter/dokument.mjs):
+ * `Kosten-` am Zeilenende, `und Termine` danach bleibt drei Woerter, genau
+ * wie `Kosten- und Termine` auf einer Zeile.
+ *
  * @param {string} text
  * @returns {Wort[]}
  */
 export function woerter(text) {
-  let t = text.normalize('NFKC').replace(UNSICHTBAR, '').toLowerCase();
+  let t = text.replace(APOSTROPH_VARIANTEN, "'").normalize('NFKC').replace(UNSICHTBAR, '').toLowerCase();
+  t = t.replace(ZEILENENDE_BINDESTRICH, (_, a, folgewort) =>
+    BINDEWORT.has(folgewort) ? `${a}- ${folgewort}` : `${a}-${folgewort}`,
+  );
   t = t.replace(BINDER, (_, a, b) => (ZIFFER.test(a) && ZIFFER.test(b) ? `${a} ` : a));
   t = t.replace(ZIFFERNTRENNER, '$1');
   return (t.match(WORT) ?? []).map((w) => {
@@ -171,6 +199,9 @@ const UNSICHTBARE_SCHLUESSEL = new Set(['typ', 'id', 'url']);
 /** Dasselbe Muster wie in `widgetAufrufe`: ein Widget-Aufruf im Rumpf. */
 const WIDGET_AUFRUF = /<([A-Z][A-Za-z0-9]*)\s([\s\S]*?)\/>/g;
 
+/** Eine HTML-Entitaet: `&name;` oder `&#123;` oder `&#x1F600;`. */
+const HTML_ENTITAET = /&(?:[a-zA-Z][a-zA-Z0-9]*|#\d+|#x[0-9a-fA-F]+);/g;
+
 /**
  * Alle sichtbaren Texte einer Lektion, je Feld einer. Ein Feld ist jeder
  * YAML-String im Kopf ausser `typ`, `id` und `url` (jedes Listenelement
@@ -219,7 +250,14 @@ export function lektionFelder(mdx) {
     .replace(/^\s*(?:import|export)\s.*$/gm, '') // MDX-Importe
     .replace(/\]\([^)]*\)/g, ']') // Ziele von Verweisen
     .replace(/https?:\/\/\S+/g, ' ') // nackte Adressen
-    .replace(/<\/?[a-zA-Z][^>]*>/g, ' '); // HTML und JSX
+    .replace(/<\/?[a-zA-Z][^>]*>/g, ' ') // HTML und JSX
+    // HTML-Entitaeten: &shy; ist ein weicher Trennstrich und faellt weg wie
+    // sein Unicode-Gegenstueck (siehe UNSICHTBAR in wortlaut.mjs); &amp;
+    // kommt als das Zeichen zurueck, das es eindeutig meint. Alles andere,
+    // auch &nbsp;, wird ein Leerzeichen: Eine beliebige Entitaet laesst sich
+    // ohne vollstaendige Tabelle nicht sicher decodieren, aber sie stand im
+    // Text fuer sichtbaren Abstand, nicht fuer ein Wortzeichen.
+    .replace(HTML_ENTITAET, (entitaet) => (entitaet === '&shy;' ? '' : entitaet === '&amp;' ? '&' : ' '));
   felder.push({ feld: 'rumpf', text: rumpf });
   return felder;
 }
@@ -252,6 +290,11 @@ function sammle(wert, pfad, felder) {
  * Alle Fenster aller Folien, je Fenster die erste Fundstelle. Ein Fenster
  * reicht nie ueber eine Folie hinaus.
  *
+ * Ein Fenster mit weniger als MINDEST_FUNKTIONSWOERTER verschiedenen
+ * Funktionswoertern wird nicht aufgenommen: `findeAbschriften` uebergeht es
+ * ohnehin (Begriffskette, kein Satz), also spart das Weglassen Speicher, ohne
+ * das Ergebnis zu aendern.
+ *
  * @param {readonly RohQuelle[]} quellen
  * @returns {Index}
  */
@@ -263,8 +306,10 @@ export function baueIndex(quellen) {
       const ort = { quelle, abschnitt, folie: nummer };
       const folge = abgleichWoerter(text);
       for (let start = 0; start + FENSTER <= folge.length; start++) {
-        const fenster = folge.slice(start, start + FENSTER).join(' ');
-        if (!index.has(fenster)) index.set(fenster, ort);
+        const fenster = folge.slice(start, start + FENSTER);
+        if (verschiedeneFunktionswoerter(fenster) < MINDEST_FUNKTIONSWOERTER) continue;
+        const schluessel = fenster.join(' ');
+        if (!index.has(schluessel)) index.set(schluessel, ort);
       }
     }
   }

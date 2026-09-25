@@ -93,6 +93,25 @@ describe('woerter', () => {
     expect(nur('Bau- und Ausbau')).toEqual(['bau', 'und', 'ausbau']);
   });
 
+  it('verbindet einen Bindestrich am Zeilenende mit dem naechsten Wort wie ein Kompositum', () => {
+    expect(nur('Detail-\nPauschalvertrag')).toEqual(['detailpauschalvertrag']);
+    expect(nur('Detail-\r\nPauschalvertrag')).toEqual(['detailpauschalvertrag']);
+    expect(nur('Detail- \n  Pauschalvertrag')).toEqual(['detailpauschalvertrag']);
+  });
+
+  it('verbindet nicht ueber den Zeilenumbruch, wenn das Folgewort ein Bindewort ist', () => {
+    expect(nur('Kosten-\nund Termine')).toEqual(['kosten', 'und', 'termine']);
+    expect(nur('Kosten-\r\nund Termine')).toEqual(['kosten', 'und', 'termine']);
+  });
+
+  it('bildet Akut, linkes Anfuehrungszeichen und Modifikator-Apostroph auf denselben Apostroph ab', () => {
+    expect(nur('geht´s')).toEqual(['gehts']);
+    expect(nur('geht‘s')).toEqual(['gehts']);
+    expect(nur('gehtʼs')).toEqual(['gehts']);
+    expect(nur("geht's")).toEqual(['gehts']);
+    expect(nur('geht´s')).toEqual(nur("geht's"));
+  });
+
   it('liest 1.200.000 als eine Zahl und markiert Zahlen', () => {
     expect(woerter('rund 1.200.000 Euro')).toEqual([
       { w: 'rund', zahl: false },
@@ -136,6 +155,14 @@ describe('rohFolien', () => {
   it('nimmt eine Rohdatei ohne Seitenmarken als eine Einheit mit Folie 0', () => {
     expect(rohFolien('---\nvariante: probe\n---\n\nEin Absatz.\n')).toEqual([
       { nummer: 0, text: '---\nvariante: probe\n---\n\nEin Absatz.' },
+    ]);
+  });
+
+  it('erkennt auch — Seite N — als Marke, nicht nur — Folie N —', () => {
+    const text = ['— Seite 3 —', 'Erster Satz.', '— Seite 4 —', 'Zweiter Satz.'].join('\n');
+    expect(rohFolien(text)).toEqual([
+      { nummer: 3, text: 'Erster Satz.' },
+      { nummer: 4, text: 'Zweiter Satz.' },
     ]);
   });
 });
@@ -191,6 +218,26 @@ describe('lektionFelder', () => {
     const kaputt = lektion('<Pipeline schritte={[ { titel: Suche ohne Anfuehrung } ]} />');
     expect(lektionFelder(kaputt).map((f) => f.feld)).toEqual(['titel', 'rumpf<Pipeline>', 'rumpf']);
   });
+
+  it('behandelt HTML-Entitaeten im Rumpf, ohne sie als eigene Woerter zu zaehlen', () => {
+    const mdx = lektion('Eisen&shy;bahn und Bau&nbsp;Ausbau sowie A&amp;B und Fr&uuml;hbau nach Plan.');
+    const rumpf = lektionFelder(mdx).find((f) => f.feld === 'rumpf');
+    if (!rumpf) throw new Error('kein rumpf-Feld gefunden');
+    expect(woerter(rumpf.text).map((t) => t.w)).toEqual([
+      'eisenbahn',
+      'und',
+      'bau',
+      'ausbau',
+      'sowie',
+      'a',
+      'b',
+      'und',
+      'fr',
+      'hbau',
+      'nach',
+      'plan',
+    ]);
+  });
 });
 
 describe('findeAbschriften', () => {
@@ -243,6 +290,22 @@ describe('findeAbschriften', () => {
     ]);
   });
 
+  it('findet eine Abschrift in einem Widget-Parameter, mit dem Feld benannt wie im Code', () => {
+    const mdx = lektion(
+      `<Pipeline einheit="Dokument" schritte={[{ id: 'a', titel: 'Schritt', wirkung: "${SATZ}" }]} />`,
+    );
+    expect(abschriften(mdx)).toEqual([
+      {
+        feld: 'rumpf<Pipeline>.schritte[0].wirkung',
+        von: 1,
+        bis: 13,
+        quelle: 'probe',
+        abschnitt: 'x01-01-probe',
+        folie: 5,
+      },
+    ]);
+  });
+
   // 9
   it('benennt ein Frontmatter-Feld mit seinem Pfad', () => {
     const mdx = lektion('Eigener Rumpf.', [
@@ -262,6 +325,31 @@ describe('findeAbschriften', () => {
     expect(abschriften(lektion(laenger))).toEqual([
       { feld: 'rumpf', von: 1, bis: 15, quelle: 'probe', abschnitt: 'x01-01-probe', folie: 5 },
     ]);
+  });
+
+  // 1: Kompositum ueber den Zeilenumbruch in der Rohdatei
+  it('findet eine Abschrift, deren Kompositum in der Rohdatei am Zeilenende umbricht', () => {
+    const satz = 'Der Nachunternehmer widerspricht dem Detail-Pauschalvertrag und verlangt eine Prüfung der Mengen vor Ort.';
+    const roh = rohdatei({ id: 'y01-01-kompositum', titel: 'Kompositum', datei: 'Kompositum.pdf', seiten: [1, 1] }, [
+      folie(1, [
+        'Der Nachunternehmer widerspricht dem Detail-',
+        'Pauschalvertrag und verlangt eine Prüfung der Mengen vor Ort.',
+      ]),
+    ]);
+    const index = baueIndex([{ quelle: 'kompositum', abschnitt: 'y01-01-kompositum', folien: rohFolien(roh) }]);
+    expect(findeAbschriften(lektionFelder(lektion(satz)), index)).toEqual([
+      { feld: 'rumpf', von: 1, bis: 13, quelle: 'kompositum', abschnitt: 'y01-01-kompositum', folie: 1 },
+    ]);
+  });
+
+  // 2: verschiedene statt gezaehlte Funktionswoerter
+  it('laesst ein Fenster durch, das nur zwei verschiedene Funktionswoerter enthaelt, auch mit oft wiederholten', () => {
+    const nurZweiVerschiedene = 'Die der die der die der die der die der die der die';
+    expect(woerter(nurZweiVerschiedene)).toHaveLength(13);
+    const index = baueIndex([
+      { quelle: 'probe', abschnitt: 'x02-nur-funktionswoerter', folien: rohFolien(nurZweiVerschiedene) },
+    ]);
+    expect(findeAbschriften(lektionFelder(lektion(nurZweiVerschiedene)), index)).toEqual([]);
   });
 });
 

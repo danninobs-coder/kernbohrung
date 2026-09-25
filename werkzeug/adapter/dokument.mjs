@@ -492,8 +492,15 @@ export const schluessel = (text) => text.replace(/\d+/g, '#').replace(/\s+/g, ' 
  */
 export const zeichen = (text) => text.replace(/\s/g, '').length;
 
-/** Woerter, vor denen ein Strich am Zeilenende kein Trennstrich ist, sondern ein Ergaenzungsstrich. */
-const BINDEWORT = new Set(['und', 'oder', 'bzw', 'bzw.', 'sowie', 'bis', 'als', 'wie', 'noch', 'statt', 'u.', 'o.']);
+/**
+ * Woerter, vor denen ein Strich am Zeilenende kein Trennstrich ist, sondern ein
+ * Ergaenzungsstrich.
+ *
+ * Exportiert fuer den Wortlaut-Abgleich (werkzeug/wortlaut.mjs), der dieselbe
+ * Unterscheidung braucht, wenn ein Kompositum in einer Rohdatei am
+ * Zeilenende umbricht.
+ */
+export const BINDEWORT = new Set(['und', 'oder', 'bzw', 'bzw.', 'sowie', 'bis', 'als', 'wie', 'noch', 'statt', 'u.', 'o.']);
 
 /** Trennstrich, weiches Trennzeichen, Bindestrich-Variante. */
 const TRENNSTRICH = /\p{L}[-­‐]$/u;
