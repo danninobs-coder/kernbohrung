@@ -8,8 +8,8 @@
  * `liesDokumentManifest` weiter in manifest.mjs, luede jeder Import von dort
  * zod mit -- auch werkzeug/ingest-git.mjs, das nur `baueManifest` und
  * `inhaltsHash` braucht und mit dem Lesen eines Dokument-Manifests nichts zu
- * tun hat. Hier bleibt zod bei dem einzigen Werkzeug, das `liesDokumentManifest`
- * tatsaechlich aufruft: werkzeug/ansicht.mjs.
+ * tun hat. Hier bleibt zod bei den Werkzeugen, die `liesDokumentManifest`
+ * tatsaechlich aufrufen: werkzeug/ansicht.mjs und werkzeug/pruefe-quelle.mjs.
  */
 
 import { z } from 'astro/zod';
