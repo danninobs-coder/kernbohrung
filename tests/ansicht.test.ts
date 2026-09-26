@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -495,4 +496,18 @@ describe('fuehreAus', () => {
       rmSync(wurzel, { recursive: true, force: true });
     }
   });
+});
+
+describe('werkzeug/ansicht.mjs direkt aufgerufen', () => {
+  const WURZEL = path.resolve(__dirname, '..');
+
+  // Wie npm run ansicht: node mit dem Pfad relativ zur Wurzel. Erkennte das
+  // Werkzeug den Direktaufruf nicht, endete es wortlos mit 0. Ohne Argumente
+  // liest es keine Datei.
+  it('zeigt ohne Argumente die Aufruf-Hilfe und endet mit 2', () => {
+    const lauf = spawnSync(process.execPath, ['werkzeug/ansicht.mjs'], { cwd: WURZEL, encoding: 'utf8' });
+    expect(lauf.stderr).toBe('');
+    expect(lauf.stdout).toBe(`${AUFRUF}\n`);
+    expect(lauf.status).toBe(2);
+  }, 30_000);
 });

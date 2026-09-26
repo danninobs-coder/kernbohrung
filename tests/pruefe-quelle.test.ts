@@ -1,19 +1,10 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import {
-  chmodSync,
-  closeSync,
-  constants,
-  mkdirSync,
-  mkdtempSync,
-  openSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { SPERRE_GREIFT, sperre } from './hilfen/sperre';
 import { lehrplanGeruest } from '../werkzeug/lehrplan-geruest.mjs';
 import { baueDokumentManifest } from '../werkzeug/manifest.mjs';
 import {
@@ -1359,33 +1350,6 @@ async function lauf(argv: string[], wurzel: string): Promise<{ code: number; zei
   return { code, zeilen };
 }
 
-/**
- * `UV_FS_O_EXLOCK` aus libuv: unter Windows oeffnen, ohne die Datei mit
- * anderen zu teilen. Node fuehrt die Konstante nicht in `fs.constants`, libuv
- * wertet sie trotzdem aus.
- */
-const UV_FS_O_EXLOCK = 0x10000000;
-
-/**
- * Sperrt eine Datei oder einen Ordner gegen Lesen, bis `frei` sie wieder
- * freigibt — wie ein anderes Programm, das eine Datei festhaelt. Unter Windows
- * geoeffnet, ohne sie zu teilen: Wer die Datei zum Lesen oeffnet oder den
- * Ordner auflistet, bekommt EBUSY; stat und das Lesen von Dateien im Ordner
- * gehen weiter. Sonst ohne Leserecht (EACCES); ein Ordner bleibt durchquerbar.
- */
-function sperre(pfad: string): { code: string; frei: () => void } {
-  if (process.platform === 'win32') {
-    const fd = openSync(pfad, UV_FS_O_EXLOCK | constants.O_RDONLY);
-    return { code: 'EBUSY', frei: () => closeSync(fd) };
-  }
-  const vorher = statSync(pfad);
-  chmodSync(pfad, vorher.isDirectory() ? 0o300 : 0o000);
-  return { code: 'EACCES', frei: () => chmodSync(pfad, vorher.mode & 0o777) };
-}
-
-/** Wer als root laeuft, liest trotz entzogenem Leserecht: Dann greift `sperre` ausserhalb von Windows nicht. */
-const SPERRE_GREIFT = process.getuid?.() !== 0;
-
 describe('fuehreAus --vor', () => {
   /** Vor Durchgang B: zwei Abschnitte beauftragt, einer schon mit Prinzip; daneben ein Repo-Lehrplan ohne gemeinsame Id. Noch ohne Rohdatei. */
   const OHNE_ROHDATEI = {
@@ -1874,5 +1838,18 @@ describe('werkzeug/pruefe-quelle.mjs aus einem reinen Node-Prozess', () => {
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }
+  }, 30_000);
+
+  // Wie npm run pruefe-quelle: node mit dem Pfad relativ zur Wurzel. Erkennte
+  // das Werkzeug den Direktaufruf nicht, endete es wortlos mit 0. Ohne
+  // Argumente liest es keine Datei.
+  it('zeigt ohne Argumente die Aufruf-Hilfe und endet mit 2', () => {
+    const ergebnis = spawnSync(process.execPath, ['werkzeug/pruefe-quelle.mjs'], {
+      cwd: path.resolve(__dirname, '..'),
+      encoding: 'utf8',
+    });
+    expect(ergebnis.stderr).toBe('');
+    expect(ergebnis.stdout).toBe(`${AUFRUF}\n`);
+    expect(ergebnis.status).toBe(2);
   }, 30_000);
 });

@@ -10,8 +10,9 @@
  * den Text, `beauftrageDatei` liest und schreibt unter einer Wurzel, und
  * `fuehreAus` ist die Kommandozeile. Den Kurznamen prueft die mittlere Schicht
  * selbst, bevor sie liest -- nicht erst die Kommandozeile. Laesst sich der
- * Lehrplan nicht lesen oder nicht schreiben, bricht der Auftrag mit einem
- * Satz ab, nicht mit einem Stapelabzug.
+ * Lehrplan nicht lesen oder nicht schreiben oder ist er nicht als UTF-8
+ * gespeichert, bricht der Auftrag mit einem Satz ab, nicht mit einem
+ * Stapelabzug.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -106,6 +107,31 @@ function fehlercode(fehler) {
  */
 function istSystemfehler(fehler) {
   return fehler instanceof Error && typeof (/** @type {Error & { syscall?: unknown }} */ (fehler).syscall) === 'string';
+}
+
+/**
+ * Liest die Bytes eines Lehrplans als UTF-8. `fatal`: Bytes, die kein UTF-8
+ * sind, werfen, statt still zu U+FFFD zu werden -- hat ein Editor in ANSI
+ * gespeichert, stuende sonst beim Schreiben jeder Umlaut der Titel als
+ * EF BF BD in der Datei. `ignoreBOM`: Ein BOM am Anfang bleibt im Text und
+ * steht beim Schreiben wieder da; js-yaml liest darueber hinweg.
+ */
+const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+/**
+ * Die Bytes als Text -- `null`, wenn sie kein gueltiges UTF-8 sind. Nur
+ * dieser eine Fehler wird zu `null`; jeder andere geht durch.
+ *
+ * @param {Uint8Array} bytes
+ * @returns {string | null}
+ */
+function alsUtf8(bytes) {
+  try {
+    return UTF8.decode(bytes);
+  } catch (fehler) {
+    if (fehlercode(fehler) === 'ERR_ENCODING_INVALID_ENCODED_DATA') return null;
+    throw fehler;
+  }
 }
 
 /**
@@ -294,6 +320,11 @@ export function beauftrage(text, ids) {
  * `wartet`: Dem Lehrplan fehlt nach dem Auftrag noch die Freigabe.
  * Beauftragen geht auch dann; vor Durchgang A muss sie da sein.
  *
+ * Gelesen wird die Datei als Bytes und als UTF-8 entschluesselt (`UTF8`).
+ * Hat ein Editor sie in einer anderen Kodierung gespeichert, etwa ANSI,
+ * bricht der Auftrag mit einem Satz ab und laesst sie stehen: Beim
+ * Zurueckschreiben waere jeder Umlaut zerstoert.
+ *
  * Scheitert das Schreiben an einem Systemaufruf -- etwa `EBUSY`, weil ein
  * Editor die Datei festhaelt --, wird daraus ein Satz mit dem Code. Ein
  * Fehler im Programm geht durch: Als Schreibfehler verkleidet, suchte man an
@@ -315,12 +346,16 @@ export function beauftrageDatei({ wurzel, kurzname, ids, schreibeDatei = writeFi
   const relDatei = `lehrplan/${kurzname}.yaml`;
   const datei = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
 
-  let text;
+  let bytes;
   try {
-    text = readFileSync(datei, 'utf8');
+    bytes = readFileSync(datei);
   } catch (fehler) {
     if (fehlercode(fehler) === 'ENOENT') throw new AuftragFehler(`${relDatei} gibt es nicht — erst einlesen.`);
     throw new AuftragFehler(`${relDatei} lässt sich nicht lesen (${fehlercode(fehler)}).`);
+  }
+  const text = alsUtf8(bytes);
+  if (text === null) {
+    throw new AuftragFehler(`${relDatei} ist nicht als UTF-8 gespeichert — bitte als UTF-8 speichern und neu aufrufen.`);
   }
 
   const ergebnis = beauftrage(text, ids);

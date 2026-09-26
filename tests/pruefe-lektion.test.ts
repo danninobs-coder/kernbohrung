@@ -1,19 +1,10 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import {
-  chmodSync,
-  closeSync,
-  constants,
-  mkdirSync,
-  mkdtempSync,
-  openSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { SPERRE_GREIFT, sperre } from './hilfen/sperre';
 import { pruefeLektionsText, pruefeWortlaut } from '../werkzeug/pruefe-lektion.mjs';
 import { baueIndex, rohFolien } from '../werkzeug/wortlaut.mjs';
 
@@ -218,31 +209,6 @@ const ROH = [
 const abschrift = `${gute}\n${SATZ}\n`;
 
 const MELDUNG = 'Wortlaut: 13 Wörter am Stück wie in probe/x01-01-probe, Folie 5 — Feld rumpf, Wörter 5–17.';
-
-/**
- * `UV_FS_O_EXLOCK` aus libuv: unter Windows oeffnen, ohne die Datei mit
- * anderen zu teilen. Wie in tests/pruefe-quelle.test.ts.
- */
-const UV_FS_O_EXLOCK = 0x10000000;
-
-/**
- * Sperrt eine Datei gegen Lesen, bis `frei` sie wieder freigibt — wie ein
- * anderes Programm, das sie festhaelt. Unter Windows geoeffnet, ohne sie zu
- * teilen (EBUSY), sonst ohne Leserecht (EACCES). Die Sperre gilt auch fuer den
- * Kindprozess der Pruefung. Wie in tests/pruefe-quelle.test.ts.
- */
-function sperre(pfad: string): { code: string; frei: () => void } {
-  if (process.platform === 'win32') {
-    const fd = openSync(pfad, UV_FS_O_EXLOCK | constants.O_RDONLY);
-    return { code: 'EBUSY', frei: () => closeSync(fd) };
-  }
-  const vorher = statSync(pfad);
-  chmodSync(pfad, 0o000);
-  return { code: 'EACCES', frei: () => chmodSync(pfad, vorher.mode & 0o777) };
-}
-
-/** Wer als root laeuft, liest trotz entzogenem Leserecht: Dann greift `sperre` ausserhalb von Windows nicht. */
-const SPERRE_GREIFT = process.getuid?.() !== 0;
 
 describe('pruefeWortlaut', () => {
   it('meldet eine Abschrift mit Quelle, Folie, Feld und Wortbereich, nie mit Text', () => {

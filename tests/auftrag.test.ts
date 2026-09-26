@@ -1,20 +1,11 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import {
-  chmodSync,
-  closeSync,
-  constants,
-  mkdirSync,
-  mkdtempSync,
-  openSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { load as yamlLesen } from 'js-yaml';
+import { SPERRE_GREIFT, sperre } from './hilfen/sperre';
 import { pruefeLehrplan } from '../src/lib/lehrplan';
 import { lehrplanGeruest } from '../werkzeug/lehrplan-geruest.mjs';
 import { AuftragFehler, beauftrage, beauftrageDatei, fuehreAus } from '../werkzeug/auftrag.mjs';
@@ -118,30 +109,10 @@ function wurf(aufruf: () => unknown): Error {
 }
 
 /**
- * `UV_FS_O_EXLOCK` aus libuv: unter Windows oeffnen, ohne die Datei mit
- * anderen zu teilen. Wie in tests/pruefe-quelle.test.ts.
- */
-const UV_FS_O_EXLOCK = 0x10000000;
-
-/**
- * Sperrt eine Datei, bis `frei` sie wieder freigibt — wie ein Editor, der sie
- * festhaelt. Unter Windows geoeffnet, ohne sie zu teilen (EBUSY, auch beim
- * Lesen), sonst ohne Rechte (EACCES). Wie in tests/pruefe-quelle.test.ts.
- */
-function sperre(pfad: string): { code: string; frei: () => void } {
-  if (process.platform === 'win32') {
-    const fd = openSync(pfad, UV_FS_O_EXLOCK | constants.O_RDONLY);
-    return { code: 'EBUSY', frei: () => closeSync(fd) };
-  }
-  const vorher = statSync(pfad);
-  chmodSync(pfad, 0o000);
-  return { code: 'EACCES', frei: () => chmodSync(pfad, vorher.mode & 0o777) };
-}
-
-/**
  * Nimmt einer Datei das Schreibrecht, bis `frei` es zurueckgibt. Anders als
  * `sperre` laesst das unter Windows das Lesen zu: Gelesen wird wie immer, erst
- * das Schreiben scheitert — dort mit EPERM, sonst mit EACCES.
+ * das Schreiben scheitert — dort mit EPERM, sonst mit EACCES. Als root greift
+ * das so wenig wie `sperre` (`SPERRE_GREIFT`).
  */
 function schreibschutz(pfad: string): { code: string; frei: () => void } {
   const vorher = statSync(pfad);
@@ -151,9 +122,6 @@ function schreibschutz(pfad: string): { code: string; frei: () => void } {
     frei: () => chmodSync(pfad, vorher.mode & 0o777),
   };
 }
-
-/** Wer als root laeuft, liest und schreibt trotz entzogener Rechte: Dann greifen `sperre` und `schreibschutz` ausserhalb von Windows nicht. */
-const SPERRE_GREIFT = process.getuid?.() !== 0;
 
 describe('beauftrage', () => {
   it('setzt einen offenen Abschnitt auf beauftragt und laesst den Rest Zeile fuer Zeile stehen', () => {
@@ -222,16 +190,41 @@ describe('beauftrage', () => {
       '  - id: a2\t',
     ]) {
       /** Beide Abschnitte mit dem gegebenen Status, a2 mit der id-Zeile von oben. */
-      const mit = (a1: AbschnittSpec['status'], a2: AbschnittSpec['status']) =>
-        lehrplanText([
+      const mit = (a1: AbschnittSpec['status'], a2: AbschnittSpec['status']) => {
+        const vorlage = lehrplanText([
           { id: 'a1', status: a1 },
           { id: 'a2', status: a2 },
-        ]).replace('  - id: a2\n', `${zeile}\n`);
+        ]);
+        // Ersetzte replace nichts — etwa in einer Vorlage mit CRLF —, pruefte der Test still nur die blosse Form.
+        expect(vorlage).toContain('  - id: a2\n');
+        return vorlage.replace('  - id: a2\n', `${zeile}\n`);
+      };
       const text = mit('offen', 'offen');
       // Der Abschnitt selbst wird beauftragt, der Rest bleibt Byte fuer Byte.
       expect(beauftrage(text, ['a2'])).toEqual({ ok: true, text: mit('offen', 'beauftragt'), geaendert: ['a2'] });
       // Und der Block davor endet an dieser Zeile, statt den Abschnitt zu schlucken.
       expect(beauftrage(text, ['a1'])).toEqual({ ok: true, text: mit('beauftragt', 'offen'), geaendert: ['a1'] });
+    }
+  });
+
+  // Nach dem ersten Durchgang traegt jeder Lehrplan Prinzipien. Gaelte eine
+  // ihrer id-Zeilen als Abschnitt, wiese der Anker-Abgleich den ganzen
+  // Lehrplan als andere Form ab.
+  it('beauftragt neben einem Abschnitt mit Prinzipien und laesst deren id-Zeilen stehen, auch mit Kommentar und in CRLF', () => {
+    const vorlage = lehrplanText([
+      { id: 'a1', status: 'lektion', prinzipien: ['erstes-prinzip', 'zweites-prinzip'] },
+      { id: 'a2', status: 'offen' },
+    ]);
+    expect(vorlage).toContain('      - id: zweites-prinzip\n');
+    const lf = vorlage.replace('      - id: zweites-prinzip\n', '      - id: zweites-prinzip  # aus einer vorhandenen Lektion\n');
+    for (const text of [lf, lf.replaceAll('\n', '\r\n')]) {
+      const ergebnis = beauftrage(text, ['a2']);
+      if (!ergebnis.ok) throw new Error(ergebnis.maengel.join('\n'));
+      expect(ergebnis.geaendert).toEqual(['a2']);
+      // Genau eine Zeile anders: die status-Zeile von a2, die einzige, die auf offen steht.
+      expect(abweichendeZeilen(text, ergebnis.text)).toHaveLength(1);
+      expect(text).toContain('    status: offen');
+      expect(ergebnis.text).toBe(text.replace('    status: offen', '    status: beauftragt'));
     }
   });
 
@@ -429,6 +422,51 @@ describe('beauftrageDatei', () => {
       expect(() => beauftrageDatei({ wurzel, kurzname, ids: ['x'] })).toThrow(
         `lehrplan/${kurzname}.yaml lässt sich nicht lesen (EISDIR).`,
       );
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  // Als UTF-8 gelesen, wuerde aus einem Umlaut in ANSI still U+FFFD, und beim
+  // Schreiben stuende EF BF BD da: jeder Umlaut der Titel zerstoert.
+  it('weist einen Lehrplan ab, der nicht als UTF-8 gespeichert ist, und laesst ihn Byte fuer Byte stehen', () => {
+    const wurzel = temp();
+    try {
+      const kurzname = 'fixture-ansi';
+      const datei = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
+      const text = lehrplanText([{ id: 'a1', status: 'offen' }]);
+      expect(text).toContain('titel: "Titel a1"');
+      // In ANSI (Windows-1252) ist U+00FC das eine Byte 0xFC — in UTF-8 steht es nie allein.
+      const bytes = Buffer.from(text.replace('titel: "Titel a1"', 'titel: "Titel für a1"'), 'latin1');
+      expect(bytes.includes(0xfc)).toBe(true);
+      writeFileSync(datei, bytes);
+
+      const fehler = wurf(() => beauftrageDatei({ wurzel, kurzname, ids: ['a1'] }));
+      expect(fehler).toBeInstanceOf(AuftragFehler);
+      expect(fehler.message).toBe(
+        `lehrplan/${kurzname}.yaml ist nicht als UTF-8 gespeichert — bitte als UTF-8 speichern und neu aufrufen.`,
+      );
+      expect(readFileSync(datei).equals(bytes)).toBe(true);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  // Ein Decoder, der das BOM schluckt, schriebe die Datei ohne es zurueck.
+  it('laesst ein BOM am Anfang stehen, und die Umlaute bleiben', () => {
+    const wurzel = temp();
+    try {
+      const kurzname = 'fixture-bom';
+      const datei = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
+      const text = lehrplanText([{ id: 'a1', status: 'offen' }]);
+      expect(text).toContain('titel: "Titel a1"');
+      const mitUmlaut = text.replace('titel: "Titel a1"', 'titel: "Titel für a1"');
+      writeFileSync(datei, `\uFEFF${mitUmlaut}`, 'utf8');
+
+      expect(beauftrageDatei({ wurzel, kurzname, ids: ['a1'] }).geaendert).toEqual(['a1']);
+      const danach = readFileSync(datei);
+      expect([...danach.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+      expect(danach.toString('utf8')).toBe(`\uFEFF${mitUmlaut.replace('    status: offen', '    status: beauftragt')}`);
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }
@@ -740,4 +778,18 @@ describe('fuehreAus', () => {
       rmSync(wurzel, { recursive: true, force: true });
     }
   });
+});
+
+describe('werkzeug/auftrag.mjs direkt aufgerufen', () => {
+  const WURZEL = path.resolve(__dirname, '..');
+
+  // Wie npm run auftrag: node mit dem Pfad relativ zur Wurzel. Erkennte das
+  // Werkzeug den Direktaufruf nicht, endete es wortlos mit 0. Ohne Argumente
+  // liest es keine Datei.
+  it('zeigt ohne Argumente die Aufruf-Hilfe und endet mit 2', () => {
+    const lauf = spawnSync(process.execPath, ['werkzeug/auftrag.mjs'], { cwd: WURZEL, encoding: 'utf8' });
+    expect(lauf.stderr).toBe('');
+    expect(lauf.stdout).toBe(`${AUFRUF}\n`);
+    expect(lauf.status).toBe(2);
+  }, 30_000);
 });
