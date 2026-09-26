@@ -207,10 +207,14 @@ function istSystemfehler(fehler) {
  * Ein Dateifehler heisst anders als ein kaputtes PDF: Bei `EBUSY` haelt ein
  * anderes Programm die Datei fest, und am PDF selbst suchte man vergeblich.
  *
+ * Exportiert fuer werkzeug/ansicht.mjs: Oeffnet es ein Original und laedt es
+ * als PDF, scheitert das aus denselben Gruenden, und so sollen sie auch
+ * heissen.
+ *
  * @param {unknown} fehler
  * @returns {string | null}
  */
-function lesegrund(fehler) {
+export function lesegrund(fehler) {
   if (fehler instanceof DokumentFehler) return fehler.message;
   if (!(fehler instanceof Error)) return null;
   if (fehler.name === 'PasswordException') return 'ist mit einem Passwort geschützt — bitte ohne Passwort speichern.';

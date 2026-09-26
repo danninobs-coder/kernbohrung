@@ -1,7 +1,17 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pruefeLektionsText, pruefeWortlaut } from '../werkzeug/pruefe-lektion.mjs';
@@ -209,6 +219,31 @@ const abschrift = `${gute}\n${SATZ}\n`;
 
 const MELDUNG = 'Wortlaut: 13 Wörter am Stück wie in probe/x01-01-probe, Folie 5 — Feld rumpf, Wörter 5–17.';
 
+/**
+ * `UV_FS_O_EXLOCK` aus libuv: unter Windows oeffnen, ohne die Datei mit
+ * anderen zu teilen. Wie in tests/pruefe-quelle.test.ts.
+ */
+const UV_FS_O_EXLOCK = 0x10000000;
+
+/**
+ * Sperrt eine Datei gegen Lesen, bis `frei` sie wieder freigibt — wie ein
+ * anderes Programm, das sie festhaelt. Unter Windows geoeffnet, ohne sie zu
+ * teilen (EBUSY), sonst ohne Leserecht (EACCES). Die Sperre gilt auch fuer den
+ * Kindprozess der Pruefung. Wie in tests/pruefe-quelle.test.ts.
+ */
+function sperre(pfad: string): { code: string; frei: () => void } {
+  if (process.platform === 'win32') {
+    const fd = openSync(pfad, UV_FS_O_EXLOCK | constants.O_RDONLY);
+    return { code: 'EBUSY', frei: () => closeSync(fd) };
+  }
+  const vorher = statSync(pfad);
+  chmodSync(pfad, 0o000);
+  return { code: 'EACCES', frei: () => chmodSync(pfad, vorher.mode & 0o777) };
+}
+
+/** Wer als root laeuft, liest trotz entzogenem Leserecht: Dann greift `sperre` ausserhalb von Windows nicht. */
+const SPERRE_GREIFT = process.getuid?.() !== 0;
+
 describe('pruefeWortlaut', () => {
   it('meldet eine Abschrift mit Quelle, Folie, Feld und Wortbereich, nie mit Text', () => {
     const index = baueIndex([{ quelle: 'probe', abschnitt: 'x01-01-probe', folien: rohFolien(ROH) }]);
@@ -355,6 +390,29 @@ describe('werkzeug/pruefe-lektion.mjs', () => {
       expect(fehler).toBe('unterordner: lässt sich nicht lesen (EISDIR).\n');
       expect(code).toBe(2);
     } finally {
+      rmSync(w, { recursive: true, force: true });
+    }
+  });
+
+  // Weder „in Ordnung" noch „keine Rohdateien": Es gibt eine, nur lesen laesst sie sich nicht.
+  it.runIf(SPERRE_GREIFT)('meldet eine Rohdatei, die sich nicht lesen laesst, auf stderr und prueft das Schema trotzdem, Exit 2', () => {
+    const w = wurzel(true);
+    writeFileSync(path.join(w, 'ohne-kopf.mdx'), 'Nur Prosa, kein Frontmatter.\n', 'utf8');
+    const gesperrt = sperre(path.join(w, 'quellen', 'probe', 'roh', 'x01-01-probe.md'));
+    try {
+      const zeile = `quellen/probe/roh/x01-01-probe.md lässt sich nicht lesen (${gesperrt.code}) — Wortlaut nicht geprüft.\n`;
+      expect(pruefe(w, 'sauber.mdx')).toEqual({ code: 2, aus: 'sauber.mdx: in Ordnung\n', fehler: zeile });
+      // Ein Mangel geht im Exit-Code vor, wie bei einer fehlenden Datei.
+      expect(pruefe(w, 'sauber.mdx', 'ohne-kopf.mdx')).toEqual({
+        code: 1,
+        aus: 'sauber.mdx: in Ordnung\n',
+        fehler:
+          'ohne-kopf.mdx: 1 Mangel/Mängel\n\n' +
+          '  - Kein Frontmatter gefunden. Eine Lektion beginnt mit --- und endet den Kopf mit ---.\n' +
+          zeile,
+      });
+    } finally {
+      gesperrt.frei();
       rmSync(w, { recursive: true, force: true });
     }
   });

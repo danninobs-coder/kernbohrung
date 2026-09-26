@@ -8,7 +8,10 @@
  *
  * Drei Schichten wie beim Einlesen: `beauftrage` ist die reine Funktion ueber
  * den Text, `beauftrageDatei` liest und schreibt unter einer Wurzel, und
- * `fuehreAus` ist die Kommandozeile.
+ * `fuehreAus` ist die Kommandozeile. Den Kurznamen prueft die mittlere Schicht
+ * selbst, bevor sie liest -- nicht erst die Kommandozeile. Laesst sich der
+ * Lehrplan nicht lesen oder nicht schreiben, bricht der Auftrag mit einem
+ * Satz ab, nicht mit einem Stapelabzug.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -16,7 +19,7 @@ import { pathToFileURL } from 'node:url';
 // Namentlich, nicht als Vorgabe-Import: js-yaml 5 liefert unter `import` ein
 // ESM-Buendel ohne Default-Export. Siehe werkzeug/pruefe-lektion.mjs.
 import { load as yamlLesen, YAMLException } from 'js-yaml';
-import { lehrplanAusYaml } from '../src/lib/lehrplan.ts';
+import { ID as ID_MUSTER, lehrplanAusYaml } from '../src/lib/lehrplan.ts';
 import { lektionsIdsAus } from './lehrplan.mjs';
 
 const AUFRUF = 'Aufruf: npm run auftrag -- --name <kurzname> <abschnitt-id> [<abschnitt-id> …]';
@@ -24,12 +27,41 @@ const AUFRUF = 'Aufruf: npm run auftrag -- --name <kurzname> <abschnitt-id> [<ab
 export class AuftragFehler extends Error {}
 
 /**
- * Die Ankerzeile eines Abschnitts: `- id: <id>` mit genau zwei Leerzeichen
- * Einzug, so wie `lehrplanGeruest` sie schreibt. Ein Prinzip traegt seine
- * eigene Id in derselben Form, aber tiefer eingerueckt (unter `prinzipien:`)
- * -- das Muster hier trifft nur den Abschnitt selbst, nie sein Prinzip.
+ * Ein Kurzname, der nicht dem Muster der Ids folgt. Derselbe Satz wie in
+ * werkzeug/pruefe-quelle.mjs, werkzeug/ansicht.mjs und beim Einlesen: Es ist
+ * derselbe Fehler.
+ *
+ * @param {string} kurzname
+ * @returns {string}
  */
-const ABSCHNITT_ANKER = /^ {2}- id: (\S+)\r?$/gm;
+function kurznameFalsch(kurzname) {
+  return `--name ${kurzname}: nur Kleinbuchstaben, Ziffern und Bindestrich.`;
+}
+
+/**
+ * Die Ankerzeile eines Abschnitts: `- id: <id>` mit genau zwei Leerzeichen
+ * Einzug, so wie `lehrplanGeruest` sie schreibt. Die Id steht ohne
+ * Anfuehrungszeichen, mit doppelten oder mit einfachen; dahinter darf
+ * Leerraum stehen und ein Kommentar. Gruppe 1 haelt das Anfuehrungszeichen
+ * und erzwingt wie bei `STATUS_OFFEN` dieselbe Art vorn und hinten, Gruppe 2
+ * die Id. Ein Kommentar beginnt erst nach Leerraum: `a1#x` liest YAML als
+ * eine Id, nicht als `a1` mit Kommentar.
+ *
+ * Ein Prinzip traegt seine eigene Id in derselben Form, aber tiefer
+ * eingerueckt (unter `prinzipien:`) -- das Muster hier trifft nur den
+ * Abschnitt selbst, nie sein Prinzip.
+ *
+ * Was darueber hinaus von Hand abweicht, erkennt es nicht; das faengt der
+ * Abgleich mit den Ids aus dem YAML in `beauftrage` ab.
+ */
+const ABSCHNITT_ANKER = /^ {2}- id: (["']?)([^\s"'#]+)\1(?:[ \t]+(?:#.*)?)?\r?$/gm;
+
+/**
+ * Der Mangel, wenn die Anker nicht genau die Abschnitte treffen, die js-yaml
+ * liest (siehe `beauftrage`).
+ */
+const ANDERE_FORM =
+  'Die Abschnitte stehen nicht in der Form, die das Einlesen schreibt („  - id: …“ mit zwei Leerzeichen Einzug) — bitte von Hand auf beauftragt setzen.';
 
 /**
  * Die Statuszeile eines Abschnitts, vier Leerzeichen Einzug: `status: offen`
@@ -64,6 +96,19 @@ function fehlercode(fehler) {
 }
 
 /**
+ * Ob `fehler` ein gescheiterter Systemaufruf ist -- gesperrt, keine Rechte,
+ * Platte voll. Node gibt solchen Fehlern `syscall` mit, einem Fehler im
+ * Programm nicht. Gleiches Muster wie `istSystemfehler` in
+ * werkzeug/adapter/folien.mjs.
+ *
+ * @param {unknown} fehler
+ * @returns {boolean}
+ */
+function istSystemfehler(fehler) {
+  return fehler instanceof Error && typeof (/** @type {Error & { syscall?: unknown }} */ (fehler).syscall) === 'string';
+}
+
+/**
  * Die Abschnitte eines Textes, erkannt an ihrer Ankerzeile, mit dem Ende
  * ihres jeweiligen Blocks (Beginn des naechsten Abschnitts oder Textende).
  *
@@ -73,7 +118,7 @@ function fehlercode(fehler) {
 function abschnittAnker(text) {
   const treffer = [...text.matchAll(ABSCHNITT_ANKER)];
   return treffer.map((t, i) => ({
-    id: t[1],
+    id: t[2],
     start: /** @type {number} */ (t.index),
     blockEnde: i + 1 < treffer.length ? /** @type {number} */ (treffer[i + 1].index) : text.length,
   }));
@@ -125,6 +170,15 @@ function statusUebersicht(abschnitte) {
  * dass js-yaml sich daran stoert, und das darf das Werkzeug nicht mit einem
  * Stapelabzug quittieren.
  *
+ * Dasselbe gilt fuer die Ankerzeilen, und sie kommen zuerst: Gesucht wird die
+ * status-Zeile im Block eines Abschnitts, von seinem Anker bis zum naechsten.
+ * Das stimmt nur, wenn die Anker genau die Abschnitte sind, die js-yaml liest
+ * -- dieselben Ids in derselben Reihenfolge. Steht ein Abschnitt in anderer
+ * Form da (die Liste ohne Einzug, die id nicht in der ersten Zeile), fehlt
+ * sein Anker, und der Block davor schluckt ihn: Die Meldung naennte die
+ * falsche Id, oder die Gegenprobe schluege an. Deshalb ein Mangel fuer den
+ * ganzen Lehrplan, bevor etwas ersetzt wird.
+ *
  * Alles oder nichts: Gibt es einen Mangel, aendert sich nichts.
  *
  * @param {string} text
@@ -172,8 +226,13 @@ export function beauftrage(text, ids) {
   }
   if (maengel.length > 0) return { ok: false, maengel };
 
+  const anker = abschnittAnker(text);
+  if (anker.length !== idsInReihenfolge.length || anker.some((a, i) => a.id !== idsInReihenfolge[i])) {
+    return { ok: false, maengel: [ANDERE_FORM] };
+  }
+
   const geaendertSet = new Set(eindeutig);
-  const betroffeneAnker = abschnittAnker(text).filter((a) => geaendertSet.has(a.id));
+  const betroffeneAnker = anker.filter((a) => geaendertSet.has(a.id));
 
   /** @type {{ start: number, ende: number, ersatz: string }[]} */
   const ersetzungen = [];
@@ -223,12 +282,36 @@ export function beauftrage(text, ids) {
 
 /**
  * Liest lehrplan/<kurzname>.yaml unter wurzel, beauftragt, prueft mit
- * pruefeLehrplan, schreibt zurueck.
+ * lehrplanAusYaml, schreibt zurueck.
  *
- * @param {{ wurzel: string, kurzname: string, ids: readonly string[] }} eingabe
- * @returns {{ geaendert: string[], datei: string }}
+ * Den Kurznamen prueft es, bevor es liest: Er wird zum Pfad unter
+ * `lehrplan/`, und nur einer nach dem Muster der Ids bleibt darunter --
+ * `../aussen/kopie` schriebe sonst eine Datei neben `lehrplan/` um. Die
+ * Kommandozeile prueft ihn schon; hier steht es trotzdem, weil diese Schicht
+ * auch ohne sie aufgerufen werden kann -- etwa hinter dem Dev-Endpunkt
+ * `/__auftrag`.
+ *
+ * `wartet`: Dem Lehrplan fehlt nach dem Auftrag noch die Freigabe.
+ * Beauftragen geht auch dann; vor Durchgang A muss sie da sein.
+ *
+ * Scheitert das Schreiben an einem Systemaufruf -- etwa `EBUSY`, weil ein
+ * Editor die Datei festhaelt --, wird daraus ein Satz mit dem Code. Ein
+ * Fehler im Programm geht durch: Als Schreibfehler verkleidet, suchte man an
+ * der Datei statt im Code. `schreibeDatei` ist nur fuer Tests austauschbar:
+ * Eine Sperre, die erst zwischen Lesen und Schreiben greift, laesst sich
+ * anders nicht herbeifuehren -- unter Windows sperrt sie die Datei auch gegen
+ * das Lesen.
+ *
+ * @param {{
+ *   wurzel: string,
+ *   kurzname: string,
+ *   ids: readonly string[],
+ *   schreibeDatei?: (datei: string, text: string, kodierung: 'utf8') => void,
+ * }} eingabe
+ * @returns {{ geaendert: string[], datei: string, wartet: boolean }}
  */
-export function beauftrageDatei({ wurzel, kurzname, ids }) {
+export function beauftrageDatei({ wurzel, kurzname, ids, schreibeDatei = writeFileSync }) {
+  if (!ID_MUSTER.test(kurzname)) throw new AuftragFehler(kurznameFalsch(kurzname));
   const relDatei = `lehrplan/${kurzname}.yaml`;
   const datei = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
 
@@ -247,31 +330,49 @@ export function beauftrageDatei({ wurzel, kurzname, ids }) {
   const befund = lehrplanAusYaml(ergebnis.text, lektionsIds, relDatei);
   if (!befund.ok && !befund.wartet) throw new AuftragFehler(befund.maengel.join('\n'));
 
-  writeFileSync(datei, ergebnis.text, 'utf8');
-  return { geaendert: ergebnis.geaendert, datei };
+  try {
+    schreibeDatei(datei, ergebnis.text, 'utf8');
+  } catch (fehler) {
+    if (!istSystemfehler(fehler)) throw fehler;
+    throw new AuftragFehler(`${relDatei} lässt sich nicht schreiben (${fehlercode(fehler)}).`);
+  }
+  return { geaendert: ergebnis.geaendert, datei, wartet: !befund.ok };
 }
 
 /**
- * Liest --name und die Abschnitt-Ids von der Kommandozeile. Alles, was nicht
- * --name oder dessen Wert ist, zaehlt als Abschnitt-Id, in der Reihenfolge
- * der Kommandozeile.
+ * Liest die Kommandozeile: `--name <kurzname>` und die Abschnitt-Ids, in der
+ * Reihenfolge der Kommandozeile und in beliebiger Folge mit `--name`. Fehlt
+ * der Kurzname, sein Wert oder jede Id, kommt nur die Aufruf-Hilfe
+ * (`meldung: null`). Eine fremde Option und ein Kurzname, der nicht dem
+ * Muster der Ids folgt, bekommen einen Satz davor: Die Hilfe allein sagt
+ * nicht, was an einem Aufruf falsch ist, der ihr zu folgen scheint -- und
+ * bisher las die Kommandozeile etwa `--vor` still als Abschnitt-Id. Der
+ * erste Fehler gewinnt; den Kurznamen prueft sie erst bei sonst
+ * vollstaendigem Aufruf, wie pruefe-quelle.
  *
  * @param {readonly string[]} argv
- * @returns {{ kurzname: string, ids: string[] }}
+ * @returns {{ ok: true, kurzname: string, ids: string[] } | { ok: false, meldung: string | null }}
  */
 function leseArgv(argv) {
   let kurzname = '';
   /** @type {string[]} */
   const ids = [];
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--name') {
-      kurzname = argv[i + 1] ?? '';
+    const argument = argv[i];
+    if (argument === '--name') {
+      const wert = argv[i + 1];
+      if (wert === undefined || wert.startsWith('--')) return { ok: false, meldung: null };
+      kurzname = wert;
       i++;
+    } else if (argument.startsWith('--')) {
+      return { ok: false, meldung: `Unbekannte Option ${argument}.` };
     } else {
-      ids.push(argv[i]);
+      ids.push(argument);
     }
   }
-  return { kurzname, ids };
+  if (kurzname === '' || ids.length === 0) return { ok: false, meldung: null };
+  if (!ID_MUSTER.test(kurzname)) return { ok: false, meldung: kurznameFalsch(kurzname) };
+  return { ok: true, kurzname, ids };
 }
 
 /**
@@ -283,18 +384,25 @@ function leseArgv(argv) {
  * @returns {Promise<number>} der Rueckgabewert des Prozesses
  */
 export async function fuehreAus(argv, wurzel, schreibe = (zeile) => console.log(zeile)) {
-  const { kurzname, ids } = leseArgv(argv);
-  if (!kurzname || ids.length === 0) {
+  const aufruf = leseArgv(argv);
+  if (!aufruf.ok) {
+    if (aufruf.meldung !== null) schreibe(aufruf.meldung);
     schreibe(AUFRUF);
     return 2;
   }
+  const { kurzname, ids } = aufruf;
 
   try {
-    const { geaendert } = beauftrageDatei({ wurzel, kurzname, ids });
+    const { geaendert, wartet } = beauftrageDatei({ wurzel, kurzname, ids });
     const kopf = geaendert.length === 1 ? '1 Abschnitt beauftragt' : `${geaendert.length} Abschnitte beauftragt`;
     schreibe(`lehrplan/${kurzname}.yaml: ${kopf}`);
     for (const id of geaendert) schreibe(`  ${id}`);
-    schreibe(`Nächster Schritt: Durchgang A — „Bau die Lektionen für ${kurzname}“.`);
+    // Ohne Freigabe haelt pruefe-quelle --vor Durchgang A an: Sie kommt zuerst.
+    schreibe(
+      wartet
+        ? `Nächster Schritt: freigeben (geprueftVon und geprueftAm in lehrplan/${kurzname}.yaml), dann Durchgang A — „Bau die Lektionen für ${kurzname}“.`
+        : `Nächster Schritt: Durchgang A — „Bau die Lektionen für ${kurzname}“.`,
+    );
     return 0;
   } catch (fehler) {
     if (!(fehler instanceof AuftragFehler)) throw fehler;

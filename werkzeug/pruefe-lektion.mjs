@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 // Namentlich, nicht als Vorgabe-Import: js-yaml 5 liefert unter `import` ein
 // echtes ESM-Buendel ohne Default-Export. `import yaml from 'js-yaml'` bindet
@@ -135,6 +136,39 @@ function fehlercode(fehler) {
   return typeof code === 'string' ? code : fehler.name;
 }
 
+/**
+ * Ob `fehler` ein gescheiterter Systemaufruf ist — gesperrt, keine Rechte.
+ * Node gibt solchen Fehlern `syscall` mit, einem Fehler im Programm nicht.
+ * Gleiches Muster wie `istSystemfehler` in werkzeug/adapter/folien.mjs.
+ *
+ * @param {unknown} fehler
+ * @returns {boolean}
+ */
+function istSystemfehler(fehler) {
+  return fehler instanceof Error && typeof (/** @type {Error & { syscall?: unknown }} */ (fehler).syscall) === 'string';
+}
+
+/**
+ * Der Index der Rohdateien unter `wurzel` (`liesRohIndex`) — oder, wenn sich
+ * darunter etwas nicht lesen laesst, der Satz dazu: statt eines Stapelabzugs
+ * der Pfad aus dem Fehler, relativ zu `wurzel` und mit Schraegstrichen, und
+ * sein Code. Nennt der Fehler keinen Pfad, steht `quellen` da. Ein Fehler im
+ * Programm geht durch.
+ *
+ * @param {string} wurzel
+ * @returns {{ roh: ReturnType<typeof liesRohIndex>, unlesbar: string | null }}
+ */
+function rohIndexUnter(wurzel) {
+  try {
+    return { roh: liesRohIndex(wurzel), unlesbar: null };
+  } catch (fehler) {
+    if (!istSystemfehler(fehler)) throw fehler;
+    const pfad = /** @type {Error & { path?: unknown }} */ (fehler).path;
+    const ort = typeof pfad === 'string' ? path.relative(wurzel, pfad).split(path.sep).join('/') : 'quellen';
+    return { roh: null, unlesbar: `${ort} lässt sich nicht lesen (${fehlercode(fehler)}) — Wortlaut nicht geprüft.` };
+  }
+}
+
 if (direktAufgerufen) {
   const dateien = process.argv.slice(2);
   if (dateien.length === 0) {
@@ -143,8 +177,11 @@ if (direktAufgerufen) {
   } else {
     // Der Index einmal je Aufruf, nicht je Datei: Er umfasst alle Rohdateien
     // unter quellen/ im Arbeitsverzeichnis, auch Nachbarabschnitte, und fehlt
-    // quellen/ (ein Klon von GitHub), heisst es „nicht geprueft".
-    const roh = liesRohIndex(process.cwd());
+    // quellen/ (ein Klon von GitHub), heisst es „nicht geprueft". Laesst sich
+    // darunter etwas nicht lesen, gibt es auch keinen Index — aber das ist
+    // nicht „keine Rohdateien": Es gibt eine, nur lesen laesst sie sich
+    // nicht. Das Schema wird trotzdem geprueft.
+    const { roh, unlesbar } = rohIndexUnter(process.cwd());
     let abschriften = 0;
     // Eine fehlende oder unlesbare Datei bricht die uebrigen nicht ab: jede
     // Datei einzeln abgefangen, der Exit-Code danach in einem Schritt fuer
@@ -175,16 +212,20 @@ if (direktAufgerufen) {
         process.exitCode = 1;
       }
     }
-    // Ohne Rohdateien kein Mangel — aber auch kein „in Ordnung".
-    if (roh === null) console.log('Wortlaut nicht geprüft: keine Rohdateien am Rechner.');
+    // Ohne Rohdateien kein Mangel — aber auch kein „in Ordnung". Laesst sich
+    // eine nicht lesen, steht an dieser Stelle ihr Satz, auf stderr wie jede
+    // Datei, die sich nicht lesen laesst.
+    if (unlesbar !== null) console.error(unlesbar);
+    else if (roh === null) console.log('Wortlaut nicht geprüft: keine Rohdateien am Rechner.');
     else if (abschriften === 0) {
       const wort = roh.dateien === 1 ? 'Rohdatei' : 'Rohdateien';
       console.log(`Wortlaut: in Ordnung (${roh.dateien} ${wort}).`);
     }
     // Rangfolge im Exit-Code: Ein Mangel (1) hat Vorrang vor einer fehlenden
-    // oder unlesbaren Datei (2), die wiederum vor Erfolg (0) steht. Ohne
-    // diesen Vorrang ueberschriebe eine fehlende Datei die 1 aus einem schon
-    // gefundenen Mangel, und ein aufrufendes Skript saehe den Mangel nicht.
-    if (fehlendeDatei && process.exitCode !== 1) process.exitCode = 2;
+    // oder unlesbaren Datei (2) — Lektion oder Rohdatei —, die wiederum vor
+    // Erfolg (0) steht. Ohne diesen Vorrang ueberschriebe eine fehlende Datei
+    // die 1 aus einem schon gefundenen Mangel, und ein aufrufendes Skript
+    // saehe den Mangel nicht.
+    if ((fehlendeDatei || unlesbar !== null) && process.exitCode !== 1) process.exitCode = 2;
   }
 }

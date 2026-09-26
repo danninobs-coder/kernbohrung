@@ -1,6 +1,17 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { load as yamlLesen } from 'js-yaml';
@@ -19,6 +30,11 @@ import { AuftragFehler, beauftrage, beauftrageDatei, fuehreAus } from '../werkze
  */
 
 const STAND = `sha256:${'a'.repeat(64)}`;
+const AUFRUF = 'Aufruf: npm run auftrag -- --name <kurzname> <abschnitt-id> [<abschnitt-id> …]';
+
+/** Der Mangel, wenn die Abschnitte nicht in der Form stehen, die das Einlesen schreibt. */
+const ANDERE_FORM =
+  'Die Abschnitte stehen nicht in der Form, die das Einlesen schreibt („  - id: …“ mit zwei Leerzeichen Einzug) — bitte von Hand auf beauftragt setzen.';
 
 type AbschnittSpec = {
   id: string;
@@ -91,6 +107,54 @@ function abweichendeZeilen(alt: string, neu: string): number[] {
   return a.map((_, i) => i).filter((i) => a[i] !== n[i]);
 }
 
+/** Der Abbruch eines Aufrufs — damit sein Wortlaut ganz geprueft werden kann und nicht nur ein Stueck davon. */
+function wurf(aufruf: () => unknown): Error {
+  try {
+    aufruf();
+  } catch (fehler) {
+    return fehler as Error;
+  }
+  throw new Error('Erwartet war ein Abbruch.');
+}
+
+/**
+ * `UV_FS_O_EXLOCK` aus libuv: unter Windows oeffnen, ohne die Datei mit
+ * anderen zu teilen. Wie in tests/pruefe-quelle.test.ts.
+ */
+const UV_FS_O_EXLOCK = 0x10000000;
+
+/**
+ * Sperrt eine Datei, bis `frei` sie wieder freigibt — wie ein Editor, der sie
+ * festhaelt. Unter Windows geoeffnet, ohne sie zu teilen (EBUSY, auch beim
+ * Lesen), sonst ohne Rechte (EACCES). Wie in tests/pruefe-quelle.test.ts.
+ */
+function sperre(pfad: string): { code: string; frei: () => void } {
+  if (process.platform === 'win32') {
+    const fd = openSync(pfad, UV_FS_O_EXLOCK | constants.O_RDONLY);
+    return { code: 'EBUSY', frei: () => closeSync(fd) };
+  }
+  const vorher = statSync(pfad);
+  chmodSync(pfad, 0o000);
+  return { code: 'EACCES', frei: () => chmodSync(pfad, vorher.mode & 0o777) };
+}
+
+/**
+ * Nimmt einer Datei das Schreibrecht, bis `frei` es zurueckgibt. Anders als
+ * `sperre` laesst das unter Windows das Lesen zu: Gelesen wird wie immer, erst
+ * das Schreiben scheitert — dort mit EPERM, sonst mit EACCES.
+ */
+function schreibschutz(pfad: string): { code: string; frei: () => void } {
+  const vorher = statSync(pfad);
+  chmodSync(pfad, 0o444);
+  return {
+    code: process.platform === 'win32' ? 'EPERM' : 'EACCES',
+    frei: () => chmodSync(pfad, vorher.mode & 0o777),
+  };
+}
+
+/** Wer als root laeuft, liest und schreibt trotz entzogener Rechte: Dann greifen `sperre` und `schreibschutz` ausserhalb von Windows nicht. */
+const SPERRE_GREIFT = process.getuid?.() !== 0;
+
 describe('beauftrage', () => {
   it('setzt einen offenen Abschnitt auf beauftragt und laesst den Rest Zeile fuer Zeile stehen', () => {
     const text = lehrplanText([
@@ -147,6 +211,47 @@ describe('beauftrage', () => {
       ok: false,
       maengel: ['Abschnitt a1: die Zeile status lässt sich nicht sicher finden — bitte von Hand auf beauftragt setzen.'],
     });
+  });
+
+  it('erkennt die id-Zeile auch mit Kommentar, Anfuehrungszeichen oder Leerraum am Ende und laesst sie stehen', () => {
+    for (const zeile of [
+      '  - id: a2  # zweiter Abschnitt',
+      '  - id: "a2"',
+      `  - id: 'a2'`,
+      '  - id: a2   ',
+      '  - id: a2\t',
+    ]) {
+      /** Beide Abschnitte mit dem gegebenen Status, a2 mit der id-Zeile von oben. */
+      const mit = (a1: AbschnittSpec['status'], a2: AbschnittSpec['status']) =>
+        lehrplanText([
+          { id: 'a1', status: a1 },
+          { id: 'a2', status: a2 },
+        ]).replace('  - id: a2\n', `${zeile}\n`);
+      const text = mit('offen', 'offen');
+      // Der Abschnitt selbst wird beauftragt, der Rest bleibt Byte fuer Byte.
+      expect(beauftrage(text, ['a2'])).toEqual({ ok: true, text: mit('offen', 'beauftragt'), geaendert: ['a2'] });
+      // Und der Block davor endet an dieser Zeile, statt den Abschnitt zu schlucken.
+      expect(beauftrage(text, ['a1'])).toEqual({ ok: true, text: mit('beauftragt', 'offen'), geaendert: ['a1'] });
+    }
+  });
+
+  it('meldet Abschnitte, die nicht in der Form des Einlesens stehen, als Mangel und aendert nichts', () => {
+    const vorlage = lehrplanText([
+      { id: 'a1', status: 'offen' },
+      { id: 'a2', status: 'offen' },
+    ]);
+    // Die Liste ohne Einzug — und ein Nachbar, dessen id nicht in der ersten
+    // Zeile steht, wie ihn ein Formatierer mit sortierten Schluesseln schriebe.
+    const ohneEinzug = vorlage.replace(/^ {2}/gm, '');
+    const fremderNachbar = vorlage.replace('  - id: a2\n    titel: "Titel a2"\n', '  - titel: "Titel a2"\n    id: a2\n');
+    for (const text of [ohneEinzug, fremderNachbar]) {
+      // Fuer js-yaml steht dasselbe da; nur die Form ist eine andere.
+      expect(text).not.toBe(vorlage);
+      expect(yamlLesen(text)).toEqual(yamlLesen(vorlage));
+      for (const ids of [['a1'], ['a2'], ['a1', 'a2']]) {
+        expect(beauftrage(text, ids)).toEqual({ ok: false, maengel: [ANDERE_FORM] });
+      }
+    }
   });
 
   it('beauftragt mehrere Ids und meldet sie in der Reihenfolge des Lehrplans', () => {
@@ -280,7 +385,8 @@ describe('beauftrageDatei', () => {
       writeFileSync(datei, geruest, 'utf8');
 
       const erster = beauftrageDatei({ wurzel, kurzname, ids: ['d01-01-erstes'] });
-      expect(erster.geaendert).toEqual(['d01-01-erstes']);
+      // Das Geruest traegt noch keine Freigabe: Der Lehrplan wartet weiter auf sie.
+      expect(erster).toEqual({ geaendert: ['d01-01-erstes'], datei, wartet: true });
       const nachErstem = readFileSync(datei, 'utf8');
       expect(nachErstem).toContain('    status: beauftragt');
 
@@ -327,6 +433,102 @@ describe('beauftrageDatei', () => {
       rmSync(wurzel, { recursive: true, force: true });
     }
   });
+
+  it('meldet bei einem freigegebenen Lehrplan, dass er nicht wartet', () => {
+    const wurzel = temp();
+    try {
+      const datei = path.join(wurzel, 'lehrplan', 'fixture-freigegeben.yaml');
+      writeFileSync(datei, lehrplanText([{ id: 'a1', status: 'offen' }]), 'utf8');
+      expect(beauftrageDatei({ wurzel, kurzname: 'fixture-freigegeben', ids: ['a1'] })).toEqual({
+        geaendert: ['a1'],
+        datei,
+        wartet: false,
+      });
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  // 2b-3 legt diese Schicht hinter den Dev-Endpunkt /__auftrag, ohne die Kommandozeile davor.
+  it('prueft den Kurznamen, bevor es liest: ../aussen/kopie schreibt keine Datei neben lehrplan/ um', () => {
+    const wurzel = temp();
+    try {
+      // lehrplan/../aussen/kopie.yaml ist diese Datei.
+      const draussen = path.join(wurzel, 'aussen', 'kopie.yaml');
+      mkdirSync(path.dirname(draussen));
+      const text = lehrplanText([{ id: 'a1', status: 'offen' }]);
+      writeFileSync(draussen, text, 'utf8');
+
+      const fehler = wurf(() => beauftrageDatei({ wurzel, kurzname: '../aussen/kopie', ids: ['a1'] }));
+      expect(fehler).toBeInstanceOf(AuftragFehler);
+      expect(fehler.message).toBe('--name ../aussen/kopie: nur Kleinbuchstaben, Ziffern und Bindestrich.');
+      expect(readFileSync(draussen, 'utf8')).toBe(text);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(SPERRE_GREIFT)('meldet eine Lehrplandatei, die beim Schreiben gesperrt ist, als Satz und laesst sie stehen', () => {
+    const wurzel = temp();
+    const gesperrt: { code: string; frei: () => void }[] = [];
+    const freigeben = () => {
+      for (const sperrung of gesperrt.splice(0)) sperrung.frei();
+    };
+    try {
+      const kurzname = 'fixture-gesperrt';
+      const datei = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
+      const text = lehrplanText([{ id: 'a1', status: 'offen' }]);
+      writeFileSync(datei, text, 'utf8');
+
+      // Gelesen ist schon; erst beim Schreiben haelt ein Editor die Datei fest.
+      const fehler = wurf(() =>
+        beauftrageDatei({
+          wurzel,
+          kurzname,
+          ids: ['a1'],
+          schreibeDatei: (pfad, inhalt, kodierung) => {
+            gesperrt.push(sperre(pfad));
+            writeFileSync(pfad, inhalt, kodierung);
+          },
+        }),
+      );
+      expect(fehler).toBeInstanceOf(AuftragFehler);
+      expect(gesperrt).toHaveLength(1);
+      expect(fehler.message).toBe(`lehrplan/${kurzname}.yaml lässt sich nicht schreiben (${gesperrt[0].code}).`);
+      freigeben();
+      expect(readFileSync(datei, 'utf8')).toBe(text);
+    } finally {
+      freigeben();
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('laesst einen Fehler im Programm beim Schreiben als solchen durch', () => {
+    const wurzel = temp();
+    try {
+      const kurzname = 'fixture-programmfehler';
+      const datei = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
+      const text = lehrplanText([{ id: 'a1', status: 'offen' }]);
+      writeFileSync(datei, text, 'utf8');
+
+      // Kein syscall: Als Schreibfehler verkleidet, suchte man an der Datei statt im Code.
+      const programmfehler = new TypeError('ein Fehler im Programm');
+      const fehler = wurf(() =>
+        beauftrageDatei({
+          wurzel,
+          kurzname,
+          ids: ['a1'],
+          schreibeDatei: () => {
+            throw programmfehler;
+          },
+        }),
+      );
+      expect(fehler).toBe(programmfehler);
+      expect(readFileSync(datei, 'utf8')).toBe(text);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('fuehreAus', () => {
@@ -350,10 +552,11 @@ describe('fuehreAus', () => {
 
       const { code, zeilen } = await lauf(['--name', kurzname, 'd01-01-erstes'], wurzel);
       expect(code).toBe(0);
+      // Das Geruest wartet noch auf die Freigabe: Sie kommt vor Durchgang A.
       expect(zeilen).toEqual([
         `lehrplan/${kurzname}.yaml: 1 Abschnitt beauftragt`,
         '  d01-01-erstes',
-        `Nächster Schritt: Durchgang A — „Bau die Lektionen für ${kurzname}“.`,
+        `Nächster Schritt: freigeben (geprueftVon und geprueftAm in lehrplan/${kurzname}.yaml), dann Durchgang A — „Bau die Lektionen für ${kurzname}“.`,
       ]);
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
@@ -382,6 +585,24 @@ describe('fuehreAus', () => {
         `lehrplan/${kurzname}.yaml: 2 Abschnitte beauftragt`,
         '  d01-01-erstes',
         '  d01-02-zweites',
+        `Nächster Schritt: freigeben (geprueftVon und geprueftAm in lehrplan/${kurzname}.yaml), dann Durchgang A — „Bau die Lektionen für ${kurzname}“.`,
+      ]);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('nennt bei einem freigegebenen Lehrplan gleich Durchgang A als naechsten Schritt, Exit 0', async () => {
+    const wurzel = temp();
+    try {
+      const kurzname = 'fixture-cli-freigegeben';
+      writeFileSync(path.join(wurzel, 'lehrplan', `${kurzname}.yaml`), lehrplanText([{ id: 'a1', status: 'offen' }]), 'utf8');
+
+      const { code, zeilen } = await lauf(['--name', kurzname, 'a1'], wurzel);
+      expect(code).toBe(0);
+      expect(zeilen).toEqual([
+        `lehrplan/${kurzname}.yaml: 1 Abschnitt beauftragt`,
+        '  a1',
         `Nächster Schritt: Durchgang A — „Bau die Lektionen für ${kurzname}“.`,
       ]);
     } finally {
@@ -389,19 +610,99 @@ describe('fuehreAus', () => {
     }
   });
 
-  it('zeigt ohne --name oder ohne Id die Aufruf-Hilfe und bricht mit 2 ab', async () => {
+  it('zeigt ohne --name, ohne dessen Wert oder ohne Id nur die Aufruf-Hilfe und bricht mit 2 ab', async () => {
     const wurzel = temp();
     try {
-      const ohneName = await lauf(['a1'], wurzel);
-      expect(ohneName.code).toBe(2);
-      expect(ohneName.zeilen).toEqual([
-        'Aufruf: npm run auftrag -- --name <kurzname> <abschnitt-id> [<abschnitt-id> …]',
-      ]);
-
-      const ohneId = await lauf(['--name', 'x'], wurzel);
-      expect(ohneId.code).toBe(2);
-      expect(ohneId.zeilen).toEqual(ohneName.zeilen);
+      for (const argv of [
+        ['a1'],
+        ['--name', 'x'],
+        ['--name'],
+        ['a1', '--name'],
+        // Ein Wert mit -- vorn ist die naechste Option, kein Kurzname.
+        ['--name', '--vor', 'a1'],
+      ]) {
+        expect(await lauf(argv, wurzel)).toEqual({ code: 2, zeilen: [AUFRUF] });
+      }
     } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  // Kein Kurzname: Er wird zum Pfad unter lehrplan/, und nur darunter wird geschrieben.
+  it('nennt einen Kurznamen, der nicht dem Muster der Ids folgt, und zeigt die Aufruf-Hilfe, Exit 2', async () => {
+    const wurzel = temp();
+    try {
+      for (const [argv, erwartet] of [
+        [['--name', '../aussen', 'a1'], '--name ../aussen: nur Kleinbuchstaben, Ziffern und Bindestrich.'],
+        [['a1', '--name', 'Fixture-Gross'], '--name Fixture-Gross: nur Kleinbuchstaben, Ziffern und Bindestrich.'],
+      ] as const) {
+        expect(await lauf([...argv], wurzel)).toEqual({ code: 2, zeilen: [erwartet, AUFRUF] });
+      }
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('nennt eine fremde Option, statt sie als Abschnitt-Id zu lesen, und zeigt die Aufruf-Hilfe, Exit 2', async () => {
+    const wurzel = temp();
+    try {
+      const kurzname = 'fixture-fremde-option';
+      const datei = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
+      const text = lehrplanText([{ id: 'a1', status: 'offen' }]);
+      writeFileSync(datei, text, 'utf8');
+      for (const [argv, erwartet] of [
+        // --vor gehoert zu pruefe-quelle.
+        [['--name', kurzname, '--vor', 'a1'], 'Unbekannte Option --vor.'],
+        [['--name', kurzname, 'a1', '--folien', '3'], 'Unbekannte Option --folien.'],
+        [['--los', '--name', '../aussen', 'a1'], 'Unbekannte Option --los.'],
+      ] as const) {
+        expect(await lauf([...argv], wurzel)).toEqual({ code: 2, zeilen: [erwartet, AUFRUF] });
+      }
+      expect(readFileSync(datei, 'utf8')).toBe(text);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('laesst eine Datei in anderer Form Byte fuer Byte stehen und meldet den Mangel, Exit 1', async () => {
+    const wurzel = temp();
+    try {
+      const kurzname = 'fixture-andere-form';
+      const datei = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
+      const vorlage = lehrplanText([
+        { id: 'a1', status: 'offen' },
+        { id: 'a2', status: 'offen' },
+      ]);
+      for (const text of [
+        vorlage.replace(/^ {2}/gm, ''),
+        vorlage.replace('  - id: a2\n    titel: "Titel a2"\n', '  - titel: "Titel a2"\n    id: a2\n'),
+      ]) {
+        writeFileSync(datei, text, 'utf8');
+        for (const id of ['a1', 'a2']) {
+          expect(await lauf(['--name', kurzname, id], wurzel)).toEqual({ code: 1, zeilen: [ANDERE_FORM] });
+          expect(readFileSync(datei, 'utf8')).toBe(text);
+        }
+      }
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(SPERRE_GREIFT)('meldet eine Lehrplandatei, die sich nicht schreiben laesst, als Satz und bricht mit 1 ab', async () => {
+    const wurzel = temp();
+    const kurzname = 'fixture-schreibschutz';
+    const datei = path.join(wurzel, 'lehrplan', `${kurzname}.yaml`);
+    const text = lehrplanText([{ id: 'a1', status: 'offen' }]);
+    writeFileSync(datei, text, 'utf8');
+    const geschuetzt = schreibschutz(datei);
+    try {
+      expect(await lauf(['--name', kurzname, 'a1'], wurzel)).toEqual({
+        code: 1,
+        zeilen: [`lehrplan/${kurzname}.yaml lässt sich nicht schreiben (${geschuetzt.code}).`],
+      });
+      expect(readFileSync(datei, 'utf8')).toBe(text);
+    } finally {
+      geschuetzt.frei();
       rmSync(wurzel, { recursive: true, force: true });
     }
   });

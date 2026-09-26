@@ -14,7 +14,8 @@
  *
  * Drei Schichten wie beim Einlesen: `folienAuswahl` ist die reine Funktion
  * ueber die Angabe, `rendereFolien` liest und schreibt unter einer Wurzel, und
- * `fuehreAus` ist die Kommandozeile.
+ * `fuehreAus` ist die Kommandozeile. Laesst sich eine Datei nicht lesen oder
+ * schreiben, bricht es mit einem Satz ab, nicht mit einem Stapelabzug.
  *
  * **Die Bilder bleiben unter `quellen/`** (gitignored), in
  * `quellen/<kurzname>/ansicht/<abschnitt-id>/folie-<n>.png`: Sie zeigen fremdes
@@ -27,6 +28,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ID as ID_MUSTER } from '../src/lib/lehrplan.ts';
 import { ladePdfjs } from './adapter/dokument.mjs';
+import { lesegrund } from './adapter/folien.mjs';
 import { liesDokumentManifest } from './dokument-manifest.mjs';
 
 const AUFRUF = 'Aufruf: npm run ansicht -- --name <kurzname> <abschnitt-id> [--folien 16,19-23]';
@@ -43,6 +45,77 @@ const TEIL = /^\s*(\d+)\s*(?:[-–]\s*(\d+)\s*)?$/;
 
 /** Bricht das Ansehen mit einer Meldung ab, die man dem Nutzer zeigen kann. */
 export class AnsichtFehler extends Error {}
+
+/**
+ * Ein Kurzname, der nicht dem Muster der Ids folgt. Derselbe Satz wie in
+ * werkzeug/pruefe-quelle.mjs, werkzeug/auftrag.mjs und beim Einlesen: Es ist
+ * derselbe Fehler.
+ *
+ * @param {string} kurzname
+ * @returns {string}
+ */
+function kurznameFalsch(kurzname) {
+  return `--name ${kurzname}: nur Kleinbuchstaben, Ziffern und Bindestrich.`;
+}
+
+/**
+ * Der Code eines gescheiterten Dateizugriffs (`EBUSY`, `EISDIR`, …), sonst
+ * der Name des Fehlers. Gleiches Muster wie `fehlercode` in
+ * werkzeug/adapter/folien.mjs.
+ *
+ * @param {unknown} fehler
+ * @returns {string}
+ */
+function fehlercode(fehler) {
+  if (!(fehler instanceof Error)) return String(fehler);
+  const code = /** @type {Error & { code?: unknown }} */ (fehler).code;
+  return typeof code === 'string' ? code : fehler.name;
+}
+
+/**
+ * Ob `fehler` ein gescheiterter Systemaufruf ist — gesperrt, keine Rechte,
+ * eine Datei, wo ein Ordner hin soll. Node gibt solchen Fehlern `syscall`
+ * mit, einem Fehler im Programm nicht. Gleiches Muster wie `istSystemfehler`
+ * in werkzeug/adapter/folien.mjs.
+ *
+ * @param {unknown} fehler
+ * @returns {boolean}
+ */
+function istSystemfehler(fehler) {
+  return fehler instanceof Error && typeof (/** @type {Error & { syscall?: unknown }} */ (fehler).syscall) === 'string';
+}
+
+/**
+ * Ein Pfad relativ zur Wurzel, mit Schraegstrichen — so steht er in jeder
+ * Zeile auf der Konsole, auch unter Windows.
+ *
+ * @param {string} wurzel
+ * @param {string} pfad
+ * @returns {string}
+ */
+function relativ(wurzel, pfad) {
+  return path.relative(wurzel, pfad).replaceAll(path.sep, '/');
+}
+
+/**
+ * Legt mit `schreiben` unter `wurzel` an, was unter `pfad` stehen soll.
+ * Scheitert ein Systemaufruf — eine Datei, wo der Ordner hin soll, ein Bild,
+ * das ein Betrachter festhaelt —, wird daraus ein Satz mit dem Pfad statt
+ * eines Stapelabzugs. Ein Fehler im Programm geht durch: Als Schreibfehler
+ * verkleidet, suchte man an der Platte statt im Code.
+ *
+ * @param {string} wurzel
+ * @param {string} pfad
+ * @param {() => unknown} schreiben
+ */
+function schreibeUnter(wurzel, pfad, schreiben) {
+  try {
+    schreiben();
+  } catch (fehler) {
+    if (!istSystemfehler(fehler)) throw fehler;
+    throw new AnsichtFehler(`${relativ(wurzel, pfad)} lässt sich nicht schreiben (${fehlercode(fehler)}).`);
+  }
+}
 
 /**
  * Die Folien einer Angabe wie `16,19-23`: Zahlen und Bereiche, durch Komma
@@ -140,6 +213,12 @@ function istEinDateiname(datei) {
  * Original, Canvas —, dann wird etwas angelegt. Scheitert eine Pruefung,
  * bleibt die Platte, wie sie war.
  *
+ * Laesst sich eine Datei nicht lesen oder schreiben, steht ein Satz mit ihrem
+ * Pfad da: beim Manifest und bei Ordner und Bildern unter `ansicht/` mit dem
+ * Code des Systemaufrufs, beim Original derselbe Grund wie beim Einlesen
+ * (`lesegrund`) — gesperrt, kein PDF, ein Passwort. Ein Fehler im Programm
+ * geht durch.
+ *
  * Kurzname und Abschnitt werden zu Ordnernamen. Nur was dem Muster der Ids
  * folgt, bleibt sicher unter `quellen/<kurzname>/ansicht/` und damit
  * gitignored — ein `--name ../x` oder ein Manifest, das einen Pfad als Id
@@ -170,15 +249,21 @@ export async function rendereFolien({
   skala = 1.5,
   ladeCanvas = () => import('@napi-rs/canvas'),
 }) {
-  if (!ID_MUSTER.test(kurzname)) {
-    throw new AnsichtFehler(`--name ${kurzname}: nur Kleinbuchstaben, Ziffern und Bindestrich.`);
-  }
+  if (!ID_MUSTER.test(kurzname)) throw new AnsichtFehler(kurznameFalsch(kurzname));
   const quelle = path.join(wurzel, 'quellen', kurzname);
   const manifestPfad = path.join(quelle, 'manifest.json');
   if (!existsSync(manifestPfad)) {
     throw new AnsichtFehler(`quellen/${kurzname}/manifest.json gibt es nicht — erst einlesen.`);
   }
-  const gelesen = liesDokumentManifest(readFileSync(manifestPfad, 'utf8'));
+  /** @type {string} */
+  let manifestText;
+  try {
+    manifestText = readFileSync(manifestPfad, 'utf8');
+  } catch (fehler) {
+    if (!istSystemfehler(fehler)) throw fehler;
+    throw new AnsichtFehler(`quellen/${kurzname}/manifest.json lässt sich nicht lesen (${fehlercode(fehler)}).`);
+  }
+  const gelesen = liesDokumentManifest(manifestText);
   if (!gelesen.ok) {
     throw new AnsichtFehler(`quellen/${kurzname}/manifest.json lässt sich nicht lesen (${gelesen.grund}).`);
   }
@@ -202,15 +287,36 @@ export async function rendereFolien({
   const { createCanvas } = await canvasLaden(ladeCanvas);
   const { pdfjs, optionen } = geladen ?? (await ladePdfjs());
 
+  // Oeffnen und Laden scheitern aus denselben Gruenden wie beim Einlesen, und
+  // so heissen sie auch, mit der Datei davor. Ohne Grund ist es ein Fehler im
+  // Programm: Er geht durch.
+  /** @type {(fehler: unknown) => unknown} */
+  const originalFehler = (fehler) => {
+    const grund = lesegrund(fehler);
+    return grund === null ? fehler : new AnsichtFehler(`quellen/${kurzname}/original/${eintrag.datei}: ${grund}`);
+  };
+  /** @type {Uint8Array} */
+  let daten;
+  try {
+    daten = new Uint8Array(readFileSync(originalPfad));
+  } catch (fehler) {
+    throw originalFehler(fehler);
+  }
+
   const ordner = path.join(quelle, 'ansicht', abschnitt);
   /** @type {Bild[]} */
   const bilder = [];
   // Aufgeraeumt wird mit ladeaufgabe.destroy(), wie in liesSeiten:
   // PDFDocumentProxy.destroy() gibt es in 6.3 nicht mehr.
-  const ladeaufgabe = pdfjs.getDocument({ data: new Uint8Array(readFileSync(originalPfad)), ...optionen });
+  const ladeaufgabe = pdfjs.getDocument({ data: daten, ...optionen });
   try {
-    const doc = await ladeaufgabe.promise;
-    mkdirSync(ordner, { recursive: true });
+    let doc;
+    try {
+      doc = await ladeaufgabe.promise;
+    } catch (fehler) {
+      throw originalFehler(fehler);
+    }
+    schreibeUnter(wurzel, ordner, () => mkdirSync(ordner, { recursive: true }));
     for (const folie of auswahl) {
       const seite = await doc.getPage(folie);
       const sichtfeld = seite.getViewport({ scale: skala });
@@ -221,7 +327,8 @@ export async function rendereFolien({
       // so empfiehlt es seine Schnittstelle.
       await seite.render({ canvas: leinwand, viewport: sichtfeld }).promise;
       const pfad = path.join(ordner, `folie-${folie}.png`);
-      writeFileSync(pfad, await leinwand.encode('png'));
+      const png = await leinwand.encode('png');
+      schreibeUnter(wurzel, pfad, () => writeFileSync(pfad, png));
       bilder.push({ folie, pfad, breite: leinwand.width, hoehe: leinwand.height });
       seite.cleanup();
     }
@@ -233,11 +340,17 @@ export async function rendereFolien({
 
 /**
  * Liest die Kommandozeile: `--name <kurzname>`, genau eine Abschnitt-Id und
- * wahlweise `--folien <angabe>`, in beliebiger Reihenfolge. `null`, wenn etwas
- * fehlt, zu viel oder fremd ist — dann kommt die Aufruf-Hilfe.
+ * wahlweise `--folien <angabe>`, in beliebiger Reihenfolge. Fehlt etwas oder
+ * steht etwas zu viel da, kommt nur die Aufruf-Hilfe (`meldung: null`). Eine
+ * fremde Option und ein Kurzname, der nicht dem Muster der Ids folgt,
+ * bekommen einen Satz davor, wie bei pruefe-quelle: Die Hilfe allein sagt
+ * nicht, was an einem Aufruf falsch ist, der ihr zu folgen scheint. Der erste
+ * Fehler gewinnt; den Kurznamen prueft sie erst bei sonst vollstaendigem
+ * Aufruf. `rendereFolien` prueft ihn trotzdem selbst: Es laesst sich auch
+ * ohne diese Kommandozeile aufrufen.
  *
  * @param {readonly string[]} argv
- * @returns {{ kurzname: string, abschnitt: string, folien: string | undefined } | null}
+ * @returns {{ ok: true, kurzname: string, abschnitt: string, folien: string | undefined } | { ok: false, meldung: string | null }}
  */
 function leseArgv(argv) {
   let kurzname = '';
@@ -249,17 +362,19 @@ function leseArgv(argv) {
     const argument = argv[i];
     if (argument === '--name' || argument === '--folien') {
       const wert = argv[i + 1];
-      if (wert === undefined || wert.startsWith('--')) return null;
+      if (wert === undefined || wert.startsWith('--')) return { ok: false, meldung: null };
       if (argument === '--name') kurzname = wert;
       else folien = wert;
       i++;
     } else if (argument.startsWith('--')) {
-      return null;
+      return { ok: false, meldung: `Unbekannte Option ${argument}.` };
     } else {
       ids.push(argument);
     }
   }
-  return kurzname && ids.length === 1 ? { kurzname, abschnitt: ids[0], folien } : null;
+  if (kurzname === '' || ids.length !== 1) return { ok: false, meldung: null };
+  if (!ID_MUSTER.test(kurzname)) return { ok: false, meldung: kurznameFalsch(kurzname) };
+  return { ok: true, kurzname, abschnitt: ids[0], folien };
 }
 
 /**
@@ -272,16 +387,16 @@ function leseArgv(argv) {
  */
 export async function fuehreAus(argv, wurzel, schreibe = (zeile) => console.log(zeile)) {
   const aufruf = leseArgv(argv);
-  if (aufruf === null) {
+  if (!aufruf.ok) {
+    if (aufruf.meldung !== null) schreibe(aufruf.meldung);
     schreibe(AUFRUF);
     return 2;
   }
+  const { kurzname, abschnitt, folien } = aufruf;
 
   try {
-    const { bilder } = await rendereFolien({ wurzel, ...aufruf });
-    /** @type {(pfad: string) => string} */
-    const rel = (pfad) => path.relative(wurzel, pfad).replaceAll(path.sep, '/');
-    for (const bild of bilder) schreibe(`${rel(bild.pfad)} — ${bild.breite} × ${bild.hoehe}`);
+    const { bilder } = await rendereFolien({ wurzel, kurzname, abschnitt, folien });
+    for (const bild of bilder) schreibe(`${relativ(wurzel, bild.pfad)} — ${bild.breite} × ${bild.hoehe}`);
     schreibe(bilder.length === 1 ? '1 Folie gerendert.' : `${bilder.length} Folien gerendert.`);
     return 0;
   } catch (fehler) {

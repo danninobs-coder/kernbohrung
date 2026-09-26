@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
@@ -304,6 +304,26 @@ describe('rendereFolien - was fehlt', () => {
       rmSync(wurzel, { recursive: true, force: true });
     }
   });
+
+  it('laesst einen Fehler im Programm beim Laden des Originals als solchen durch', async () => {
+    const wurzel = kopie();
+    try {
+      // Kein Lesegrund: Als kaputtes PDF verkleidet, suchte man am Original statt im Code.
+      const programmfehler = new TypeError('ein Fehler im Programm');
+      const scheitert = {
+        ...geladen,
+        pdfjs: {
+          ...geladen.pdfjs,
+          getDocument: () => ({ promise: Promise.reject(programmfehler), destroy: async () => {} }),
+        },
+      };
+      const fehler = await abbruch(rendereFolien({ wurzel, kurzname: KURZNAME, abschnitt: ABSCHNITT, geladen: scheitert }));
+      expect(fehler).toBe(programmfehler);
+      expect(existsSync(quelle(wurzel, 'ansicht'))).toBe(false);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('fuehreAus', () => {
@@ -343,7 +363,7 @@ describe('fuehreAus', () => {
     }
   });
 
-  it('zeigt die Aufruf-Hilfe und bricht mit 2 ab, wenn etwas fehlt, doppelt oder fremd ist', async () => {
+  it('zeigt nur die Aufruf-Hilfe und bricht mit 2 ab, wenn etwas fehlt oder doppelt ist', async () => {
     const wurzel = kopie();
     try {
       for (const argv of [
@@ -354,13 +374,105 @@ describe('fuehreAus', () => {
         ['--name', '--folien', '14', ABSCHNITT],
         ['--name', KURZNAME, ABSCHNITT, 'd01-03-risiken-im-projekt'],
         ['--name', KURZNAME, ABSCHNITT, '--folien'],
-        ['--name', KURZNAME, ABSCHNITT, '--skala', '2'],
       ]) {
         const { code, zeilen } = await lauf(argv, wurzel);
         expect(code).toBe(2);
         expect(zeilen).toEqual([AUFRUF]);
       }
       expect(existsSync(quelle(wurzel, 'ansicht'))).toBe(false);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  // Kein Kurzname: Er wird zum Ordner unter quellen/, und nur darunter wird geschrieben.
+  it('nennt einen Kurznamen, der nicht dem Muster der Ids folgt, und zeigt die Aufruf-Hilfe, Exit 2', async () => {
+    const wurzel = kopie();
+    try {
+      for (const [argv, erwartet] of [
+        [['--name', '../fremd', ABSCHNITT], '--name ../fremd: nur Kleinbuchstaben, Ziffern und Bindestrich.'],
+        [[ABSCHNITT, '--folien', '14', '--name', 'Fixture-Ansicht'], '--name Fixture-Ansicht: nur Kleinbuchstaben, Ziffern und Bindestrich.'],
+      ] as const) {
+        expect(await lauf([...argv], wurzel)).toEqual({ code: 2, zeilen: [erwartet, AUFRUF] });
+      }
+      expect(readdirSync(wurzel).sort()).toEqual(['lehrplan', 'quellen']);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('nennt eine fremde Option und zeigt die Aufruf-Hilfe, Exit 2', async () => {
+    const wurzel = kopie();
+    try {
+      for (const [argv, erwartet] of [
+        [['--name', KURZNAME, ABSCHNITT, '--skala', '2'], 'Unbekannte Option --skala.'],
+        [['--vor', '--name', KURZNAME, ABSCHNITT], 'Unbekannte Option --vor.'],
+      ] as const) {
+        expect(await lauf([...argv], wurzel)).toEqual({ code: 2, zeilen: [erwartet, AUFRUF] });
+      }
+      expect(existsSync(quelle(wurzel, 'ansicht'))).toBe(false);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('meldet ein Original, das sich nicht als PDF lesen laesst, mit dem Grund wie beim Einlesen, Exit 1', async () => {
+    const wurzel = kopie();
+    try {
+      // Text statt PDF unter original/.
+      writeFileSync(quelle(wurzel, 'original', 'folien-agenda.pdf'), 'Kein PDF, nur Text.', 'utf8');
+      expect(await lauf(['--name', KURZNAME, ABSCHNITT, '--folien', '14'], wurzel)).toEqual({
+        code: 1,
+        zeilen: ['quellen/fixture-ansicht/original/folien-agenda.pdf: lässt sich nicht als PDF lesen (Invalid PDF structure.).'],
+      });
+      expect(existsSync(quelle(wurzel, 'ansicht'))).toBe(false);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('meldet Manifest und Original, die sich nicht lesen lassen, mit dem Code statt eines Stapelabzugs, Exit 1', async () => {
+    // Ein Ordner, wo die Datei stehen sollte: Das Lesen scheitert mit EISDIR.
+    for (const [teile, meldung] of [
+      [['manifest.json'], 'quellen/fixture-ansicht/manifest.json lässt sich nicht lesen (EISDIR).'],
+      [['original', 'folien-agenda.pdf'], 'quellen/fixture-ansicht/original/folien-agenda.pdf: lässt sich nicht öffnen (EISDIR).'],
+    ] as const) {
+      const wurzel = kopie();
+      try {
+        rmSync(quelle(wurzel, ...teile));
+        mkdirSync(quelle(wurzel, ...teile));
+        expect(await lauf(['--name', KURZNAME, ABSCHNITT, '--folien', '14'], wurzel)).toEqual({ code: 1, zeilen: [meldung] });
+        expect(existsSync(quelle(wurzel, 'ansicht'))).toBe(false);
+      } finally {
+        rmSync(wurzel, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('meldet einen Ansichtsordner, der sich nicht anlegen laesst, mit Pfad und Code, Exit 1', async () => {
+    const wurzel = kopie();
+    try {
+      // Eine Datei, wo der Ordner ansicht/<abschnitt> hin soll.
+      mkdirSync(quelle(wurzel, 'ansicht'));
+      writeFileSync(quelle(wurzel, 'ansicht', ABSCHNITT), 'im Weg', 'utf8');
+      expect(await lauf(['--name', KURZNAME, ABSCHNITT, '--folien', '14'], wurzel)).toEqual({
+        code: 1,
+        zeilen: ['quellen/fixture-ansicht/ansicht/d01-02-kosten-und-termine lässt sich nicht schreiben (EEXIST).'],
+      });
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('meldet ein Bild, das sich nicht schreiben laesst, mit Pfad und Code, Exit 1', async () => {
+    const wurzel = kopie();
+    try {
+      // Ein Ordner, wo das Bild hin soll.
+      mkdirSync(quelle(wurzel, 'ansicht', ABSCHNITT, 'folie-14.png'), { recursive: true });
+      expect(await lauf(['--name', KURZNAME, ABSCHNITT, '--folien', '14'], wurzel)).toEqual({
+        code: 1,
+        zeilen: ['quellen/fixture-ansicht/ansicht/d01-02-kosten-und-termine/folie-14.png lässt sich nicht schreiben (EISDIR).'],
+      });
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }
