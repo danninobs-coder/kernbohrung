@@ -564,13 +564,24 @@ Jede Aufgabe ist einzeln reviewt; dazu kamen eine Planänderung und sieben Nacha
 - README: Befehle in Backticks — die Platzhalter fielen als HTML-Tags weg —, Takte und Aufgabentypen auf dem Stand der Aufgabenfamilie (dfecb0c, badaa5e).
 - Ein Test prüft jede Option hinter `npm run <name> --` in SKILL.md und README gegen die Einstiegsdatei des Werkzeugs. Er fängt Tippfehler in der Anleitung, nicht ein Werkzeug, das eine Option verliert (dfecb0c, badaa5e).
 
+**Aus dem Schlussreview** — der Weg L0 bis L8 lief ohne Sackgasse (am Fixture in einem Temp-Ordner durchgespielt); nachgearbeitet wurde in sechs Commits, jeder reviewt:
+- **Wortlaut auch im Lehrplan.** Der Lehrplan liegt im Git, die Folien nicht. `--vor` und `--nach` gleichen jeden Text des Lehrplans gegen die Rohdateien ab: oben, je Abschnitt und je Prinzip jeder Text außer Werten in Schemaform (`id`, `titel`, `datei`, `status`, `seiten`, `widget` und die Kopffelder), dazu Kommentare — aufeinanderfolgende Kommentarzeilen als ein Feld. Schlüssel, die nicht wie ein Feldname aussehen, werden selbst geprüft und in keiner Meldung genannt, auch nicht auf der Bibliotheksseite (`unbekanntes Feld (kein Feldname).`). Ohne eigene Rohdateien meldet `--vor` „`quellen/<k>/roh/` enthält keine Rohdatei — erst einlesen.“ (b4190a3, 3fce601, 2402d0a).
+- **Lektion gegen Prinzip.** `--vor` verlangt zu jeder schon vorhandenen Lektion eines Prinzips denselben Satz und denselben `vorbehalt` — so fällt auch eine versehentlich gewählte fremde Id auf; `--nach` verlangt es von jeder Lektion. Ein `vorbehalt` kann nicht mehr still wegfallen (b4190a3, 3fce601).
+- **Freigabe neben anderen Mängeln:** Statt der Schema-Sätze zu `geprueftVon` und `geprueftAm`, die zum Ausfüllen einladen, steht „Erst freigeben …“ bzw. „… wartet auf Freigabe …“. Der zweite Lesedurchgang in `src/lib/lehrplan.ts` läuft auch bei einer Freigabe `null` (b4190a3, 3fce601).
+- **Aufruf in allen drei Werkzeugen gleich:** ungültiger Kurzname, fremde Option und doppeltes `--name` mit Satz und Aufruf-Hilfe, Exit 2; `auftrag` schreibt nicht mehr außerhalb von `lehrplan/` (b4190a3, e7f581a, 3fce601).
+- **`auftrag`:** Ankerzeilen mit Anführungszeichen, Kommentar oder Leerraum am Ende; jede andere Form ein Mangel statt eines Stapelabzugs; Schreibfehler als Satz; nur UTF-8 (ein ANSI-Lehrplan hätte jeden Umlaut still zerstört); bei wartendem Lehrplan „Nächster Schritt: freigeben …“ (e7f581a, e30bf48).
+- **`ansicht` und `pruefe-lektion`:** Datei- und PDF-Fehler als Satz; ein ungelesener Rohindex heißt „Wortlaut nicht geprüft“ mit Exit 2 (e7f581a).
+- **Tests:** `tests/durchgang.test.ts` hält die Kette am Fixture fest, mit vier Gegenproben und dem Fall „alle Abschnitte abgelehnt“; die Werkzeuge laufen je einmal als eigener Prozess; `tests/hilfen/sperre.ts` statt dreier Kopien. Der Bestandstest hält für die Vorlesung `mitLektion` 0, `abgelehnt` 0 und `offen + beauftragt` 22 fest: Ein Auftrag bleibt grün, der erste Durchgang zieht ihn nach (e30bf48, 71b91f9).
+- **Bewusst offen:** Ein Kommentar hinter einem Wert, der in der nächsten Zeile weiterläuft, zerfällt in zwei Felder. Eine doppelte Id, die ein Satz ist, und ein langer `datei`-Wert erscheinen wörtlich in Schema-Meldungen; `src/widgets/pruefung.ts` nennt unbekannte Widget-Felder beim Namen. Bricht `auftrag` mitten im Schreiben ab (volle Platte), bleibt eine halbe Datei — deshalb im README: Freigabe vor dem Auftrag committen. Unter starker Last reißen einzelne Tests an der zentralen 20-s-Frist; einzeln laufen sie grün.
+
 **Zahlen am Ende**
-- 1169 Tests in 56 Dateien = BASIS 1009 + 160; `astro check` 0/0/0; Bau 9 Seiten; keine NUL-Bytes in den geänderten Textdateien; kein Rohtext im Bau.
+- 1255 Tests in 57 Dateien = BASIS 1009 + 246; `astro check` 0/0/0; Bau 9 Seiten; keine NUL-Bytes in den geänderten Textdateien; kein Rohtext im Bau. (Vor dem Schlussreview: 1169 in 56.)
 - Abnahme bei 375 px mit einem synthetischen Lehrplan (vier Abschnitte in den vier Status, zwei Lektionen an einem Abschnitt): zwei Verweise in einer Zeile, 44 und 45 px hoch, Zeile ohne Überlauf, `ueberlauf: 0`, „Lektionen ohne Lehrplaneintrag“ verschwindet. Danach Datei gelöscht, Bau wieder 9 Seiten, Arbeitsbaum sauber.
 - Am echten Material: `--vor` meldet „Erst freigeben …“ und „Kein Abschnitt ist beauftragt …“, Exit 1; `ansicht` rendert Folie 31 aus `m07-03-risikomanagement` zu 1263 × 893 px; `pruefe-lektion` über alle fünf Lektionen in Ordnung, Wortlaut gegen 46 Rohdateien sauber. Private Handy-Version 12.
 
 **Für 2c-2 zusätzlich zu den offenen Fragen unten**
-- `--vor` sieht Lektionen ohne Lehrplaneintrag nicht. Eine Prinzip-Id, unter der es schon eine Lektion gibt, wählt der Compiler nur bei Übernahme; heute betrifft das neben `pauschal-heisst-nicht-komplett` auch `recall-vor-precision`.
+- Eine Prinzip-Id, unter der es schon eine Lektion gibt, wählt der Compiler nur bei Übernahme; heute betrifft das neben `pauschal-heisst-nicht-komplett` auch `recall-vor-precision`. `--vor` meldet es, wenn der Satz nicht passt.
+- Nach dem Durchgang zieht `npm test` den Bestandstest nach (`mitLektion`, `abgelehnt`, `ohneLehrplan`).
 - Veröffentlichung weiter nur von Hand: Ein Lauf des Pages-Workflows machte die Abschnittstitel und den Namen des Dozenten öffentlich, ab 2c-2 auch Lektionen aus der Vorlesung.
 
 ---

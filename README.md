@@ -38,7 +38,8 @@ public/manifest.webmanifest, public/symbole/   Macht die Seite auf Android insta
 werkzeug/               Einlesen: ingest.mjs als Weiche, adapter/ (git, dokument, folien),
                         gliederung/folien.mjs, manifest.mjs, fixtures/erzeuge.mjs.
                         Compiler: auftrag.mjs, ansicht.mjs, pruefe-quelle.mjs,
-                        pruefe-lektion.mjs (mit wortlaut.mjs).
+                        pruefe-lektion.mjs (mit wortlaut.mjs, lektion-lesen.mjs),
+                        dokument-manifest.mjs.
 lehrplan/               Je Quelle ein Lehrplan — das Review-Gate.
 docs/superpowers/plans/ Die Implementierungspläne, je Teilprojekt einer.
 ```
@@ -124,7 +125,7 @@ Zahlen, Dateinamen, Abschnitt-Ids und Abschnittstitel.
 Scheitert ein Lauf, bleibt `quellen/<kurzname>/` wie vorher: Das Einlesen baut
 den neuen Stand erst daneben auf und tauscht ihn dann in einem Schritt ein.
 
-Nach der Freigabe beauftragst du Abschnitte (`npm run auftrag`) und sagst Claude Code „Bau die Lektionen für ‹kurzname›“. Der Ablauf steht im Compiler-Skill unter „Durchgang für Lehrmaterial“.
+Nach der Freigabe beauftragst du Abschnitte (`npm run auftrag`) und sagst Claude Code „Bau die Lektionen für ‹kurzname›“. Die Freigabe vorher committen: `auftrag` schreibt den Lehrplan neu, und bricht das Schreiben ab, holt Git den Stand zurück. Der Ablauf steht im Compiler-Skill unter „Durchgang für Lehrmaterial“.
 
 ## Auf Android testen und weiterentwickeln
 

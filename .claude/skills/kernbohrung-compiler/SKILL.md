@@ -246,7 +246,7 @@ dass jede Schalterkombination ein Ergebnis hat — und den Wortlaut: Übernimmt
 die Lektion dreizehn Wörter am Stück aus einer Rohdatei unter `quellen/`, ist
 sie abgeschrieben. `npm run pruefe-lektion -- <datei> …` ist derselbe Aufruf.
 
-Meldet es Mängel, **behebe sie im Entwurf**. Verschiebe erst bei `in Ordnung`:
+Meldet es Mängel, **behebe sie im Entwurf**. Verschiebe erst bei `in Ordnung` und Exit 0 — Exit 2 heißt: eine Datei fehlte, oder der Wortlaut ließ sich nicht prüfen:
 
 ```bash
 mv entwurf/<id>.mdx inhalt/lektionen/<id>.mdx
@@ -306,7 +306,7 @@ Steht kein Abschnitt auf `beauftragt`, frag, welche es sein sollen, und warte.
 npm run pruefe-quelle -- --name <kurzname> --vor
 ```
 
-Sie verlangt die Freigabe des Lehrplans, einen Stand, der zum Manifest passt, und mindestens einen beauftragten Abschnitt. Sie nennt je Abschnitt die Rohdatei, den Folienbereich und die Folien, die nur Bild sind oder eine Tabelle oder Grafik tragen. **Nimm diese Listen von hier**, nicht aus den Hinweiszeilen der Rohdatei. Meldet sie Mängel, halte an und leg sie vor.
+Sie verlangt die Freigabe des Lehrplans, einen Stand, der zum Manifest passt, dieselben Abschnitte und Seiten wie das Manifest, die eigenen Rohdateien und mindestens einen beauftragten Abschnitt. Sie gleicht jeden Text des Lehrplans, auch Kommentare, gegen die Rohdateien ab, und zu jeder schon vorhandenen Lektion eines Prinzips verlangt sie denselben Satz und denselben `vorbehalt`. Sie nennt je Abschnitt die Rohdatei, den Folienbereich und die Folien, die nur Bild sind oder eine Tabelle oder Grafik tragen. **Nimm diese Listen von hier**, nicht aus den Hinweiszeilen der Rohdatei. Meldet sie Mängel, halte an und leg sie vor.
 
 ### L2 · Die Rohdatei lesen — ganz
 
@@ -349,12 +349,13 @@ Die drei Prüfungen aus A5 gelten: mehrfach tragend, nicht offensichtlich, entsc
         vorbehalt: "Nur, wenn die Quelle etwas ohne Beleg behauptet."   # sonst weglassen
 ```
 
-- **Die Id des Prinzips wird die Id der Lektion.** Sie ist über alle Lehrpläne eindeutig; `npm run pruefe-quelle` meldet eine Doppelung. Eine Id, unter der es in `inhalt/lektionen/` schon eine Lektion gibt, wählst du nur, wenn du genau diese Lektion übernimmst (nächster Punkt) — die Prüfung sieht Lektionen ohne Lehrplaneintrag nicht.
+- **Die Id des Prinzips wird die Id der Lektion.** Sie ist über alle Lehrpläne eindeutig; `npm run pruefe-quelle` meldet eine Doppelung. Eine Id, unter der es in `inhalt/lektionen/` schon eine Lektion gibt, wählst du nur, wenn du genau diese Lektion übernimmst (nächster Punkt); `--vor` meldet es, wenn die Lektion unter dieser Id einen anderen Satz trägt.
 - **Gibt es zu einem Prinzip schon eine Lektion ohne Lehrplaneintrag** (auf der Bibliotheksseite unter „Lektionen ohne Lehrplaneintrag“), übernimm ihre Id und ihren Satz, statt eine zweite zu planen — die Lektion bleibt, wie sie ist (L7). Sie deckt nur ihre eigenen Folien; für die übrigen Folien des Abschnitts planst du wie sonst, bis zu zwei weitere Prinzipien. Heute gilt das für `pauschal-heisst-nicht-komplett` in `m07-03-risikomanagement` (Folien 31–33). Eine Lektion, die schon zu einem anderen Lehrplan gehört, überschreibst du nie.
 - **`belege`** nennt je Stütze eine Stelle: `roh/<abschnitt-id>.md, Folien a–b` für die Folien, die Fundstelle für eine zweite Quelle aus L4 (etwa `VOB/B § 2 Abs. 7`).
 - **`vorbehalt`**, wenn die Quelle etwas behauptet, das sich nicht belegen lässt oder dem Stand der Forschung widerspricht. Prüfungsstoff bleibt lernbar, ohne dass die App ihn als gesichert ausgibt. Eine Quelle für den Vorbehalt prüfst du, statt sie aus dem Gedächtnis zu zitieren (bei Studien die DOI gegen Crossref).
 - **Ablehnen mit Grund**, wenn ein Abschnitt nichts Lernbares trägt — etwa reine Titelfolien oder nur Bildbeispiele ohne Aussage: `status: abgelehnt`, `grund: "…"`, keine Prinzipien.
 - **Schreibfehler der Quelle** in Fachbegriffen: Die Lektion nutzt den richtigen Begriff; die Abweichung vermerkst du in L7 im `pfad` der Vorlesung.
+- **Eigene Worte gelten auch im Lehrplan.** Er liegt im Git, die Folien nicht. `--vor` gleicht jeden Text des Lehrplans gegen die Rohdateien ab — `satz`, `warumNichtOffensichtlich`, `vorbehalt`, `belege`, `grund` und auch Kommentare — und meldet dreizehn Wörter am Stück wie in einer Folie.
 - **Bis zu drei Prinzipien trägt jeder Abschnitt**, sofern jedes auf eigenen Folien steht. Ein großer Abschnitt (über 20 Folien, heute nur `m07-02`) wird sie eher brauchen als ein kleiner. Folien, die keines trägt, nennst du am Review-Gate als nicht verwertet.
 
 Dann: `geprueftVon: ""` und `geprueftAm: ""` — **du leerst die Freigabe**, der Mensch setzt sie wieder. Prüfen:
@@ -367,7 +368,7 @@ Außer „Erst freigeben: …“ darf nichts kommen; der Befehl endet dann mit E
 
 ### L6 · Das Review-Gate
 
-Wie oben, dazu je Abschnitt: welche Folien du angesehen und welche du nur als Text gelesen hast, welche keines der Prinzipien trägt und warum, jede übernommene Lektion und jeden `vorbehalt` mit seiner Quelle. Halte an, bis der Mensch zugestimmt **und `geprueftVon` gefüllt** hat.
+Wie oben, dazu je Abschnitt: welche Folien du angesehen und welche du nur als Text gelesen hast, welche keines der Prinzipien trägt und warum, jede übernommene Lektion und jeden `vorbehalt` mit seiner Quelle. Halte an, bis der Mensch zugestimmt **und `geprueftVon` und `geprueftAm` gefüllt** hat.
 
 ### L7 · Durchgang B — eine Lektion je Prinzip
 
@@ -401,7 +402,7 @@ Zwei bis sechs Aufgaben, dazu der Transfer (B4) auf einen Fall, der in der Vorle
 
 ### L8 · Abschluss
 
-Nach jeder neu gebauten Lektion: `pruefe-lektion` (B5), dann verschieben — aber nur, wenn es die Zieldatei noch nicht gibt:
+Nach jeder neu gebauten Lektion: `pruefe-lektion` (B5), dann verschieben — aber nur, wenn es die Zieldatei noch nicht gibt. Im Bash-Werkzeug (Git Bash); in PowerShell gibt es `test` nicht:
 
 ```bash
 test ! -e inhalt/lektionen/<id>.mdx && mv entwurf/<id>.mdx inhalt/lektionen/<id>.mdx
@@ -415,10 +416,11 @@ Am Ende:
 
 ```bash
 npm run pruefe-quelle -- --name <kurzname> --nach
+npm test
 npm run build
 ```
 
-`--nach` verlangt: kein Abschnitt mehr `beauftragt`, jede Lektion da, der Wortlaut sauber. Danach Nachschauen wie in B7.
+`--nach` verlangt: kein Abschnitt mehr `beauftragt`, jede Lektion da und zu ihrem Prinzip passend (`prinzip` ist der `satz`, `vorbehalt` derselbe), der Wortlaut von Lektionen und Lehrplan sauber. `npm test` hält im Bestandstest (`tests/abdeckung.test.ts`) fest, wie viele Abschnitte `lektion` und `abgelehnt` sind und welche Lektionen keinen Lehrplaneintrag haben. Schlägt nur er an, weil dein Durchgang genau das geändert hat, ziehst du seine Erwartungen nach und sagst es im Bericht; jeder andere rote Test ist ein Mangel. Danach Nachschauen wie in B7.
 
 ---
 
