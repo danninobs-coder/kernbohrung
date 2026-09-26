@@ -436,14 +436,12 @@ export function fehltWirklich(wert: unknown): boolean {
 }
 
 /**
- * Betreffen alle Maengel die Freigabe, und fehlt sie dort wirklich? Ein
- * Formfehler zaehlt nicht dazu: Sonst verlangte die Karte einen Eintrag, der
- * schon dasteht.
+ * Meldet dieser Mangel eine Freigabe, die wirklich fehlt? Ein Formfehler
+ * zaehlt nicht dazu: Sonst verlangte die Karte einen Eintrag, der schon
+ * dasteht.
  */
-function nurDieFreigabeFehlt(fehler: readonly z.core.$ZodIssue[], roh: Readonly<Record<string, unknown>>): boolean {
-  return fehler.every(
-    (f) => f.path.length === 1 && FREIGABE.some((name) => f.path[0] === name && fehltWirklich(roh[name])),
-  );
+function fehlendeFreigabe(f: z.core.$ZodIssue, roh: Readonly<Record<string, unknown>>): boolean {
+  return f.path.length === 1 && FREIGABE.some((name) => f.path[0] === name && fehltWirklich(roh[name]));
 }
 
 /**
@@ -452,7 +450,8 @@ function nurDieFreigabeFehlt(fehler: readonly z.core.$ZodIssue[], roh: Readonly<
  * Lesedurchgang nicht sehen konnte. Steht die Freigabe als null da oder fehlt
  * sie, bricht Zod an diesem Feld ab und laesst die Pruefungen ueber den ganzen
  * Lehrplan aus: doppelte Ids, sich ueberschneidende Seitenbereiche. Die meldet
- * erst dieser Lesedurchgang.
+ * erst dieser Lesedurchgang — auch dann, wenn neben der Freigabe noch etwas
+ * fehlt.
  *
  * Ein Lehrplan, der zurueckkommt, traegt die Freigabe so, wie sie im Lehrplan
  * steht — leer, wo sie fehlt; der Ersatzwert verlaesst die Funktion nie.
@@ -487,19 +486,24 @@ export function pruefeLehrplan(daten: unknown, lektionsIds: ReadonlySet<string>)
     return maengel.length > 0 ? { ok: false, maengel } : { ok: true, lehrplan: geprueft.data };
   }
 
-  const maengel = alsMaengel(geprueft.error.issues);
-  // Fehlt ausser der Freigabe nichts, ist der Lehrplan lesbar — und wartend.
-  // Kommt dabei ein weiterer Mangel heraus, bleibt er ungueltig und zeigt alle.
+  const fehler = geprueft.error.issues;
+  const maengel = alsMaengel(fehler);
+  // Fehlt die Freigabe wirklich, liest ein zweiter Durchgang mit ersetzter
+  // Freigabe, was der erste nach ihr ausgelassen hat — auch neben weiteren
+  // Maengeln: Sonst fehlte etwa eine doppelte Id, sobald noch etwas anderes
+  // nicht stimmt.
   const roh = typeof daten === 'object' && daten !== null ? (daten as Readonly<Record<string, unknown>>) : null;
-  if (roh === null || !nurDieFreigabeFehlt(geprueft.error.issues, roh)) return { ok: false, maengel };
+  if (roh === null || !fehler.some((f) => fehlendeFreigabe(f, roh))) return { ok: false, maengel };
   const zweit = mitErsetzterFreigabe(roh);
   // Alle Maengel, keiner doppelt — erst die Freigabe, dann die uebrigen, wie
   // Zod sie in einem Lauf meldet, wenn die Freigabe leer statt null ist.
   if (!zweit.ok) return { ok: false, maengel: [...new Set([...maengel, ...zweit.maengel])] };
+  // Fehlt ausser der Freigabe nichts, ist der Lehrplan lesbar — und wartend.
+  // Kommt ein weiterer Mangel heraus, bleibt er ungueltig und zeigt alle.
   const weitere = pruefeLektionen(zweit.lehrplan, lektionsIds);
-  return weitere.length > 0
-    ? { ok: false, maengel: [...maengel, ...weitere] }
-    : { ok: false, wartet: true, lehrplan: zweit.lehrplan, maengel };
+  return weitere.length === 0 && fehler.every((f) => fehlendeFreigabe(f, roh))
+    ? { ok: false, wartet: true, lehrplan: zweit.lehrplan, maengel }
+    : { ok: false, maengel: [...maengel, ...weitere] };
 }
 
 /**

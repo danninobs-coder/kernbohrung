@@ -14,6 +14,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { lehrplanGeruest } from '../werkzeug/lehrplan-geruest.mjs';
 import { baueDokumentManifest } from '../werkzeug/manifest.mjs';
 import {
   PruefeQuelleFehler,
@@ -566,6 +567,23 @@ describe('pruefeNach', () => {
     });
   });
 
+  it('meldet die Lektion einer doppelten Id in einem ungueltigen Lehrplan einmal', () => {
+    const zweimal = lehrplanText({ abschnitte: [{ ...EINSTIEG, status: 'lektion', prinzipien: ['x', 'x'] }] });
+    const doppelt = 'lehrplan/fixture-quelle.yaml: abschnitte.0.prinzipien.1.id: Zwei Prinzipien haben die id x.';
+    const mitLektion = (text: string) =>
+      nach({ lehrplanText: zweimal, lektionsIds: new Set(['x']), lektionen: new Map([['x', text]]), index: INDEX });
+    expect(mitLektion(lektion(`Ein eigener Satz vorweg. ${SATZ}`))).toEqual({
+      ok: false,
+      maengel: [
+        doppelt,
+        'Lektion x: Wortlaut zu nah an der Quelle — npm run pruefe-lektion -- inhalt/lektionen/x.mdx zeigt die Stelle.',
+      ],
+      hinweise: [],
+    });
+    // Ohne Abschrift keine Zeile zur Lektion.
+    expect(mitLektion(lektion('Ein eigener Absatz, der die Regel in anderen Worten erklärt.')).maengel).toEqual([doppelt]);
+  });
+
   it('sagt ohne Rohdateien „nicht geprueft" — ein Hinweis, kein Mangel', () => {
     expect(nach({ lehrplanText: FERTIG, lektionsIds: LEKTIONEN, index: null })).toEqual({
       ok: true,
@@ -637,15 +655,165 @@ describe('lehrplanFelder', () => {
       '        vorbehalt: "Der Vorbehalt des Prinzips."',
       '',
     ].join('\n');
-    // Die Reihenfolge ist fest, nicht die des YAML: Dort steht vorbehalt hinter belege.
+    // Die Reihenfolge ist die des Lehrplans: vorbehalt steht hinter belege, widget faellt heraus.
     expect(lehrplanFelder(text)).toEqual([
       { feld: 'm01-01-einstieg.grund', text: 'Nur eine Titelfolie.' },
       { feld: 'erstes-prinzip.satz', text: 'Der Satz des Prinzips.' },
       { feld: 'erstes-prinzip.warumNichtOffensichtlich', text: 'Das Warum des Prinzips.' },
-      { feld: 'erstes-prinzip.vorbehalt', text: 'Der Vorbehalt des Prinzips.' },
       { feld: 'erstes-prinzip.belege[0]', text: 'roh/m01-02-kosten.md, Folien 11–12' },
       { feld: 'erstes-prinzip.belege[1]', text: 'VOB/B § 2 Abs. 7' },
+      { feld: 'erstes-prinzip.vorbehalt', text: 'Der Vorbehalt des Prinzips.' },
     ]);
+  });
+
+  it('liest jeden Text an Abschnitt und Prinzip in jeder Tiefe, auch in Feldern, die das Schema nicht kennt — erst den Abschnitt, dann seine Prinzipien', () => {
+    const text = [
+      'art: folien',
+      'abschnitte:',
+      '  - id: m01-01-einstieg',
+      '    titel: "Titel des ersten Abschnitts"',
+      '    notiz: "Eine Notiz am Abschnitt."',
+      '    prinzipien:',
+      '      - id: erstes-prinzip',
+      '        satz: ["Ein Satz als Liste.", "Sein zweiter Teil."]',
+      '        belege: "Ein Beleg als einzelner Text."',
+      '        widget: { name: "Ein Widget als Eintrag." }',
+      '        notiz:',
+      '          warum: "Eine Notiz am Prinzip, eine Ebene tiefer."',
+      '          id: "Eine Id in der Notiz."',
+      '          liste: [["Ganz tief."], 7]',
+      '    datei: "M1.pdf"',
+      '    seiten: ["eins", "zehn"]',
+      '    status: beauftragt',
+      '    x: ["Ein Text in einer Liste.", 3]',
+      '  - id: m01-02-kosten',
+      '    grund: "Ein Grund."',
+      '',
+    ].join('\n');
+    // x steht im YAML hinter den Prinzipien, gehoert aber zum Abschnitt: Es kommt vor ihnen.
+    // Nur unter id, titel, datei, seiten, status und widget des Abschnitts oder Prinzips selbst liest es nicht.
+    expect(lehrplanFelder(text)).toEqual([
+      { feld: 'm01-01-einstieg.notiz', text: 'Eine Notiz am Abschnitt.' },
+      { feld: 'm01-01-einstieg.x[0]', text: 'Ein Text in einer Liste.' },
+      { feld: 'erstes-prinzip.satz[0]', text: 'Ein Satz als Liste.' },
+      { feld: 'erstes-prinzip.satz[1]', text: 'Sein zweiter Teil.' },
+      { feld: 'erstes-prinzip.belege', text: 'Ein Beleg als einzelner Text.' },
+      { feld: 'erstes-prinzip.notiz.warum', text: 'Eine Notiz am Prinzip, eine Ebene tiefer.' },
+      { feld: 'erstes-prinzip.notiz.id', text: 'Eine Id in der Notiz.' },
+      { feld: 'erstes-prinzip.notiz.liste[0][0]', text: 'Ganz tief.' },
+      { feld: 'm01-02-kosten.grund', text: 'Ein Grund.' },
+    ]);
+  });
+
+  it('nennt ein Feld nach seiner Stelle, wenn die Id nicht dem Muster folgt oder schon vorn an einem anderen Feld steht', () => {
+    const text = [
+      'art: folien',
+      'abschnitte:',
+      '  - id: "Ein Satz als Id eines Abschnitts."',
+      '    grund: "Ein Grund."',
+      '    prinzipien:',
+      '      - id: Erstes-Prinzip',
+      '        satz: "Ein Satz unter einer Id mit Grossbuchstaben."',
+      '      - id: doppelt',
+      '        satz: "Der erste Satz."',
+      '  - id: doppelt',
+      '    grund: "Ein Abschnitt mit der Id eines Prinzips davor."',
+      '    prinzipien:',
+      '      - id: doppelt',
+      '        satz: "Der zweite Satz."',
+      '      - id: eigenes-prinzip',
+      '        satz: "Ein eigener Satz."',
+      '',
+    ].join('\n');
+    const felder = lehrplanFelder(text);
+    expect(felder).toEqual([
+      { feld: 'abschnitte[0].grund', text: 'Ein Grund.' },
+      { feld: 'abschnitte[0].prinzipien[0].satz', text: 'Ein Satz unter einer Id mit Grossbuchstaben.' },
+      { feld: 'doppelt.satz', text: 'Der erste Satz.' },
+      { feld: 'abschnitte[1].grund', text: 'Ein Abschnitt mit der Id eines Prinzips davor.' },
+      { feld: 'abschnitte[1].prinzipien[0].satz', text: 'Der zweite Satz.' },
+      { feld: 'eigenes-prinzip.satz', text: 'Ein eigener Satz.' },
+    ]);
+    // Zwei gleiche Ids, keine gleichen Feldnamen.
+    expect(new Set(felder.map(({ feld }) => feld)).size).toBe(felder.length);
+  });
+
+  it('liest auch einen Abschnitt oder ein Prinzip, das Text statt Eintrag ist, und prinzipien, die keine Liste sind', () => {
+    const text = [
+      'art: folien',
+      'abschnitte:',
+      '  - "Ein Abschnitt als Text."',
+      '  - id: m01-02-kosten',
+      '    prinzipien: "Prinzipien als Text."',
+      '  - id: m01-03-risiken',
+      '    prinzipien:',
+      '      - "Ein Prinzip als Text."',
+      '      - ["Ein Prinzip als Liste."]',
+      '      - id: drittes-prinzip',
+      '        satz: "Ein Satz."',
+      '  - id: m01-04-termine',
+      '    prinzipien:',
+      '      satz: "Ein Prinzip ohne Liste davor."',
+      '',
+    ].join('\n');
+    expect(lehrplanFelder(text)).toEqual([
+      { feld: 'abschnitte[0]', text: 'Ein Abschnitt als Text.' },
+      { feld: 'm01-02-kosten.prinzipien', text: 'Prinzipien als Text.' },
+      { feld: 'abschnitte[2].prinzipien[0]', text: 'Ein Prinzip als Text.' },
+      { feld: 'abschnitte[2].prinzipien[1][0]', text: 'Ein Prinzip als Liste.' },
+      { feld: 'drittes-prinzip.satz', text: 'Ein Satz.' },
+      { feld: 'm01-04-termine.prinzipien.satz', text: 'Ein Prinzip ohne Liste davor.' },
+    ]);
+  });
+
+  it('liest Kommentare, ganze Zeilen und hinter einem Wert, zuletzt nach Zeile — eine Raute in Anfuehrungszeichen oder in einem Blocktext ist Text', () => {
+    const zeilen = [
+      '# Eine Kommentarzeile ganz oben.',
+      'art: folien # Ein Kommentar hinter einem Wert.',
+      'abschnitte:',
+      '  - id: m01-01-einstieg',
+      '    grund: "Ein Grund # mit Raute in Anfuehrungszeichen." # Und einer dahinter.',
+      '    # Eine eingerueckte Kommentarzeile.',
+      '    status: offen\t# Nach einem Tabulator.',
+      '    prinzipien:',
+      '      - id: erstes-prinzip',
+      "        satz: 'Ein Satz # mit Raute in einfachen Anfuehrungszeichen.'",
+      '        belege: ["Ein Beleg # mit Raute.", "Folie 3"] # Hinter einer Liste.',
+      "        vorbehalt: Ein Vorbehalt ohne Anfuehrungszeichen, gibt's # Nach einem Apostroph.",
+      '        warumNichtOffensichtlich: |',
+      '          # Diese Zeile gehoert zum Text.',
+      '',
+    ];
+    const erwartet = [
+      { feld: 'm01-01-einstieg.grund', text: 'Ein Grund # mit Raute in Anfuehrungszeichen.' },
+      { feld: 'erstes-prinzip.satz', text: 'Ein Satz # mit Raute in einfachen Anfuehrungszeichen.' },
+      { feld: 'erstes-prinzip.belege[0]', text: 'Ein Beleg # mit Raute.' },
+      { feld: 'erstes-prinzip.belege[1]', text: 'Folie 3' },
+      { feld: 'erstes-prinzip.vorbehalt', text: "Ein Vorbehalt ohne Anfuehrungszeichen, gibt's" },
+      { feld: 'erstes-prinzip.warumNichtOffensichtlich', text: '# Diese Zeile gehoert zum Text.\n' },
+      { feld: 'kommentar[1]', text: ' Eine Kommentarzeile ganz oben.' },
+      { feld: 'kommentar[2]', text: ' Ein Kommentar hinter einem Wert.' },
+      { feld: 'kommentar[5]', text: ' Und einer dahinter.' },
+      { feld: 'kommentar[6]', text: ' Eine eingerueckte Kommentarzeile.' },
+      { feld: 'kommentar[7]', text: ' Nach einem Tabulator.' },
+      { feld: 'kommentar[11]', text: ' Hinter einer Liste.' },
+      { feld: 'kommentar[12]', text: ' Nach einem Apostroph.' },
+    ];
+    expect(lehrplanFelder(zeilen.join('\n'))).toEqual(erwartet);
+    // Mit CRLF, wie in der Arbeitskopie unter Windows: dieselben Felder, dieselben Zeilen.
+    expect(lehrplanFelder(zeilen.join('\r\n'))).toEqual(erwartet);
+    // Ein BOM vorn verdeckt die erste Kommentarzeile nicht.
+    expect(lehrplanFelder(String.fromCharCode(0xfeff) + zeilen.join('\n'))).toEqual(erwartet);
+  });
+
+  it('liest die Kopfzeilen, die das Einlesen schreibt, als Kommentare wie alle anderen', () => {
+    const geruest = lehrplanGeruest({
+      kurzname: K,
+      titel: 'Fixture Quelle',
+      stand: STAND,
+      abschnitte: [{ ...EINSTIEG, titel: 'Titel m01-01-einstieg', datei: 'M1.pdf' }],
+    });
+    expect(lehrplanFelder(geruest).map(({ feld }) => feld)).toEqual(['kommentar[1]', 'kommentar[2]', 'kommentar[3]']);
   });
 
   it('nennt ein Feld ohne Id als Text nach seiner Stelle und liest nur Werte, die Text sind', () => {
@@ -680,8 +848,10 @@ describe('lehrplanFelder', () => {
     ]);
   });
 
-  it('gibt ohne YAML und ohne Abschnitte keine Felder', () => {
+  it('gibt ohne YAML keine Felder, auch keine Kommentare, und ohne Abschnitte keine', () => {
     expect(lehrplanFelder('art: folien\nabschnitte: [')).toEqual([]);
+    // Ob eine Raute einen Kommentar beginnt, weiss erst der YAML-Leser.
+    expect(lehrplanFelder('# Ein Kommentar.\nart: folien\nabschnitte: [')).toEqual([]);
     expect(lehrplanFelder('')).toEqual([]);
     expect(lehrplanFelder('- eine Liste\n- statt eines Lehrplans\n')).toEqual([]);
     expect(lehrplanFelder('art: folien\nabschnitte: "kein Abschnitt"\n')).toEqual([]);
@@ -761,6 +931,36 @@ describe('Wortlaut im Lehrplan', () => {
     expect(nach({ lehrplanText: nachher, lektionsIds: MIT_LEKTION, index: INDEX }).maengel).toEqual([
       grundFehlt,
       lehrplanAbschrift('erstes-prinzip.satz'),
+    ]);
+  });
+
+  it('meldet eine Abschrift in einem Feld, das das Schema nicht kennt, hinter dessen Mangel', () => {
+    // Die erste Zeile status: offen gehoert zu KOSTEN, dem zweiten Abschnitt.
+    const mitNotiz = vorB({ id: 'erstes-prinzip' }).replace('    status: offen\n', `    status: offen\n    notiz: "${SATZ}"\n`);
+    expect(vor({ lehrplanText: mitNotiz, index: INDEX }).maengel).toEqual([
+      'lehrplan/fixture-quelle.yaml: abschnitte.1: unbekanntes Feld: notiz.',
+      lehrplanAbschrift('m01-02-kosten.notiz'),
+    ]);
+  });
+
+  it('meldet eine Abschrift in einem Kommentar mit seiner Zeile, nach denen in den Feldern', () => {
+    const oben = `# ${SATZ}\n${vorB({ id: 'erstes-prinzip' })}`;
+    expect(vor({ lehrplanText: oben, index: INDEX })).toEqual({
+      ok: false,
+      maengel: [lehrplanAbschrift('kommentar[1]')],
+      auftrag: [],
+    });
+    const dahinter = nachB({ id: 'erstes-prinzip' }).replace(`quelle: "${K}"\n`, `quelle: "${K}" # ${SATZ}\n`);
+    expect(nach({ lehrplanText: dahinter, lektionsIds: MIT_LEKTION, index: INDEX })).toEqual({
+      ok: false,
+      maengel: [lehrplanAbschrift('kommentar[2]')],
+      hinweise: [],
+    });
+    // Der Kommentar steht in Zeile 1, seine Meldung trotzdem hinter der zum satz.
+    const beides = `# ${SATZ}\n${vorB({ id: 'erstes-prinzip', satz: SATZ })}`;
+    expect(vor({ lehrplanText: beides, index: INDEX }).maengel).toEqual([
+      lehrplanAbschrift('erstes-prinzip.satz'),
+      lehrplanAbschrift('kommentar[1]'),
     ]);
   });
 
@@ -922,7 +1122,7 @@ describe('Lektion und Prinzip', () => {
     }
   });
 
-  it('gleicht nur einen lesbaren Lehrplan ab: einen wartenden ja, einen ungueltigen nicht', () => {
+  it('gleicht auch einen wartenden und einen ungueltigen Lehrplan ab', () => {
     const mitLektion = { lektionsIds: new Set(['uebernommen']), lektionen: new Map([['uebernommen', lektionZu('Ein anderer Satz.')]]) };
     const wartend = lehrplanText({
       freigegeben: false,
@@ -945,6 +1145,139 @@ describe('Lektion und Prinzip', () => {
     });
     expect(vor({ lehrplanText: ungueltig, ...mitLektion }).maengel).toEqual([
       'lehrplan/fixture-quelle.yaml: abschnitte.1.grund: Ein abgelehnter Abschnitt braucht einen Grund.',
+      ANDERER_SATZ_VOR,
+    ]);
+  });
+
+  // Der typische Fall: Nach Durchgang B fehlt eine Lektion, und das Schema weist den Lehrplan ab.
+  it('gleicht nach dem Durchgang die uebrigen Lektionen ab, auch wenn eine fehlende den Lehrplan ungueltig macht', () => {
+    const lehrplan = lehrplanText({
+      abschnitte: [
+        { ...EINSTIEG, status: 'lektion', prinzipien: [{ id: 'uebernommen', vorbehalt: 'Ein Vorbehalt.' }, 'fehlt-noch'] },
+      ],
+    });
+    const lektionFehlt =
+      'lehrplan/fixture-quelle.yaml: abschnitte.0.prinzipien.1.id: Die Lektion fehlt-noch gibt es nicht (inhalt/lektionen/fehlt-noch.mdx).';
+    const mitLektion = (text: string) =>
+      nach({ lehrplanText: lehrplan, lektionsIds: new Set(['uebernommen']), lektionen: new Map([['uebernommen', text]]) });
+    expect(mitLektion(lektionZu('Ein anderer Satz.'))).toEqual({
+      ok: false,
+      maengel: [lektionFehlt, ANDERER_SATZ_NACH, ANDERER_VORBEHALT_NACH],
+      hinweise: [],
+    });
+    // Passt die Lektion zu ihrem Prinzip, bleibt es beim Mangel des Lehrplans.
+    expect(mitLektion(lektionZu(PRINZIPSATZ, 'Ein Vorbehalt.')).maengel).toEqual([lektionFehlt]);
+  });
+
+  it('gleicht in einem ungueltigen Lehrplan nur ab, was sich vergleichen laesst', () => {
+    /** Die Zeilen eines Prinzips, roh — auch mit Werten, die das Schema abweist; warumNichtOffensichtlich und belege stimmen. */
+    const roh = (id: string, ...felder: string[]) => [
+      `      - id: ${id}`,
+      ...felder.map((feld) => `        ${feld}`),
+      '        warumNichtOffensichtlich: "Weil das Gegenteil plausibel klingt."',
+      '        belege: ["roh/m01-01-einstieg.md, Folie 1"]',
+    ];
+    /** Vor Durchgang B: EINSTIEG beauftragt mit diesen Prinzipien, KOSTEN und RISIKEN offen. */
+    const mitPrinzipien = (...prinzipien: string[][]) =>
+      lehrplanText({
+        abschnitte: [{ ...EINSTIEG, status: 'beauftragt' }, { ...KOSTEN, status: 'offen' }, { ...RISIKEN, status: 'offen' }],
+      }).replace('    status: beauftragt\n', ['    status: beauftragt', '    prinzipien:', ...prinzipien.flat(), ''].join('\n'));
+    const imLehrplan = (mangel: string) => `lehrplan/fixture-quelle.yaml: ${mangel}`;
+    const SATZ_ZEILE = `satz: "${PRINZIPSATZ}"`;
+    const faelle: { prinzipien: string[][]; zuLektion: [string, string]; maengel: string[] }[] = [
+      // Die Id ist ein Satz: Die Lektion unter diesem Namen wird nicht verglichen, obwohl sie nicht passt.
+      {
+        prinzipien: [roh('Kein Muster', SATZ_ZEILE)],
+        zuLektion: ['Kein Muster', lektionZu('Ein anderer Satz.', 'Ein Vorbehalt.')],
+        maengel: [imLehrplan('abschnitte.0.prinzipien.0.id: nur Kleinbuchstaben, Ziffern und Bindestrich.')],
+      },
+      // satz ist kein Text: kein Vergleich des Satzes, wohl aber des Vorbehalts, den nur die Lektion traegt.
+      {
+        prinzipien: [roh('uebernommen', 'satz: 13')],
+        zuLektion: ['uebernommen', lektionZu('Ein anderer Satz.', 'Ein Vorbehalt.')],
+        maengel: [imLehrplan('abschnitte.0.prinzipien.0.satz: hat die falsche Form — erwartet Text.'), ANDERER_VORBEHALT_VOR],
+      },
+      // vorbehalt ist kein Text: kein Vergleich des Vorbehalts, wohl aber des Satzes.
+      {
+        prinzipien: [roh('uebernommen', SATZ_ZEILE, 'vorbehalt: [kein, Text]')],
+        zuLektion: ['uebernommen', lektionZu('Ein anderer Satz.', 'Ein Vorbehalt.')],
+        maengel: [
+          imLehrplan('abschnitte.0.prinzipien.0.vorbehalt: Ein Vorbehalt ist Text — ohne Vorbehalt das Feld weglassen.'),
+          ANDERER_SATZ_VOR,
+        ],
+      },
+      // vorbehalt ohne Wert (null) und leer heissen: keiner — gegen einen in der Lektion ein anderer, gegen keinen derselbe.
+      {
+        prinzipien: [roh('uebernommen', SATZ_ZEILE, 'vorbehalt:')],
+        zuLektion: ['uebernommen', lektionZu(PRINZIPSATZ, 'Ein Vorbehalt.')],
+        maengel: [
+          imLehrplan('abschnitte.0.prinzipien.0.vorbehalt: Ein Vorbehalt ist Text — ohne Vorbehalt das Feld weglassen.'),
+          ANDERER_VORBEHALT_VOR,
+        ],
+      },
+      {
+        prinzipien: [roh('uebernommen', SATZ_ZEILE, 'vorbehalt:')],
+        zuLektion: ['uebernommen', lektionZu(PRINZIPSATZ)],
+        maengel: [imLehrplan('abschnitte.0.prinzipien.0.vorbehalt: Ein Vorbehalt ist Text — ohne Vorbehalt das Feld weglassen.')],
+      },
+      {
+        prinzipien: [roh('uebernommen', SATZ_ZEILE, 'vorbehalt: ""')],
+        zuLektion: ['uebernommen', lektionZu(PRINZIPSATZ, 'Ein Vorbehalt.')],
+        maengel: [
+          imLehrplan('abschnitte.0.prinzipien.0.vorbehalt: Ein Vorbehalt braucht einen Satz — sonst das Feld weglassen.'),
+          ANDERER_VORBEHALT_VOR,
+        ],
+      },
+      // Zweimal dieselbe Id: verglichen wird nur mit dem ersten Prinzip, gemeldet einmal.
+      {
+        prinzipien: [roh('uebernommen', SATZ_ZEILE), roh('uebernommen', 'satz: "Ein zweiter Satz."')],
+        zuLektion: ['uebernommen', lektionZu('Noch ein Satz.')],
+        maengel: [imLehrplan('abschnitte.0.prinzipien.1.id: Zwei Prinzipien haben die id uebernommen.'), ANDERER_SATZ_VOR],
+      },
+    ];
+    for (const { prinzipien, zuLektion: [id, text], maengel } of faelle) {
+      const ergebnis = vor({ lehrplanText: mitPrinzipien(...prinzipien), lektionsIds: new Set([id]), lektionen: new Map([[id, text]]) });
+      expect(ergebnis.maengel).toEqual(maengel);
+    }
+  });
+
+  it('nennt vor dem Durchgang eine Lektion unter status lektion mit den Saetzen nach dem Durchgang, eine uebernommene mit denen zur Uebernahme', () => {
+    const anders = lektionZu('Ein anderer Satz.', 'Ein Vorbehalt.');
+    const lektionen = new Map([
+      ['fertig', anders],
+      ['uebernommen', anders],
+    ]);
+    const lektionsIds = new Set(['fertig', 'uebernommen']);
+    // Unter status lektion: fertig aus einem frueheren Durchgang. Eine andere Id liesse sie ohne Lehrplaneintrag zurueck.
+    const fertig = [
+      'Lektion fertig: prinzip ist nicht der Satz des Prinzips in lehrplan/fixture-quelle.yaml.',
+      'Lektion fertig: vorbehalt ist nicht der des Prinzips in lehrplan/fixture-quelle.yaml.',
+    ];
+    const lesbar = lehrplanText({
+      abschnitte: [
+        { ...EINSTIEG, status: 'lektion', prinzipien: ['fertig'] },
+        { ...KOSTEN, status: 'beauftragt', prinzipien: ['uebernommen'] },
+        { ...RISIKEN, status: 'offen' },
+      ],
+    });
+    expect(vor({ lehrplanText: lesbar, lektionsIds, lektionen })).toEqual({
+      ok: false,
+      maengel: [...fertig, ANDERER_SATZ_VOR, ANDERER_VORBEHALT_VOR],
+      auftrag: [],
+    });
+    // Dasselbe in einem ungueltigen Lehrplan: Unter status lektion fehlt die Lektion fehlt-noch.
+    const ungueltig = lehrplanText({
+      abschnitte: [
+        { ...EINSTIEG, status: 'lektion', prinzipien: ['fertig', 'fehlt-noch'] },
+        { ...KOSTEN, status: 'beauftragt', prinzipien: ['uebernommen'] },
+        { ...RISIKEN, status: 'offen' },
+      ],
+    });
+    expect(vor({ lehrplanText: ungueltig, lektionsIds, lektionen }).maengel).toEqual([
+      'lehrplan/fixture-quelle.yaml: abschnitte.0.prinzipien.1.id: Die Lektion fehlt-noch gibt es nicht (inhalt/lektionen/fehlt-noch.mdx).',
+      ...fertig,
+      ANDERER_SATZ_VOR,
+      ANDERER_VORBEHALT_VOR,
     ]);
   });
 });
@@ -1435,6 +1768,26 @@ describe('fuehreAus - Aufruf', () => {
         expect(zeilen).toEqual([AUFRUF]);
         expect(code).toBe(2);
       }
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('zeigt nur die Aufruf-Hilfe, wenn --name doppelt dasteht, auch mit demselben Kurznamen — einmal genannt laeuft die Pruefung', async () => {
+    const wurzel = wurzelMit({});
+    try {
+      for (const argv of [
+        ['--name', 'a', '--name', 'b', '--vor'],
+        ['--name', K, '--name', K, '--nach'],
+        // Doppelt geht vor: Der Kurzname wird erst bei sonst vollstaendigem Aufruf geprueft.
+        ['--vor', '--name', K, '--name', 'Fixture-Quelle'],
+      ]) {
+        expect(await lauf(argv, wurzel)).toEqual({ code: 2, zeilen: [AUFRUF] });
+      }
+      expect(await lauf(['--vor', '--name', K], wurzel)).toEqual({
+        code: 1,
+        zeilen: ['lehrplan/fixture-quelle.yaml gibt es nicht — erst einlesen.'],
+      });
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }

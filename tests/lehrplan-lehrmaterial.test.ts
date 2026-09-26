@@ -277,6 +277,30 @@ describe('Buch und Folien - wartet auf Freigabe', () => {
     expect(e.wartet).toBeFalsy();
     expect(e.maengel).toEqual(['geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.', zweiterMangel]);
   });
+
+  /**
+   * Dasselbe neben einem weiteren Mangel, den Zod schon im ersten Durchgang
+   * meldet: Die doppelte Abschnitt-Id sieht auch dann erst der zweite, und
+   * seine Maengel kommen hinzu, keiner doppelt.
+   */
+  it('zeigt bei geprueftVon null auch neben einem weiteren Mangel die doppelte Abschnitt-Id — jeden Mangel einmal', () => {
+    const ohneGrund = abschnitt({ seiten: [1, 27], status: 'abgelehnt' });
+    const e = pruefeLehrplan(folien({ geprueftVon: null, abschnitte: [ohneGrund, abschnitt()] }), LEKTIONEN);
+    if (e.ok) throw new Error('Erwartet war ein Fehlschlag.');
+    expect(e.wartet).toBeFalsy();
+    expect(e.maengel).toEqual([
+      'geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.',
+      'abschnitte.0.grund: Ein abgelehnter Abschnitt braucht einen Grund.',
+      'abschnitte.1.id: Zwei Abschnitte haben die id m07-2-vertragsarten.',
+    ]);
+    // Ohne doppelte Id bringt der zweite Durchgang nichts hinzu — den Grund nicht ein zweites Mal.
+    const eindeutig = pruefeLehrplan(folien({ geprueftVon: null, abschnitte: [{ ...ohneGrund, id: 'm07-1-risiko' }, abschnitt()] }), LEKTIONEN);
+    if (eindeutig.ok) throw new Error('Erwartet war ein Fehlschlag.');
+    expect(eindeutig.maengel).toEqual([
+      'geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.',
+      'abschnitte.0.grund: Ein abgelehnter Abschnitt braucht einen Grund.',
+    ]);
+  });
 });
 
 describe('Abschnitte - grund', () => {

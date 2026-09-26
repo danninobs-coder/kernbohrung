@@ -348,6 +348,41 @@ describe('abdeckung - Freigabe', () => {
     expect(ohneLehrplan).toEqual(['lektion-a', 'lektion-b']);
   });
 
+  /**
+   * Die Seite liest ueber lehrplaeneAusTexten. Steht die Freigabe als null da
+   * und kommt ein weiterer Mangel dazu, fuehrt sie den Lehrplan als
+   * ungueltig — mit allen Maengeln, auch der doppelten Abschnitt-Id, die Zod
+   * nach dem null erst im zweiten Durchgang sieht.
+   */
+  it('fuehrt einen Lehrplan mit Freigabe null, weiterem Mangel und doppelter Abschnitt-Id als ungueltig, mit allen Maengeln, und zaehlt ihn nicht', () => {
+    const ohneFreigabe = { ...wartendeFolien, geprueftVon: null, geprueftAm: null };
+    const daten = { ...ohneFreigabe, abschnitte: [abschnitt('m7-1', 1, 'abgelehnt'), abschnitt('m7-1', 3, 'offen')] };
+    const { gueltig, wartend, ungueltig } = lehrplaeneAusTexten({ '/lehrplan/bauch.yaml': JSON.stringify(daten) }, LEKTIONEN);
+    expect(ungueltig).toEqual([
+      {
+        datei: 'bauch.yaml',
+        maengel: [
+          'geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.',
+          'geprueftAm: ist leer.',
+          'abschnitte.0.grund: Ein abgelehnter Abschnitt braucht einen Grund.',
+          'abschnitte.1.id: Zwei Abschnitte haben die id m7-1.',
+        ],
+      },
+    ]);
+    expect(abdeckung([...gueltig, ...wartend], KEINE_MANIFESTE, LEKTIONEN)).toEqual({
+      bestand: [],
+      ohneLehrplan: ['lektion-a', 'lektion-b', 'pauschal-heisst-nicht-komplett'],
+    });
+
+    // Fehlt nur die Freigabe, wartet derselbe Lehrplan und wird gezaehlt.
+    const nurFreigabe = { ...ohneFreigabe, abschnitte: [abschnitt('m7-1', 1, 'abgelehnt', { grund: 'reine Titelfolien' })] };
+    const lesbar = lehrplaeneAusTexten({ '/lehrplan/bauch.yaml': JSON.stringify(nurFreigabe) }, LEKTIONEN);
+    expect(lesbar.ungueltig).toEqual([]);
+    expect(abdeckung(lesbar.wartend, KEINE_MANIFESTE, LEKTIONEN).bestand.map((b) => [b.freigabe, b.zaehlung.abgelehnt])).toEqual([
+      ['wartet', 1],
+    ]);
+  });
+
   /** Gemischter Bestand: ein Kurzname vor und einer nach dem wartenden Lehrplan zeigt, dass beide zusammen sortiert werden. */
   it('mischt einen freigegebenen und einen wartenden Lehrplan — sortiert, mit Freigabe je Karte', () => {
     const { bestand } = abdeckung(
