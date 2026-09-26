@@ -3,16 +3,22 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+// Benannter Import wie in werkzeug/pruefe-lektion.mjs: js-yaml 5 ist ein
+// ESM-Buendel ohne Default-Export.
+import { load as yamlLesen } from 'js-yaml';
 
 /**
- * Haelt SKILL.md, README.md und package.json zusammen.
+ * Haelt SKILL.md, README.md, package.json und die Werkzeuge zusammen.
  *
  * Jeder `npm run <name>`-Aufruf in SKILL.md oder in der Befehlstabelle des
  * README braucht ein gleichnamiges Skript in package.json - sonst tippt der
  * Compiler-Skill (oder ein Mensch, der dem README folgt) einen Befehl ab, den
- * es gar nicht gibt. Gelesen werden SKILL.md, README.md und package.json aus
- * dem Repo; das ist hier erlaubt, anders als bei quellen/, das kein Test
- * anfassen darf.
+ * es gar nicht gibt. Dasselbe gilt fuer jede Option hinter `--`: Das Werkzeug
+ * muss sie kennen. Und das Frontmatter des Skills muss YAML bleiben, sonst
+ * listet Claude Code den Skill ohne Beschreibung und damit ohne Ausloeser.
+ * Gelesen werden SKILL.md, README.md, package.json und werkzeug/*.mjs aus dem
+ * Repo; das ist hier erlaubt, anders als bei quellen/, das kein Test anfassen
+ * darf.
  */
 
 const wurzel = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
@@ -64,6 +70,80 @@ describe('Skill und README - dieselben Befehle wie package.json', () => {
     const kopie = { ...skripte };
     delete kopie.auftrag;
     expect(fehlendeSkripte([skillText, befehlsTabelle(readmeText)], kopie)).toEqual(['auftrag']);
+  });
+});
+
+/** Eine Datei aus dem Repo, Pfad relativ zur Wurzel. */
+function lies(datei: string): string {
+  return readFileSync(path.join(wurzel, datei), 'utf8');
+}
+
+/**
+ * Jede Option, die ein Text hinter `npm run <name> --` nennt und die das
+ * Werkzeug nicht kennt - als "<name> --<option>", sortiert; leer heisst
+ * gedeckt.
+ *
+ * "Kennt" heisst: Die Einstiegsdatei des Skripts (`node werkzeug/<x>.mjs` in
+ * package.json) enthaelt die Option als ganzes Wort, in ihrer Aufruf-Zeile
+ * oder dort, wo sie die Argumente liest. `--folie` zaehlt also nicht als
+ * `--folien`. Gelesen wird bis zum Zeilenende oder zum Ende des Code-Spans.
+ * Skripte, die nicht mit `node` starten (astro, vitest), bleiben aussen vor.
+ */
+function unbekannteOptionen(
+  texte: string[],
+  skripte: Record<string, unknown>,
+  lesen: (datei: string) => string,
+): string[] {
+  const fehlend = new Set<string>();
+  for (const text of texte) {
+    for (const [, name, rest] of text.matchAll(/npm run ([\w:-]+) -- ([^`\n]*)/g)) {
+      const skript = skripte[name];
+      const einstieg = typeof skript === 'string' ? /^node (\S+\.mjs)/.exec(skript) : null;
+      if (einstieg === null) continue;
+      const quelltext = lesen(einstieg[1]);
+      for (const [option] of rest.matchAll(/--[a-z][\w-]*/g)) {
+        if (!new RegExp(`(?<![\\w-])${option}(?![\\w-])`).test(quelltext)) {
+          fehlend.add(`${name} ${option}`);
+        }
+      }
+    }
+  }
+  return [...fehlend].sort();
+}
+
+describe('Skill und README - Optionen, die die Werkzeuge kennen', () => {
+  it('jede Option hinter npm run <name> -- in SKILL.md und README kennt das Werkzeug', () => {
+    expect(unbekannteOptionen([skillText, readmeText], skripte, lies)).toEqual([]);
+  });
+
+  it('Mutationsprobe: eine vertippte Option faellt auf, auch als Praefix einer echten', () => {
+    const vertippt = skillText.replace('--folien <liste>', '--folie <liste>');
+    expect(vertippt).not.toBe(skillText);
+    expect(unbekannteOptionen([vertippt], skripte, lies)).toEqual(['ansicht --folie']);
+  });
+});
+
+/** Das Frontmatter zwischen den beiden `---`-Zeilen am Anfang. */
+function frontmatter(text: string): string {
+  const kopf = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(text);
+  if (kopf === null) throw new Error('SKILL.md beginnt nicht mit einem Frontmatter');
+  return kopf[1];
+}
+
+describe('SKILL.md - Frontmatter', () => {
+  it('ist gueltiges YAML und traegt Name und Ausloeser', () => {
+    const daten = yamlLesen(frontmatter(skillText)) as { name?: unknown; description?: unknown };
+    expect(daten.name).toBe('kernbohrung-compiler');
+    expect(daten.description).toEqual(expect.stringContaining('destilliere rag_tutorials'));
+    expect(daten.description).toEqual(expect.stringContaining('Bau die Lektionen für'));
+  });
+
+  it('Mutationsprobe: ein ": " in der Beschreibung macht das YAML ungueltig', () => {
+    // Genau so war es in 467bd4a: Claude Code listete den Skill danach nur
+    // noch unter seinem Titel, ohne Beschreibung und ohne Ausloeser.
+    const kaputt = frontmatter(skillText).replace('(Folien, Bücher) gilt', '(Folien, Bücher): gilt');
+    expect(kaputt).not.toBe(frontmatter(skillText));
+    expect(() => yamlLesen(kaputt)).toThrow();
   });
 });
 

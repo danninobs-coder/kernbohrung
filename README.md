@@ -3,8 +3,8 @@
 Eine Lern-App, die aus Quellen Kernprinzipien destilliert und sie abfragt. Eine
 Lektion stellt zuerst einen Widerspruch auf, lässt ihn an einem spielbaren
 Widget durcharbeiten und benennt das Prinzip erst danach. Geprüft wird über
-Multiple Choice mit Begründung zu jeder Antwort und über eine Transferfrage aus
-einem fremden Feld. Ab Bauabschnitt 2 erzeugt ein Sprachmodell die Lektionen
+Aufgaben aus vier Typen — Wahl, Fall, Zuordnen, Reihenfolge — mit Begründung
+zu jeder Antwort und über einen Transfer in ein fremdes Feld. Ab Bauabschnitt 2 erzeugt ein Sprachmodell die Lektionen
 selbst; dieser Abschnitt baut das Ziel, auf das hin erzeugt wird.
 
 Die tragende Entscheidung: **harte Trennung zwischen Bauzeit und Laufzeit.**
@@ -35,18 +35,22 @@ public/manifest.webmanifest, public/symbole/   Macht die Seite auf Android insta
 .github/workflows/pages.yml   Veröffentlicht auf GitHub Pages — nur von Hand gestartet.
 werkzeug/               Einlesen: ingest.mjs als Weiche, adapter/ (git, dokument, folien),
                         gliederung/folien.mjs, manifest.mjs, fixtures/erzeuge.mjs.
+                        Compiler: auftrag.mjs, ansicht.mjs, pruefe-quelle.mjs,
+                        pruefe-lektion.mjs (mit wortlaut.mjs).
 lehrplan/               Je Quelle ein Lehrplan — das Review-Gate.
-docs/superpowers/plans/ Der Implementierungsplan zu Abschnitt 1.
+docs/superpowers/plans/ Die Implementierungspläne, je Teilprojekt einer.
 ```
 
 ### Die sechs Takte
 
 1. **Der Widerspruch** — die naheliegende Annahme und warum sie nicht trägt (MDX-Rumpf).
 2. **Das Bild** — ein spielbares Widget, an dem der Widerspruch sichtbar wird (MDX-Rumpf).
+   Lektionen aus Lehrmaterial dürfen ohne auskommen; dann tragen die Aufgaben die Interaktion.
 3. **Der Satz** — das Prinzip in einem Satz (Frontmatter `prinzip`).
-4. **Die Probe** — zwei bis vier Multiple-Choice-Fragen mit Begründung zu jeder Antwort.
-5. **Der Transfer** — dieselbe Struktur in einem fremden Feld.
-6. **Die Herkunft** — die Quellen, aus denen das Prinzip destilliert wurde.
+4. **Die Probe** — zwei bis sechs Aufgaben aus vier Typen (Wahl, Fall, Zuordnen,
+   Reihenfolge), mit Begründung zu jeder Antwort (Frontmatter `aufgaben`).
+5. **Der Transfer** — eine Aufgabe auf einen Fall aus einem fremden Feld (Frontmatter `transfer`).
+6. **Die Herkunft** — die Quellen, aus denen das Prinzip destilliert wurde (Frontmatter `quellen`).
 
 Takt 2 steht vor Takt 3, und das ist keine Formalie: erst spielen, dann
 erklären. Wer beide tauscht, kippt die Didaktik.
@@ -60,13 +64,13 @@ erklären. Wer beide tauscht, kippt die Didaktik.
 | `npm run check` | Typprüfung über Astro-, TSX- und TS-Dateien |
 | `npm run build` | Produktionsbau nach `dist/` |
 | `npm run ingest -- …` | Eine Quelle einlesen — siehe „Eine Quelle einlesen" |
-| npm run auftrag -- --name <k> <abschnitt> … | Abschnitte für den nächsten Durchgang beauftragen |
-| npm run ansicht -- --name <k> <abschnitt> | Folien des Originals als PNG unter quellen/<k>/ansicht/ |
-| npm run pruefe-quelle -- --name <k> --vor \| --nach | Vor- und Nachprüfung eines Compiler-Durchgangs |
+| `npm run auftrag -- --name <k> <abschnitt> …` | Abschnitte für den nächsten Durchgang beauftragen |
+| `npm run ansicht -- --name <k> <abschnitt> [--folien 16,19-23]` | Folien des Originals als PNG unter `quellen/<k>/ansicht/` |
+| `npm run pruefe-quelle -- --name <k> --vor` bzw. `--nach` | Vor- und Nachprüfung eines Compiler-Durchgangs |
 | `npm run pruefe-lektion -- <datei.mdx> …` | Lektion(en) gegen Schema, Widgets und Wortlaut prüfen |
 | `npm run fixtures` | Die Test-PDFs unter `tests/fixtures/` neu erzeugen (deterministisch) |
 
-Node ≥ 22.18 erforderlich — die Werkzeuge unter werkzeug/ laden TypeScript-Dateien direkt. In PowerShell löst `inhalt/lektionen/*.mdx` den Stern nicht auf — dort die Dateien einzeln nennen oder Git Bash nutzen.
+Node ≥ 22.18 erforderlich — die Werkzeuge unter `werkzeug/` laden TypeScript-Dateien direkt. `npm run pruefe-lektion -- inhalt/lektionen/*.mdx` prüft alle Lektionen auf einmal, aber nur in Git Bash: PowerShell löst den Stern nicht auf, dort die Dateien einzeln nennen.
 
 `npm run dev:handy` und `npm run preview:handy` sind dieselben Server, nur ins
 lokale Netz geöffnet — siehe „Auf Android testen und weiterentwickeln".
@@ -118,7 +122,7 @@ Zahlen, Dateinamen, Abschnitt-Ids und Abschnittstitel.
 Scheitert ein Lauf, bleibt `quellen/<kurzname>/` wie vorher: Das Einlesen baut
 den neuen Stand erst daneben auf und tauscht ihn dann in einem Schritt ein.
 
-Nach der Freigabe beauftragst du Abschnitte (npm run auftrag) und sagst Claude Code „Bau die Lektionen für <kurzname>". Der Ablauf steht im Compiler-Skill unter „Durchgang für Lehrmaterial".
+Nach der Freigabe beauftragst du Abschnitte (`npm run auftrag`) und sagst Claude Code „Bau die Lektionen für ‹kurzname›“. Der Ablauf steht im Compiler-Skill unter „Durchgang für Lehrmaterial“.
 
 ## Auf Android testen und weiterentwickeln
 
