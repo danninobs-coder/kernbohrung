@@ -2095,16 +2095,22 @@ describe('werkzeug/pruefe-quelle.mjs aus einem reinen Node-Prozess', () => {
     }
   }, 30_000);
 
-  // Wie npm run pruefe-quelle: node mit dem Pfad relativ zur Wurzel. Erkennte
-  // das Werkzeug den Direktaufruf nicht, endete es wortlos mit 0. Ohne
-  // Argumente liest es keine Datei.
+  // Mit node gestartet wie von npm run pruefe-quelle; erkennte das Werkzeug
+  // den Direktaufruf nicht, endete es wortlos mit 0. SKRIPT ist absolut —
+  // Node macht process.argv[1] ohnehin absolut, auch aus einem relativen, die
+  // Erkennung sieht also dasselbe wie unter npm. Das Arbeitsverzeichnis, das
+  // das Werkzeug als Wurzel naehme, ist ein leerer Temp-Ordner: Ohne
+  // Argumente liest es keine Datei, und liese es doch eine, dann nicht im
+  // Projekt.
   it('zeigt ohne Argumente die Aufruf-Hilfe und endet mit 2', () => {
-    const ergebnis = spawnSync(process.execPath, ['werkzeug/pruefe-quelle.mjs'], {
-      cwd: path.resolve(__dirname, '..'),
-      encoding: 'utf8',
-    });
-    expect(ergebnis.stderr).toBe('');
-    expect(ergebnis.stdout).toBe(`${AUFRUF}\n`);
-    expect(ergebnis.status).toBe(2);
-  }, 30_000);
+    const wurzel = wurzelMit({});
+    try {
+      const ergebnis = spawnSync(process.execPath, [SKRIPT], { cwd: wurzel, encoding: 'utf8' });
+      expect(ergebnis.stderr).toBe('');
+      expect(ergebnis.stdout).toBe(`${AUFRUF}\n`);
+      expect(ergebnis.status).toBe(2);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
 });

@@ -499,15 +499,24 @@ describe('fuehreAus', () => {
 });
 
 describe('werkzeug/ansicht.mjs direkt aufgerufen', () => {
-  const WURZEL = path.resolve(__dirname, '..');
+  const SKRIPT = path.resolve(__dirname, '..', 'werkzeug', 'ansicht.mjs');
 
-  // Wie npm run ansicht: node mit dem Pfad relativ zur Wurzel. Erkennte das
-  // Werkzeug den Direktaufruf nicht, endete es wortlos mit 0. Ohne Argumente
-  // liest es keine Datei.
+  // Mit node gestartet wie von npm run ansicht; erkennte das Werkzeug den
+  // Direktaufruf nicht, endete es wortlos mit 0. Das Skript steht mit
+  // absolutem Pfad da — Node macht process.argv[1] ohnehin absolut, auch aus
+  // einem relativen, die Erkennung sieht also dasselbe wie unter npm. Das
+  // Arbeitsverzeichnis, das das Werkzeug als Wurzel naehme, ist ein leerer
+  // Temp-Ordner: Ohne Argumente liest es keine Datei, und liese es doch eine,
+  // dann nicht im Projekt.
   it('zeigt ohne Argumente die Aufruf-Hilfe und endet mit 2', () => {
-    const lauf = spawnSync(process.execPath, ['werkzeug/ansicht.mjs'], { cwd: WURZEL, encoding: 'utf8' });
-    expect(lauf.stderr).toBe('');
-    expect(lauf.stdout).toBe(`${AUFRUF}\n`);
-    expect(lauf.status).toBe(2);
-  }, 30_000);
+    const ordner = mkdtempSync(path.join(tmpdir(), 'kernbohrung-ansicht-direkt-'));
+    try {
+      const lauf = spawnSync(process.execPath, [SKRIPT], { cwd: ordner, encoding: 'utf8' });
+      expect(lauf.stderr).toBe('');
+      expect(lauf.stdout).toBe(`${AUFRUF}\n`);
+      expect(lauf.status).toBe(2);
+    } finally {
+      rmSync(ordner, { recursive: true, force: true });
+    }
+  });
 });

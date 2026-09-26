@@ -275,12 +275,13 @@ describe('der heutige Bestand', () => {
    * und mit ihm der Veroeffentlichungs-Workflow. Deshalb laeuft alles hier
    * ueber gueltige und wartende Lehrplaene zusammen.
    *
-   * Aus demselben Grund nicht festgehalten ist, wie sich die Abschnitte der
-   * Vorlesung auf die Status verteilen — nur, dass jeder genau einen traegt:
-   * Die vier Zahlen ergeben zusammen `gesamt`. Einen Abschnitt beauftragt ein
-   * Mensch mit `npm run auftrag`; das ist Routine vor jedem Durchgang, kein
-   * Wechsel im Bestand. Hielte der Test fest, wie viele offen sind, waere er
-   * nach dem ersten Auftrag rot — und mit ihm der Veroeffentlichungs-Workflow.
+   * Aus demselben Grund stehen bei der Vorlesung `offen` und `beauftragt` nur
+   * als Summe fest: Einen Abschnitt beauftragt ein Mensch mit
+   * `npm run auftrag`; das ist Routine vor jedem Durchgang, kein Wechsel im
+   * Bestand. Hielte der Test fest, wie viele offen sind, waere er nach dem
+   * ersten Auftrag rot — und mit ihm der Veroeffentlichungs-Workflow. Eine
+   * Lektion oder eine Ablehnung dagegen ist ein Wechsel im Bestand, und den
+   * soll der Test anzeigen: `mitLektion` und `abgelehnt` stehen einzeln fest.
    *
    * Ohne Manifeste: `quellen/` ist gitignored, und dieser Test laeuft auch
    * dort, wo nicht eingelesen wurde. Was das Manifest beitraegt, prueft die
@@ -312,14 +313,20 @@ describe('der heutige Bestand', () => {
       'kontrollfluss-folgt-modellstaerke',
       'auslagern-nimmt-die-grundlage',
     ]);
-    // Neun Originale, 22 Abschnitte, jeder mit genau einem Status — welchem,
-    // haelt der Test nicht fest (siehe oben). Die Lektion
-    // `pauschal-heisst-nicht-komplett` bekommt ihren Eintrag erst vom Compiler
-    // (2c) — bis dahin steht sie unter „ohne Lehrplaneintrag", mit Absicht.
+    // Neun Originale, 22 Abschnitte, noch keiner mit Lektion und keiner
+    // abgelehnt; wie viele davon beauftragt sind, haelt der Test nicht fest
+    // (siehe oben). Der erste Durchgang (2c-2) zieht diese Zeilen nach. Die
+    // Lektion `pauschal-heisst-nicht-komplett` bekommt ihren Eintrag erst vom
+    // Compiler (2c) — bis dahin steht sie unter „ohne Lehrplaneintrag", mit
+    // Absicht.
     const vorlesung = bestand[1]?.zaehlung;
     if (vorlesung === undefined) throw new Error('Erwartet war die Karte der Vorlesung.');
-    expect(vorlesung.gesamt).toBe(22);
-    expect(vorlesung.mitLektion + vorlesung.offen + vorlesung.beauftragt + vorlesung.abgelehnt).toBe(vorlesung.gesamt);
+    expect({
+      gesamt: vorlesung.gesamt,
+      mitLektion: vorlesung.mitLektion,
+      abgelehnt: vorlesung.abgelehnt,
+      offenOderBeauftragt: vorlesung.offen + vorlesung.beauftragt,
+    }).toEqual({ gesamt: 22, mitLektion: 0, abgelehnt: 0, offenOderBeauftragt: 22 });
     expect(new Set(bestand[1]?.zeilen.map((z) => z.datei)).size).toBe(9);
     expect(ohneLehrplan).toEqual(['pauschal-heisst-nicht-komplett', 'recall-vor-precision']);
   });

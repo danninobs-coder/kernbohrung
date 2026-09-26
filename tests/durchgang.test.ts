@@ -14,19 +14,42 @@ import { fuehreAus as fuehrePruefeQuelleAus } from '../werkzeug/pruefe-quelle.mj
 import { rohFolien, woerter } from '../werkzeug/wortlaut.mjs';
 
 /**
- * Der Durchgang an Lehrmaterial als Ganzes, so wie der Compiler-Skill ihn
+ * Der Durchgang an Lehrmaterial am Stueck, so wie der Compiler-Skill ihn
  * geht: einlesen, freigeben, beauftragen, vorpruefen, Prinzipien schreiben
  * und die Freigabe leeren, wieder freigeben, die Lektion bauen, nachpruefen —
- * und am Ende fuehrt die Abdeckung den Abschnitt mit seinen Lektionen.
+ * und am Ende fuehrt die Abdeckung den Abschnitt mit seinen Lektionen. Dazu
+ * der Fall, in dem Durchgang A jeden beauftragten Abschnitt ablehnt, und
+ * Gegenproben am selben Aufbau.
  *
  * Jedes Werkzeug hat seine eigenen Tests, aber keiner haelt fest, dass die
  * Kette zusammen aufgeht: dass die Form, die der Skill fuer die Prinzipien
  * zeigt, durch Auftrag, beide Pruefungen und die Seite kommt, und dass eine
  * uebernommene Lektion am Ende ihren Lehrplaneintrag hat.
  *
+ * Drei Stuecke der Kette laesst der Test mit Absicht aus:
+ *
+ * - L3, das Ansehen der Folien (`npm run ansicht`). Die Bilder liest nur der
+ *   Compiler; kein spaeterer Schritt haengt an ihnen. Das Rendern pruefen die
+ *   eigenen Tests in tests/ansicht.test.ts.
+ * - Den Weg einer neuen Lektion ueber `entwurf/` (L7, L8). Dort prueft
+ *   `npm run pruefe-lektion` die Lektion, ihren Wortlaut gegen die Rohdateien
+ *   unter dem Arbeitsverzeichnis des Prozesses; diese Kommandozeile pruefen
+ *   eigene Prozesse in tests/pruefe-lektion.test.ts. Verschoben wird sie nur,
+ *   wenn es die Zieldatei noch nicht gibt, mit `test ! -e … && mv …`: ein
+ *   Befehl fuer die Shell, der in SKILL.md steht, kein Werkzeug des Repos.
+ *   Hier prueft `pruefeLektionsText` Schema und Widgets, die Lektion steht
+ *   gleich unter inhalt/lektionen/, und ihren Wortlaut prueft `--nach` gegen
+ *   dieselben Rohdateien.
+ * - Den Bau und das Nachschauen im Browser danach (L8). Die Seite liest
+ *   lehrplan/ und inhalt/ ab der Projektwurzel, nicht unter einem
+ *   Temp-Verzeichnis. Was sie daraus rechnet, rechnet Schritt 8 mit denselben
+ *   Funktionen (`lehrplaeneAusTexten`, `abdeckung`); die Schranke, die der Bau
+ *   fuer eine Lektion ist — Schema und Widgets —, legt `pruefeLektionsText`
+ *   an.
+ *
  * Alles unter einem Temp-Verzeichnis als Wurzel, an der Fixture
  * `folien-agenda.pdf` — selbst erzeugt, ihr Text ist erfunden. Kein Test hier
- * liest lehrplan/, inhalt/ oder quellen/ im Projekt. Prinzipien, Grund und
+ * liest lehrplan/, inhalt/ oder quellen/ im Projekt. Prinzipien, Gruende und
  * Lektionen sind hier geschrieben; nur die Gegenprobe zum Wortlaut nimmt mit
  * Absicht einen Satz aus der Rohdatei.
  *
@@ -60,12 +83,18 @@ const VORBEHALT = 'Die Folie nennt dafür keinen Beleg; wie weit eine Vollmacht 
 /** Warum der zweite Abschnitt abgelehnt wird. */
 const GRUND = 'Nur Kennwerte und ein Rechenbeispiel, keine Aussage, die sich lehren ließe.';
 
+/** Warum der erste abgelehnt wird — nur in dem Fall, in dem Durchgang A beide beauftragten Abschnitte ablehnt. */
+const GRUND_ERSTER = 'Nur Begriffe und ihre Gliederung, keine Aussage, die einen Fall entschiede.';
+
 /** Die Freigabe: leer wie im Geruest und so, wie ein Mensch sie von Hand eintraegt. */
 const OHNE_FREIGABE = 'geprueftVon: ""\ngeprueftAm: ""\n';
 const MIT_FREIGABE = 'geprueftVon: "Abnahme"\ngeprueftAm: "2026-09-26"\n';
 
 /** Der einzige Mangel nach Durchgang A: Die Freigabe ist geleert, sonst stimmt alles. */
 const ERST_FREIGEBEN = `Erst freigeben: ${LEHRPLAN} wartet auf Freigabe (geprueftVon und geprueftAm).`;
+
+/** Der Mangel, der dazukommt, wenn Durchgang A jeden beauftragten Abschnitt abgelehnt hat — auch er ist dann richtig (SKILL.md, L5). */
+const KEIN_AUFTRAG = 'Kein Abschnitt ist beauftragt — erst npm run auftrag.';
 
 /** Die Zeile, die --vor je beauftragtem Abschnitt schreibt — Folien und Listen aus dem Manifest der Fixture. */
 const AUFTRAG_ERSTER = `  ${ERSTER} — quellen/${K}/roh/${ERSTER}.md, Folien 1–10 · nur Bild: 9 · Tabelle oder Grafik: –`;
@@ -213,6 +242,11 @@ function imAbschnitt(text: string, id: string, alt: string, neu: string): string
   return text.slice(0, start) + block.replace(alt, neu) + text.slice(ende);
 }
 
+/** Lehnt einen beauftragten Abschnitt ab, wie L5 es zeigt: `status: abgelehnt` mit `grund`, ohne Prinzipien. */
+function ablehnen(text: string, id: string, grund: string): string {
+  return imAbschnitt(text, id, '    status: beauftragt\n', `    status: abgelehnt\n    grund: ${JSON.stringify(grund)}\n`);
+}
+
 /**
  * Durchgang A in der Form, die der Skill zeigt: im ersten Abschnitt unter
  * `status` die `prinzipien:` mit vier Leerzeichen Einzug, jedes Prinzip mit
@@ -239,7 +273,7 @@ function prinzipienSchreiben(text: string, saetze: { uebernommen: string; neu: s
       '',
     ].join('\n'),
   );
-  return imAbschnitt(mitPrinzipien, ZWEITER, '    status: beauftragt\n', `    status: abgelehnt\n    grund: ${JSON.stringify(GRUND)}\n`);
+  return ablehnen(mitPrinzipien, ZWEITER, GRUND);
 }
 
 type Werkzeug = (argv: readonly string[], wurzel: string, schreibe?: (zeile: string) => void) => Promise<number>;
@@ -366,6 +400,28 @@ describe('der Durchgang an Lehrmaterial', () => {
     }
   });
 
+  // So steht es in SKILL.md unter L5: Lehnt Durchgang A jeden beauftragten Abschnitt ab, kommt zu
+  // „Erst freigeben" noch „Kein Abschnitt ist beauftragt", und nach der Freigabe entfaellt L7.
+  it('geht auch auf, wenn Durchgang A jeden beauftragten Abschnitt ablehnt: --vor meldet dazu, dass keiner beauftragt ist, und nach der Freigabe endet --nach mit 0', async () => {
+    const wurzel = kopie();
+    try {
+      await freigegebenUndBeauftragt(wurzel);
+
+      // 5. Durchgang A lehnt beide Abschnitte mit Grund ab und leert die Freigabe. Beide Maengel sind hier richtig.
+      lehrplanAendern(wurzel, (text) => freigabeLeeren(ablehnen(ablehnen(text, ERSTER, GRUND_ERSTER), ZWEITER, GRUND)));
+      expect(await vor(wurzel)).toEqual({ code: 1, zeilen: [ERST_FREIGEBEN, KEIN_AUFTRAG] });
+
+      // 6. Wieder freigegeben. Eine Lektion gibt es nicht zu bauen: gleich --nach.
+      lehrplanAendern(wurzel, freigeben);
+      expect(await nach(wurzel)).toEqual({
+        code: 0,
+        zeilen: [`${LEHRPLAN}: kein Abschnitt mehr beauftragt, alle Lektionen da, Wortlaut in Ordnung.`],
+      });
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
   it('Gegenprobe: Traegt die neue Lektion ein anderes prinzip, endet --nach mit 1 und nennt sie', async () => {
     const wurzel = kopie();
     try {
@@ -376,6 +432,24 @@ describe('der Durchgang an Lehrmaterial', () => {
       expect(await durchgangB(wurzel, andere)).toEqual({
         code: 1,
         zeilen: [`Lektion ${NEU}: prinzip ist nicht der Satz des Prinzips in ${LEHRPLAN}.`],
+      });
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('Gegenprobe: Fehlt der neuen Lektion der vorbehalt ihres Prinzips, endet --nach mit 1 und nennt sie', async () => {
+    const wurzel = kopie();
+    try {
+      await freigegebenUndBeauftragt(wurzel);
+      expect(await durchgangA(wurzel)).toEqual({ code: 1, zeilen: [ERST_FREIGEBEN] });
+      await wiederFreigegeben(wurzel);
+      // Dieselbe Lektion wie im Durchgang, nur ohne vorbehalt. Fuer pruefeLektionsText ist er
+      // freiwillig; dass er mitgewandert ist, prueft erst --nach.
+      const ohneVorbehalt = lektion('Entscheiden bleibt', SAETZE.neu, 2);
+      expect(await durchgangB(wurzel, ohneVorbehalt)).toEqual({
+        code: 1,
+        zeilen: [`Lektion ${NEU}: vorbehalt ist nicht der des Prinzips in ${LEHRPLAN}.`],
       });
     } finally {
       rmSync(wurzel, { recursive: true, force: true });

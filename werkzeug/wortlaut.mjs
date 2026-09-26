@@ -14,7 +14,9 @@
  * Schichten wie bei den anderen Werkzeugen: `woerter`, `rohFolien`,
  * `lektionFelder`, `baueIndex`, `findeAbschriften` und `abschriftSatz` sind
  * reine Funktionen ueber Texte, `liesRohIndex` liest unter einer Wurzel. Eine
- * eigene Kommandozeile prueft damit eine Lektion vor dem Schreiben.
+ * eigene Kommandozeile hat das Modul nicht: `npm run pruefe-lektion` prueft
+ * damit eine Lektion vor dem Schreiben, `npm run pruefe-quelle` Lehrplan und
+ * Lektionen eines Durchgangs.
  *
  * **Nie Text nach aussen.** Ein Treffer nennt Quelle, Abschnitt, Folie, Feld
  * und Wortbereich — nie die Woerter selbst (`abschriftSatz`). Das Material
