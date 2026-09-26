@@ -1,6 +1,6 @@
 # Bibliothek — die Landing für den Ingest
 
-Stand: 2026-09-19 (überarbeitet nach Prüfung an echtem Material) · Nachtrag nach 2a: 2026-09-22, am Ende · Teilprojekt 2 von 3 (Aufgabenfamilie → Bibliothek → Lernprofil)
+Stand: 2026-09-19 (überarbeitet nach Prüfung an echtem Material) · Nachträge nach 2a (2026-09-22), 2b-1 (2026-09-24) und 2c-1 (2026-09-26), am Ende · Teilprojekt 2 von 3 (Aufgabenfamilie → Bibliothek → Lernprofil)
 
 ## Ziel
 
@@ -97,16 +97,16 @@ abschnitte:
     seiten: [28, 34]
     status: offen                 # offen | beauftragt | lektion | abgelehnt
     grund: "…"                    # Pflicht bei abgelehnt, sonst verboten
-    lektion: pauschal-heisst-nicht-komplett  # Pflicht bei lektion, sonst verboten
+    lektion: pauschal-heisst-nicht-komplett  # Pflicht bei lektion, sonst verboten — entfällt seit 2c-1, siehe Nachtrag
     prinzipien: []                # 0–3, von Durchgang A gefüllt; Form wie im Repo-Lehrplan,
                                   # belege zeigen auf die Rohdatei des Abschnitts
 ```
 
 Ein Prinzip bekommt ein optionales Feld `vorbehalt` (ein Satz): Die Quelle behauptet etwas, das sich nicht belegen lässt oder dem Stand der Forschung widerspricht. Das Feld wandert in die Lektion (`LektionSchema.vorbehalt`, optional) und erscheint dort unter dem Satz als Hinweis — sichtbar, nicht im Kleingedruckten.
 
-Das Schema erzwingt: `grund` genau dann, wenn `abgelehnt`; `lektion` genau dann, wenn `lektion`, und die Datei muss existieren; Abschnitt-Ids eindeutig; Seitenbereiche je Datei aufsteigend und überschneidungsfrei; höchstens drei Prinzipien je Abschnitt — ein Abschnitt mit zehn ist katalogisiert, nicht destilliert.
+Das Schema erzwingt: `grund` genau dann, wenn `abgelehnt`; `lektion` genau dann, wenn `lektion`, und die Datei muss existieren; Abschnitt-Ids eindeutig; Seitenbereiche je Datei aufsteigend und überschneidungsfrei; höchstens drei Prinzipien je Abschnitt — ein Abschnitt mit zehn ist katalogisiert, nicht destilliert. (Gebaut in 2c-1: eine Lektion je Prinzip statt je Abschnitt, Lektion-Id = Prinzip-Id — siehe Nachtrag nach 2c-1.)
 
-**Der Auftrag** ist keine eigene Datei: Er ist die Menge der Abschnitte mit `status: beauftragt`. Die Seite schreibt diesen Status; der Compiler liest ihn und hinterlässt je Abschnitt `lektion` oder `abgelehnt` mit Grund. Ein Abschnitt darf den Durchgang nicht als `beauftragt` verlassen — das prüft `pruefe-lektion` am Ende.
+**Der Auftrag** ist keine eigene Datei: Er ist die Menge der Abschnitte mit `status: beauftragt`. Die Seite schreibt diesen Status; der Compiler liest ihn und hinterlässt je Abschnitt `lektion` oder `abgelehnt` mit Grund. Ein Abschnitt darf den Durchgang nicht als `beauftragt` verlassen — das prüft `pruefe-lektion` am Ende. (Gebaut in 2c-1: Bis 2b-3 setzt `npm run auftrag` den Status, und das Ende prüft `npm run pruefe-quelle -- --nach` — siehe Nachtrag.)
 
 Das bestehende `awesome-llm-apps.yaml` bekommt `art: repo` eingetragen.
 
@@ -194,7 +194,7 @@ Die Regeln für falsche Antworten (B3) und die zwei Fallen (B5a) gelten unverän
 
 ## Urheberrecht
 
-Lehrmaterial gehört seinen Verfassern. Daraus folgen drei feste Regeln: `quellen/` bleibt gitignored — Rohtext und Originale verlassen den Rechner nicht, auch nicht Richtung GitHub. Lektionen sind eigene Formulierungen, keine Abschriften; `pruefe-lektion` bekommt eine Prüfung, die eine Lektion zurückweist, wenn ein Satz von mehr als zwölf Wörtern wörtlich in der Rohdatei steht. Und ein Artifact, das Lektionen aus fremdem Lehrmaterial enthält, bleibt privat.
+Lehrmaterial gehört seinen Verfassern. Daraus folgen drei feste Regeln: `quellen/` bleibt gitignored — Rohtext und Originale verlassen den Rechner nicht, auch nicht Richtung GitHub. Lektionen sind eigene Formulierungen, keine Abschriften; `pruefe-lektion` bekommt eine Prüfung, die eine Lektion zurückweist, wenn ein Satz von mehr als zwölf Wörtern wörtlich in der Rohdatei steht (gebaut in 2c-1 — Regel im Nachtrag). Und ein Artifact, das Lektionen aus fremdem Lehrmaterial enthält, bleibt privat.
 
 ## B vorbereitet — was das jetzt bindet
 
@@ -238,3 +238,16 @@ Nach der Aufgabenfamilie. Der Compiler kann nur Typen erzeugen, die es gibt.
 - **Die Regeln des Adapters sind am Material gemessen und nachgeschärft** (Präzisierungen 1–8 des Plans): Eine Ziffern*folge* wird zu `#`, nicht jede Ziffer. Wiederkehr zählt erst ab fünf Seiten, kleinere Dateien übernehmen das Beiwerk ihrer Quelle. Beiwerk steht fest im Randstreifen, das Logo zählt als Bild-Beiwerk. `nurBild` erkennt auch ein Bild mit Bildunterschrift. Der Tabellenverdacht kommt aus Liniengitter oder Zahlenzeilen, und die Seite sagt „mit Tabelle oder Grafik". Die Art entscheidet die Quelle, nicht die Datei. `gliederung` steht je Original, mit dem Wert `einzeln` für Sätze bis 20 Folien. Mit den wörtlichen Regeln oben wäre M6 als „Scan" abgebrochen, und die Folien 31–33 aus M7 lägen in zwei Abschnitten.
 - **Aufruf:** `npm run ingest -- --folien <Datei oder Mappe> [--folien …] --name <kurzname> --titel "<Titel>"`. Der Lehrplan wird nie überschrieben. `quellen/<kurzname>/` entsteht erst daneben und wird dann in einem Schritt getauscht; scheitert ein Lauf, bleibt der alte Stand. Abgewiesen werden Material ohne Textebene, gedrehte Seiten, PDF mit Passwort und Bücher (bis 2b-2).
 - **Die Vorlesung ist eingelesen:** 9 Originale, 199 Folien, 22 Abschnitte, Stand `sha256:f99ba9465fd7…`. `lehrplan/bauch-projektmanagement.yaml` wartet auf Freigabe; die Folien 31–33 aus M7 liegen alle in `m07-03-risikomanagement`.
+
+## Nachtrag nach 2c-1 (2026-09-26)
+
+2c ist in zwei Teile geschnitten: **2c-1** das Werkzeug für den Compiler an Lehrmaterial (gebaut), **2c-2** der erste Durchgang an M7, mit dem Nutzer am Review-Gate. Plan: `docs/superpowers/plans/2026-09-25-bibliothek-2c1-compiler-werkzeug.md` mit Präzisierungen und Nachträgen; die Messung dazu: `docs/recherche/2026-09-24-compiler-lehrmaterial-befund.md`. Was vom Text oben abweicht:
+
+- **Eine Lektion je Prinzip** (Nutzer, 2026-09-24), nicht je Abschnitt. Eine Lektion hat sechs Takte um genau einen Satz; bei zwei oder drei Prinzipien wäre die Abdeckung falsch gezählt. Jede Lektion trägt die Id ihres Prinzips, wie bei Repos, und das Feld `lektion` am Abschnitt entfällt — wer es schreibt, bekommt eine Migrationsmeldung. Der Status sagt, ob es Prinzipien gibt: `offen` keine, `beauftragt` null bis drei, `lektion` mindestens eines und zu jedem die Lektion, `abgelehnt` keines und ein `grund`. `widget` ist bei Buch und Folien optional.
+- **Prinzip-Ids sind über alle Lehrpläne eindeutig**, weil sie Lektionsdateien benennen. Bei einer Doppelung haben freigegebene Lehrpläne Vorrang vor wartenden; der spätere wird ungültig.
+- **Die Karte** führt in der Zeile eines Abschnitts je Lektion einen Verweis.
+- **Der Auftrag** ist bis 2b-3 ein Befehl: `npm run auftrag -- --name <kurzname> <abschnitt-id> …` setzt Abschnitte von `offen` auf `beauftragt` und lässt den Rest der Datei Byte für Byte stehen. Die reine Funktion dahinter übernimmt später `/__auftrag`.
+- **Folien ansehen** über gerenderte PNG: `npm run ansicht` rendert mit pdf.js und `@napi-rs/canvas` nach `quellen/<k>/ansicht/` (gitignored), eine Folie zu 1263 × 893 px. Poppler wird nicht installiert. Der Compiler sieht jede Folie aus den Listen an und dazu jede, auf die sich ein Prinzip stützt: Vektorgrafik steht nur als Liniengitter in einer Liste.
+- **Der Wortlaut-Abgleich** in `pruefe-lektion`: 13 gleiche Wörter am Stück innerhalb einer Folie bzw. eines Lektionsfelds, nach NFKC, klein, ß → ss, ein Bindestrich-Kompositum als ein Wort; Zahlen zählen nicht, und ein Treffer braucht mindestens drei verschiedene Funktionswörter — eine Begriffskette ist kein Satz. Geprüft wird gegen alle Rohdateien unter `quellen/`; fehlen sie (etwa auf GitHub), heißt es „nicht geprüft“, nicht „in Ordnung“. Die Meldung nennt Quelle, Abschnitt, Folie, Feld und Wortbereich, nie Text.
+- **Vor- und Nachprüfung:** `npm run pruefe-quelle -- --name <kurzname> --vor` verlangt Freigabe, einen Stand wie im Manifest, dieselben Abschnitte und Seitenbereiche und mindestens einen beauftragten Abschnitt; sie nennt je Abschnitt Rohdatei, Folienbereich und die Folienlisten. `--nach` verlangt: kein Abschnitt mehr `beauftragt`, jede Lektion da, der Wortlaut sauber, keine Prinzip-Id doppelt.
+- **Der Compiler-Skill** hat den Abschnitt „Durchgang für Lehrmaterial“ (L0 bis L8), in drei Review-Runden geschärft. Eine vorhandene Lektion ohne Lehrplaneintrag wird übernommen, nicht neu gebaut — so wird `pauschal-heisst-nicht-komplett` ein Prinzip in `m07-03-risikomanagement`.

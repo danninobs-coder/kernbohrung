@@ -533,6 +533,46 @@ Im Abschnitt „Eine Quelle einlesen“ am Ende ein Absatz: `Nach der Freigabe b
 - [ ] **Schritt 4:** Handy-Kopie wie bisher (`handy/`, `werkzeug/relative-verweise.mjs`); das private Artifact aktualisiert die Hauptsitzung.
 - [ ] **Schritt 5:** `git status --short` leer, `git log --oneline master..bibliothek-2c1`; Zusammenführen entscheidet der Nutzer (`superpowers:finishing-a-development-branch`).
 
+## Nachträge aus den Reviews und der Abnahme (2026-09-26)
+
+Jede Aufgabe ist einzeln reviewt; dazu kamen eine Planänderung und sieben Nacharbeiten. Die folgenden Abweichungen vom Plan oben sind beschlossen und getestet; maßgeblich sind seither der Code, seine Tests und `SKILL.md`, nicht der Text oben. Der Commit steht in Klammern.
+
+**Planänderung aus dem Review von Aufgabe 1**
+- Die Eindeutigkeit der Prinzip-Ids über alle Lehrpläne prüfte nur die Seite beim Bau; im Compiler-Ablauf sah jede Prüfung nur einen Lehrplan. Seither prüft `pruefe-quelle --vor` und `--nach` gegen alle übrigen `lehrplan/*.yaml`, und eine vorhandene Lektion wird nur übernommen, wenn sie keinen Lehrplaneintrag hat (a29d7c1).
+
+**Lehrplan und Karte**
+- Bei doppelter Prinzip-Id haben freigegebene Lehrpläne Vorrang vor wartenden. Vorher entschied allein die Pfad-Reihenfolge, und ein wartender Lehrplan mit früherem Dateinamen machte einen freigegebenen ungültig. Wer dabei selbst ungültig wird, gibt seine übrigen Ids frei (bfee410).
+- Die Warnung „Lektionen ohne Lehrplaneintrag“ nennt nur noch das Prinzip, keinen Abschnitt mehr (bfee410).
+
+**Werkzeuge**
+- `ansicht`: `datei` aus dem Manifest muss ein bloßer Dateiname sein; sonst Abbruch statt Lesen außerhalb von `quellen/<k>/original/` (9d47403).
+- `liesDokumentManifest` steht in `werkzeug/dokument-manifest.mjs`, nicht in `manifest.mjs` wie in Aufgabe 3: So lädt `manifest.mjs` kein Zod, und das Einlesen aus Git auch nicht (9d47403).
+- `auftrag`: erkennt `status: offen` auch in Anführungszeichen und mit Kommentar und behält die Form; ohne eindeutige Statuszeile ein Mangel statt eines Stapelabzugs; ENOENT und andere Lesefehler mit eigener Meldung (9d47403).
+- Wortlaut: Ein Kompositum, das am Zeilenende umbricht, ist ein Wort — außer vor einem Bindewort und in einer Kette mit Ergänzungsstrichen. Apostroph-Varianten werden vor NFKC vereinheitlicht, HTML-Entitäten im Rumpf aufgelöst. Fenster mit weniger als drei verschiedenen Funktionswörtern fallen schon beim Indexieren weg (f682758, 2d7b054).
+- `pruefe-lektion`: Eine fehlende oder unlesbare Datei wird einzeln gemeldet, die übrigen werden weiter geprüft. Exit 1 (Mangel) geht vor 2 (Datei fehlt) vor 0. Den Importkreis mit `wortlaut.mjs` löst `werkzeug/lektion-lesen.mjs` auf (f682758, 2d7b054).
+- `pruefe-quelle`: Bei gleichem Stand gleicht `--vor` Seitenbereiche und Abschnitte mit dem Manifest ab, denn der Stand hasht nur die Originale — ein Neueinlesen mit anderer Gliederung ließe ihn gleich. `--nach` meldet „Wortlaut: in Ordnung“ nur mit den eigenen Rohdateien, liest bei ungültigem Lehrplan die Prinzip-Ids aus dem rohen YAML und bricht bei Dateifehlern mit einem Satz statt eines Stapelabzugs ab (ee4a488).
+
+**Skill und README — drei Review-Runden**
+- Das Frontmatter des Skills war durch „: “ in der Beschreibung kein YAML mehr; Claude Code listete den Skill danach ohne Beschreibung und ohne Auslöser. Der Fehler stand schon in Aufgabe 6. Ein Test liest das Frontmatter jetzt mit js-yaml (dfecb0c).
+- Der Durchgang für Lehrmaterial ist gegenüber Aufgabe 6 geschärft (dfecb0c, badaa5e, 7a21afb):
+  - A1 bis A4 entfallen, L5 tritt an die Stelle von A6. Die Listen aus L1 sind unvollständig: Vektorgrafik erfassen sie nur als Liniengitter.
+  - `--vor` läuft schon nach L5. Außer „Erst freigeben …“ darf nichts kommen; sind alle beauftragten Abschnitte abgelehnt, auch „Kein Abschnitt ist beauftragt …“.
+  - Eine übernommene Lektion wird nur geprüft; ändern darf sie nur der Mensch oder der Compiler auf sein ausdrückliches Wort. Verschoben wird nur, wenn es die Zieldatei noch nicht gibt.
+  - `reihenfolge` zählt fortlaufend. `quellen` steht als `pfad` und `url`; ein Schreibfehler der Quelle wird Zusatz im `pfad`, denn ein Feld `notiz` fiele still weg.
+  - Nach der Freigabe streicht nur der Mensch, und die Freigabe bleibt stehen; geleert wird sie nur in L5.
+  - Folienbilder und Folientext werden nie weitergegeben: Die PNG bleiben unter `quellen/`.
+- README: Befehle in Backticks — die Platzhalter fielen als HTML-Tags weg —, Takte und Aufgabentypen auf dem Stand der Aufgabenfamilie (dfecb0c, badaa5e).
+- Ein Test prüft jede Option hinter `npm run <name> --` in SKILL.md und README gegen die Einstiegsdatei des Werkzeugs. Er fängt Tippfehler in der Anleitung, nicht ein Werkzeug, das eine Option verliert (dfecb0c, badaa5e).
+
+**Zahlen am Ende**
+- 1169 Tests in 56 Dateien = BASIS 1009 + 160; `astro check` 0/0/0; Bau 9 Seiten; keine NUL-Bytes in den geänderten Textdateien; kein Rohtext im Bau.
+- Abnahme bei 375 px mit einem synthetischen Lehrplan (vier Abschnitte in den vier Status, zwei Lektionen an einem Abschnitt): zwei Verweise in einer Zeile, 44 und 45 px hoch, Zeile ohne Überlauf, `ueberlauf: 0`, „Lektionen ohne Lehrplaneintrag“ verschwindet. Danach Datei gelöscht, Bau wieder 9 Seiten, Arbeitsbaum sauber.
+- Am echten Material: `--vor` meldet „Erst freigeben …“ und „Kein Abschnitt ist beauftragt …“, Exit 1; `ansicht` rendert Folie 31 aus `m07-03-risikomanagement` zu 1263 × 893 px; `pruefe-lektion` über alle fünf Lektionen in Ordnung, Wortlaut gegen 46 Rohdateien sauber. Private Handy-Version 12.
+
+**Für 2c-2 zusätzlich zu den offenen Fragen unten**
+- `--vor` sieht Lektionen ohne Lehrplaneintrag nicht. Eine Prinzip-Id, unter der es schon eine Lektion gibt, wählt der Compiler nur bei Übernahme; heute betrifft das neben `pauschal-heisst-nicht-komplett` auch `recall-vor-precision`.
+- Veröffentlichung weiter nur von Hand: Ein Lauf des Pages-Workflows machte die Abschnittstitel und den Namen des Dozenten öffentlich, ab 2c-2 auch Lektionen aus der Vorlesung.
+
 ---
 
 ## Selbstprüfung gegen den Spec
