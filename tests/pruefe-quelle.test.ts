@@ -1,7 +1,17 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { baueDokumentManifest } from '../werkzeug/manifest.mjs';
@@ -141,7 +151,10 @@ const MANIFEST = manifestText([
 type VorEingabe = Parameters<typeof pruefeVor>[0];
 type NachEingabe = Parameters<typeof pruefeNach>[0];
 
-/** pruefeVor mit passendem Manifest und ohne andere Lehrplaene, soweit der Test nichts anderes sagt. */
+/**
+ * pruefeVor mit passendem Manifest und ohne andere Lehrplaene, soweit der Test nichts anderes sagt.
+ * MANIFEST traegt alle drei Abschnitte; ein Lehrplan, der gegen es gehalten wird, fuehrt sie deshalb alle — wie nach dem Einlesen.
+ */
 function vor(eingabe: Partial<VorEingabe> & Pick<VorEingabe, 'lehrplanText'>) {
   return pruefeVor({ kurzname: K, manifestText: MANIFEST, lektionsIds: new Set<string>(), andere: [], ...eingabe });
 }
@@ -183,7 +196,14 @@ describe('pruefeVor', () => {
   // 2
   it('verlangt die Freigabe', () => {
     const ergebnis = vor({
-      lehrplanText: lehrplanText({ freigegeben: false, abschnitte: [{ ...EINSTIEG, status: 'beauftragt' }] }),
+      lehrplanText: lehrplanText({
+        freigegeben: false,
+        abschnitte: [
+          { ...EINSTIEG, status: 'beauftragt' },
+          { ...KOSTEN, status: 'offen' },
+          { ...RISIKEN, status: 'offen' },
+        ],
+      }),
     });
     expect(ergebnis).toEqual({
       ok: false,
@@ -199,6 +219,7 @@ describe('pruefeVor', () => {
         abschnitte: [
           { ...EINSTIEG, status: 'offen' },
           { ...KOSTEN, status: 'offen' },
+          { ...RISIKEN, status: 'offen' },
         ],
       }),
     });
@@ -214,6 +235,7 @@ describe('pruefeVor', () => {
       lehrplanText: lehrplanText({
         stand: `sha256:${'b'.repeat(64)}`,
         // Ein Abschnitt, den das Manifest nicht kennt: Bei anderem Stand ist das keine eigene Meldung wert.
+        // Ebenso wenig die beiden, die nur im Manifest stehen (m01-02-kosten, m01-03-risiken).
         abschnitte: [{ ...EINSTIEG, status: 'beauftragt' }, { id: 'm01-09-gibt-es-nicht', seiten: [30, 31], status: 'offen' }],
       }),
     });
@@ -232,6 +254,8 @@ describe('pruefeVor', () => {
       lehrplanText: lehrplanText({
         abschnitte: [
           { ...EINSTIEG, status: 'beauftragt' },
+          { ...KOSTEN, status: 'offen' },
+          { ...RISIKEN, status: 'offen' },
           { id: 'm01-09-gibt-es-nicht', seiten: [30, 31], status: 'offen' },
         ],
       }),
@@ -252,6 +276,43 @@ describe('pruefeVor', () => {
     });
   });
 
+  // Dieselben PDF mit anderer Gliederung neu eingelesen: Der Stand bleibt, Manifest und Rohdateien sind neu, der Lehrplan alt.
+  it('meldet bei gleichem Stand Seiten, die im Manifest anders stehen — bei anderem Stand nur den Stand', () => {
+    const abschnitte: AbschnittSpec[] = [
+      { ...EINSTIEG, seiten: [1, 8], status: 'beauftragt' },
+      { ...KOSTEN, status: 'offen' },
+      { ...RISIKEN, status: 'offen' },
+    ];
+    expect(vor({ lehrplanText: lehrplanText({ abschnitte }) })).toEqual({
+      ok: false,
+      maengel: [
+        'Abschnitt m01-01-einstieg: seiten [1, 8] im Lehrplan, [1, 10] im Manifest — neu eingelesen? Dann den Lehrplan nachziehen.',
+      ],
+      auftrag: [],
+    });
+    expect(vor({ lehrplanText: lehrplanText({ abschnitte, stand: `sha256:${'b'.repeat(64)}` }) }).maengel).toEqual([
+      'Der Stand im Lehrplan (sha256:bbbbbbb) passt nicht zum Manifest (sha256:aaaaaaa) — neu eingelesen? Dann den Lehrplan nachziehen.',
+    ]);
+  });
+
+  it('meldet bei gleichem Stand einen Abschnitt, der im Manifest steht, aber nicht im Lehrplan', () => {
+    const ergebnis = vor({
+      lehrplanText: lehrplanText({
+        abschnitte: [
+          { ...EINSTIEG, status: 'beauftragt' },
+          { ...RISIKEN, status: 'offen' },
+        ],
+      }),
+    });
+    expect(ergebnis).toEqual({
+      ok: false,
+      maengel: [
+        'Abschnitt m01-02-kosten steht im Manifest, aber nicht im Lehrplan — neu eingelesen? Dann den Lehrplan nachziehen.',
+      ],
+      auftrag: [],
+    });
+  });
+
   // 5
   it('verlangt mindestens einen beauftragten Abschnitt', () => {
     const ergebnis = vor({
@@ -259,6 +320,7 @@ describe('pruefeVor', () => {
         abschnitte: [
           { ...EINSTIEG, status: 'offen' },
           { ...KOSTEN, status: 'abgelehnt', grund: 'Nur Bildbeispiele ohne Aussage.' },
+          { ...RISIKEN, status: 'offen' },
         ],
       }),
     });
@@ -302,11 +364,29 @@ describe('pruefeVor', () => {
     );
   });
 
+  it('meldet einen ungueltigen Lehrplan und einen Mangel am Manifest zusammen', () => {
+    const ungueltig = lehrplanText({ abschnitte: [{ ...EINSTIEG, status: 'abgelehnt' }] });
+    const mangel = 'lehrplan/fixture-quelle.yaml: abschnitte.0.grund: Ein abgelehnter Abschnitt braucht einen Grund.';
+    expect(vor({ lehrplanText: ungueltig, manifestText: null })).toEqual({
+      ok: false,
+      maengel: [mangel, 'quellen/fixture-quelle/manifest.json gibt es nicht — erst einlesen.'],
+      auftrag: [],
+    });
+    expect(vor({ lehrplanText: ungueltig, manifestText: '{' }).maengel).toEqual([
+      mangel,
+      'quellen/fixture-quelle/manifest.json lässt sich nicht lesen (kein gültiges JSON).',
+    ]);
+  });
+
   // 6a
   it('meldet eine Prinzip-Id, die ein anderer gueltiger oder wartender Lehrplan traegt; ein unlesbarer zaehlt nicht mit', () => {
     const ergebnis = vor({
       lehrplanText: lehrplanText({
-        abschnitte: [{ ...EINSTIEG, status: 'beauftragt', prinzipien: ['geteilte-id', 'wartende-id', 'eigene-id'] }],
+        abschnitte: [
+          { ...EINSTIEG, status: 'beauftragt', prinzipien: ['geteilte-id', 'wartende-id', 'eigene-id'] },
+          { ...KOSTEN, status: 'offen' },
+          { ...RISIKEN, status: 'offen' },
+        ],
       }),
       andere: [
         { datei: 'lehrplan/anderer.yaml', text: repoText(['geteilte-id', 'nur-im-repo']) },
@@ -331,6 +411,32 @@ describe('pruefeVor', () => {
       ],
       auftrag: [],
     });
+  });
+
+  it('zaehlt die Ids eines anderen Lehrplans mit, dem nur eine Lektion fehlt', () => {
+    const ergebnis = vor({
+      lehrplanText: lehrplanText({
+        abschnitte: [
+          { ...EINSTIEG, status: 'beauftragt', prinzipien: ['geteilte-id'] },
+          { ...KOSTEN, status: 'offen' },
+          { ...RISIKEN, status: 'offen' },
+        ],
+      }),
+      // Der andere Lehrplan steht auf lektion, die Lektion geteilte-id gibt es aber nicht (lektionsIds ist leer):
+      // Das Schema weist ihn ab, seine Id beansprucht er trotzdem.
+      andere: [
+        {
+          datei: 'lehrplan/anderer.yaml',
+          text: lehrplanText({
+            quelle: 'andere-quelle',
+            abschnitte: [{ ...EINSTIEG, status: 'lektion', prinzipien: ['geteilte-id'] }],
+          }),
+        },
+      ],
+    });
+    expect(ergebnis.maengel).toEqual([
+      'Prinzip geteilte-id: die Id steht schon in lehrplan/anderer.yaml; Lektion und Prinzip teilen sich die Id.',
+    ]);
   });
 });
 
@@ -455,6 +561,33 @@ async function lauf(argv: string[], wurzel: string): Promise<{ code: number; zei
   return { code, zeilen };
 }
 
+/**
+ * `UV_FS_O_EXLOCK` aus libuv: unter Windows oeffnen, ohne die Datei mit
+ * anderen zu teilen. Node fuehrt die Konstante nicht in `fs.constants`, libuv
+ * wertet sie trotzdem aus.
+ */
+const UV_FS_O_EXLOCK = 0x10000000;
+
+/**
+ * Sperrt eine Datei oder einen Ordner gegen Lesen, bis `frei` sie wieder
+ * freigibt — wie ein anderes Programm, das eine Datei festhaelt. Unter Windows
+ * geoeffnet, ohne sie zu teilen: Wer die Datei zum Lesen oeffnet oder den
+ * Ordner auflistet, bekommt EBUSY; stat und das Lesen von Dateien im Ordner
+ * gehen weiter. Sonst ohne Leserecht (EACCES); ein Ordner bleibt durchquerbar.
+ */
+function sperre(pfad: string): { code: string; frei: () => void } {
+  if (process.platform === 'win32') {
+    const fd = openSync(pfad, UV_FS_O_EXLOCK | constants.O_RDONLY);
+    return { code: 'EBUSY', frei: () => closeSync(fd) };
+  }
+  const vorher = statSync(pfad);
+  chmodSync(pfad, vorher.isDirectory() ? 0o300 : 0o000);
+  return { code: 'EACCES', frei: () => chmodSync(pfad, vorher.mode & 0o777) };
+}
+
+/** Wer als root laeuft, liest trotz entzogenem Leserecht: Dann greift `sperre` ausserhalb von Windows nicht. */
+const SPERRE_GREIFT = process.getuid?.() !== 0;
+
 describe('fuehreAus --vor', () => {
   /** Vor Durchgang B: zwei Abschnitte beauftragt, einer schon mit Prinzip; daneben ein Repo-Lehrplan ohne gemeinsame Id. */
   const VOR_B = {
@@ -488,7 +621,13 @@ describe('fuehreAus --vor', () => {
 
   it('sagt „1 Abschnitt" in der Einzahl', async () => {
     const wurzel = wurzelMit({
-      [`lehrplan/${K}.yaml`]: lehrplanText({ abschnitte: [{ ...KOSTEN, status: 'beauftragt' }] }),
+      [`lehrplan/${K}.yaml`]: lehrplanText({
+        abschnitte: [
+          { ...EINSTIEG, status: 'offen' },
+          { ...KOSTEN, status: 'beauftragt' },
+          { ...RISIKEN, status: 'offen' },
+        ],
+      }),
       [`quellen/${K}/manifest.json`]: MANIFEST,
     });
     try {
@@ -529,6 +668,49 @@ describe('fuehreAus --vor', () => {
       for (const w of [leer, ohneManifest, geteilt, ordnerStattDatei]) rmSync(w, { recursive: true, force: true });
     }
   });
+
+  // Uebersaehe sonst still eine Doppelung mit ihm.
+  it.runIf(SPERRE_GREIFT)('bricht ab, wenn sich ein anderer Lehrplan nicht lesen laesst, Exit 1', async () => {
+    const wurzel = wurzelMit(VOR_B);
+    const gesperrt = sperre(path.join(wurzel, 'lehrplan', 'anderer.yaml'));
+    try {
+      expect(await lauf(['--name', K, '--vor'], wurzel)).toEqual({
+        code: 1,
+        zeilen: [`lehrplan/anderer.yaml lässt sich nicht lesen (${gesperrt.code}).`],
+      });
+    } finally {
+      gesperrt.frei();
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  // Auch die Seite liest unter lehrplan/ nur Dateien.
+  it('uebergeht einen Ordner, der wie ein anderer Lehrplan heisst', async () => {
+    const ohneOrdner = wurzelMit(VOR_B);
+    const mitOrdner = wurzelMit(VOR_B);
+    mkdirSync(path.join(mitOrdner, 'lehrplan', 'ordner.yaml'));
+    try {
+      const ohne = await lauf(['--name', K, '--vor'], ohneOrdner);
+      expect(await lauf(['--name', K, '--vor'], mitOrdner)).toEqual(ohne);
+      expect(ohne.code).toBe(0);
+    } finally {
+      for (const w of [ohneOrdner, mitOrdner]) rmSync(w, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(SPERRE_GREIFT)('meldet einen Ordner lehrplan/, der sich nicht auflisten laesst, als Satz, Exit 1', async () => {
+    const wurzel = wurzelMit(VOR_B);
+    const gesperrt = sperre(path.join(wurzel, 'lehrplan'));
+    try {
+      expect(await lauf(['--name', K, '--vor'], wurzel)).toEqual({
+        code: 1,
+        zeilen: [`lehrplan lässt sich nicht lesen (${gesperrt.code}).`],
+      });
+    } finally {
+      gesperrt.frei();
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('fuehreAus --nach', () => {
@@ -567,6 +749,100 @@ describe('fuehreAus --nach', () => {
         'Wortlaut nicht geprüft: keine Rohdateien am Rechner.',
       ]);
       expect(code).toBe(0);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('sagt mit Rohdateien nur anderer Quellen „nicht geprueft", nicht „Wortlaut in Ordnung", Exit 0', async () => {
+    const FREMD = { 'quellen/andere-quelle/roh/x01-01-fremd.md': ROH };
+    // Gegen die eigene Vorlesung waere nie geprueft worden.
+    const nurFremde = wurzelMit({ ...NACH_B, ...FREMD });
+    // Der eigene Ordner roh/ ist da, aber ohne Rohdatei (*.md).
+    const eigeneOhneMd = wurzelMit({ ...NACH_B, ...FREMD, [`quellen/${K}/roh/notiz.txt`]: SATZ });
+    try {
+      for (const wurzel of [nurFremde, eigeneOhneMd]) {
+        const { code, zeilen } = await lauf(['--name', K, '--nach'], wurzel);
+        expect(zeilen).toEqual([
+          'lehrplan/fixture-quelle.yaml: kein Abschnitt mehr beauftragt, alle Lektionen da.',
+          'Wortlaut nicht geprüft: keine Rohdateien am Rechner.',
+        ]);
+        expect(code).toBe(0);
+      }
+    } finally {
+      for (const w of [nurFremde, eigeneOhneMd]) rmSync(w, { recursive: true, force: true });
+    }
+  });
+
+  it('prueft mit den eigenen Rohdateien auch gegen die Rohdateien anderer Quellen, Exit 1', async () => {
+    const wurzel = wurzelMit({
+      ...NACH_B,
+      'inhalt/lektionen/stunden-taeglich-melden.mdx': lektion(`Ein eigener Satz vorweg. ${SATZ}`),
+      // Den Satz traegt nur die Rohdatei der anderen Quelle.
+      [`quellen/${K}/roh/m01-01-einstieg.md`]: ROH.replace(SATZ, 'Nur ein kurzer Satz.'),
+      'quellen/andere-quelle/roh/x01-01-fremd.md': ROH,
+    });
+    try {
+      const { code, zeilen } = await lauf(['--name', K, '--nach'], wurzel);
+      expect(zeilen).toEqual([
+        'Lektion stunden-taeglich-melden: Wortlaut zu nah an der Quelle — npm run pruefe-lektion -- inhalt/lektionen/stunden-taeglich-melden.mdx zeigt die Stelle.',
+      ]);
+      expect(code).toBe(1);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('prueft den Wortlaut auch bei ungueltigem Lehrplan und meldet beides, Exit 1', async () => {
+    const wurzel = wurzelMit({
+      ...NACH_B,
+      [`lehrplan/${K}.yaml`]: lehrplanText({
+        abschnitte: [
+          { ...EINSTIEG, status: 'lektion', prinzipien: ['stunden-taeglich-melden'] },
+          // Die Lektion zu diesem Prinzip fehlt noch: Das Schema weist den Lehrplan ab.
+          { ...KOSTEN, status: 'lektion', prinzipien: ['kosten-frueh-schaetzen'] },
+        ],
+      }),
+      'inhalt/lektionen/stunden-taeglich-melden.mdx': lektion(`Ein eigener Satz vorweg. ${SATZ}`),
+      [`quellen/${K}/roh/m01-01-einstieg.md`]: ROH,
+    });
+    try {
+      const { code, zeilen } = await lauf(['--name', K, '--nach'], wurzel);
+      expect(zeilen).toEqual([
+        'lehrplan/fixture-quelle.yaml: abschnitte.1.prinzipien.0.id: Die Lektion kosten-frueh-schaetzen gibt es nicht (inhalt/lektionen/kosten-frueh-schaetzen.mdx).',
+        'Lektion stunden-taeglich-melden: Wortlaut zu nah an der Quelle — npm run pruefe-lektion -- inhalt/lektionen/stunden-taeglich-melden.mdx zeigt die Stelle.',
+      ]);
+      expect(code).toBe(1);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(SPERRE_GREIFT)('meldet eine Rohdatei, die sich nicht lesen laesst, als Satz, Exit 1', async () => {
+    const wurzel = wurzelMit({ ...NACH_B, [`quellen/${K}/roh/m01-01-einstieg.md`]: ROH });
+    const gesperrt = sperre(path.join(wurzel, 'quellen', K, 'roh', 'm01-01-einstieg.md'));
+    try {
+      expect(await lauf(['--name', K, '--nach'], wurzel)).toEqual({
+        code: 1,
+        zeilen: [`quellen/fixture-quelle/roh/m01-01-einstieg.md lässt sich nicht lesen (${gesperrt.code}).`],
+      });
+    } finally {
+      gesperrt.frei();
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('meldet einen Ordner an Stelle einer Lektionsdatei als Satz, Exit 1', async () => {
+    const wurzel = wurzelMit({
+      [`lehrplan/${K}.yaml`]: NACH_B[`lehrplan/${K}.yaml`],
+      [`quellen/${K}/roh/m01-01-einstieg.md`]: ROH,
+    });
+    mkdirSync(path.join(wurzel, 'inhalt', 'lektionen', 'stunden-taeglich-melden.mdx'), { recursive: true });
+    try {
+      expect(await lauf(['--name', K, '--nach'], wurzel)).toEqual({
+        code: 1,
+        zeilen: ['inhalt/lektionen/stunden-taeglich-melden.mdx lässt sich nicht lesen (EISDIR).'],
+      });
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
     }

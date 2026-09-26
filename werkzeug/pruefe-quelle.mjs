@@ -8,7 +8,8 @@
  *
  * `--vor` steht vor Durchgang A und wieder vor Durchgang B: Der Lehrplan ist
  * freigegeben, sein Stand passt zum Manifest, jeder Abschnitt steht im
- * Manifest (die Datei bytegenau), mindestens einer ist beauftragt, und keine
+ * Manifest (die Datei bytegenau, dieselben Seiten) und jeder Abschnitt des
+ * Manifests im Lehrplan, mindestens einer ist beauftragt, und keine
  * Prinzip-Id steht schon in einem anderen Lehrplan. Dazu nennt es je
  * beauftragtem Abschnitt die Rohdatei, den Folienbereich und die Folien, die
  * der Compiler im Original ansehen muss — aus dem Manifest, nicht aus den
@@ -16,8 +17,9 @@
  *
  * `--nach` steht nach Durchgang B: kein Abschnitt mehr beauftragt, jede
  * Lektion da, keine Prinzip-Id doppelt, der Wortlaut jeder Lektion dieses
- * Lehrplans sauber. Fehlen die Rohdateien (ein Klon von GitHub), heisst es
- * „nicht geprueft", nicht „in Ordnung".
+ * Lehrplans sauber. Fehlen die eigenen Rohdateien (`quellen/<k>/roh/*.md`,
+ * etwa in einem Klon von GitHub), heisst es „nicht geprueft", nicht „in
+ * Ordnung" — auch wenn andere Quellen Rohdateien haben.
  *
  * Ein eigenes Werkzeug und kein Teil von pruefe-lektion: Beide Pruefungen
  * muessen Lehrplan, Manifest und Lektionen zusammen sehen.
@@ -25,7 +27,9 @@
  * Drei Schichten wie bei den anderen Werkzeugen: `pruefeVor` und `pruefeNach`
  * sind reine Funktionen ueber Texte, `pruefeVorDateien` und
  * `pruefeNachDateien` lesen unter einer Wurzel (und schreiben nichts), und
- * `fuehreAus` ist die Kommandozeile.
+ * `fuehreAus` ist die Kommandozeile. Laesst sich dabei eine Datei oder ein
+ * Ordner nicht lesen, bricht die Pruefung mit einem Satz ab, nicht mit einem
+ * Stapelabzug.
  *
  * **Auf der Konsole steht nie Folientext** — nur Ids, Pfade, Dateinamen und
  * Foliennummern.
@@ -68,11 +72,13 @@ export class PruefeQuelleFehler extends Error {}
  */
 
 /**
- * Was vom Lehrplan zu lesen war. `wartet`: Es fehlt nur die Freigabe.
+ * Was vom Lehrplan zu lesen war. `wartet`: Es fehlt nur die Freigabe. Ein
+ * ungueltiger traegt die Prinzip-Ids, die sich aus seinem YAML lesen lassen
+ * (`rohePrinzipIds`).
  *
  * @typedef {{ zustand: 'fehlt' }} LehrplanFehlt
  * @typedef {{ zustand: 'repo' }} RepoLehrplan
- * @typedef {{ zustand: 'ungueltig', maengel: string[] }} UngueltigerLehrplan
+ * @typedef {{ zustand: 'ungueltig', maengel: string[], prinzipIds: string[] }} UngueltigerLehrplan
  * @typedef {{ zustand: 'lesbar', lehrplan: Lehrmaterial, wartet: boolean }} LesbarerLehrplan
  * @typedef {LehrplanFehlt | RepoLehrplan | UngueltigerLehrplan | LesbarerLehrplan} GelesenerLehrplan
  */
@@ -112,6 +118,37 @@ function rohArt(text) {
 }
 
 /**
+ * Die Prinzip-Ids der Abschnitte, so weit sie sich aus dem YAML lesen lassen
+ * — auch aus einem Lehrplan, den das Schema abweist: jede `id`, die als Text
+ * in einem Prinzip unter `abschnitte` steht. Kein YAML, keine Liste, kein
+ * Text: keine Id.
+ *
+ * @param {string} text
+ * @returns {string[]}
+ */
+function rohePrinzipIds(text) {
+  /** @type {unknown} */
+  let roh;
+  try {
+    roh = yamlLesen(text);
+  } catch (fehler) {
+    if (fehler instanceof YAMLException) return [];
+    throw fehler;
+  }
+  /** @type {(wert: unknown, name: string) => unknown} */
+  const feld = (wert, name) =>
+    wert !== null && typeof wert === 'object' ? /** @type {Record<string, unknown>} */ (wert)[name] : undefined;
+  /** @type {(wert: unknown) => unknown[]} */
+  const liste = (wert) => (Array.isArray(wert) ? wert : []);
+  return liste(feld(roh, 'abschnitte')).flatMap((abschnitt) =>
+    liste(feld(abschnitt, 'prinzipien')).flatMap((prinzip) => {
+      const id = feld(prinzip, 'id');
+      return typeof id === 'string' ? [id] : [];
+    }),
+  );
+}
+
+/**
  * Liest den Lehrplan dieser Quelle so weit, wie beide Pruefungen ihn brauchen.
  *
  * Ein Repo-Lehrplan wird auch dann erkannt, wenn das Schema ihn abweist: Wer
@@ -133,8 +170,24 @@ function lesePlan(lehrplanText, lektionsIds) {
     const { lehrplan } = befund;
     return lehrplan.art === 'repo' ? { zustand: 'repo' } : { zustand: 'lesbar', lehrplan, wartet: !befund.ok };
   }
-  return rohArt(lehrplanText) === 'repo' ? { zustand: 'repo' } : { zustand: 'ungueltig', maengel: befund.maengel };
+  return rohArt(lehrplanText) === 'repo'
+    ? { zustand: 'repo' }
+    : { zustand: 'ungueltig', maengel: befund.maengel, prinzipIds: rohePrinzipIds(lehrplanText) };
 }
+
+/**
+ * Eine Lektionsmenge, in der es jede Lektion gibt: So liest `doppelteIds` die
+ * anderen Lehrplaene. Das Schema fragt sie nur mit `has` (`pruefeLektionen`
+ * in src/lib/lehrplan.ts).
+ *
+ * @type {ReadonlySet<string>}
+ */
+const JEDE_LEKTION = new (class extends Set {
+  /** @returns {boolean} */
+  has() {
+    return true;
+  }
+})();
 
 /**
  * Die Prinzip-Ids dieses Lehrplans, die schon ein anderer traegt — je Id ein
@@ -147,20 +200,23 @@ function lesePlan(lehrplanText, lektionsIds) {
  * zaehlt jede Doppelung, gleich welcher der beiden Lehrplaene freigegeben
  * ist: Die eine Lektionsdatei ueberschriebe die andere in jedem Fall.
  *
- * Mit zaehlt, wie auf der Seite, jeder andere Lehrplan, der gueltig ist oder
- * nur auf die Freigabe wartet. Einer, der sich nicht lesen laesst, traegt
- * keine Id.
+ * Mit zaehlt jeder andere Lehrplan, der gueltig ist oder nur auf die Freigabe
+ * wartet — gelesen, als gaebe es jede Lektion (`JEDE_LEKTION`). Auch einer,
+ * dem nur eine Lektion fehlt, beansprucht ihre Id: Die Datei, die sie
+ * benennt, gehoert zu ihm, ob sie schon da ist oder nicht. Die Seite fuehrt
+ * ihn bis dahin als ungueltig und zaehlt seine Ids nicht. Einer, der sich
+ * nicht als Lehrplan lesen laesst — kein YAML, ein anderer Mangel am Schema
+ * —, traegt keine Id.
  *
  * @param {Lehrmaterial} lehrplan
  * @param {readonly AndererLehrplan[]} andere
- * @param {ReadonlySet<string>} lektionsIds
  * @returns {string[]}
  */
-function doppelteIds(lehrplan, andere, lektionsIds) {
+function doppelteIds(lehrplan, andere) {
   /** @type {Map<string, string>} Prinzip-Id -> die erste andere Datei, die sie traegt */
   const traeger = new Map();
   for (const { datei, text } of andere) {
-    const befund = lehrplanAusYaml(text, lektionsIds, datei);
+    const befund = lehrplanAusYaml(text, JEDE_LEKTION, datei);
     if (!befund.ok && !befund.wartet) continue;
     for (const id of prinzipIdsVon(befund.lehrplan)) {
       if (!traeger.has(id)) traeger.set(id, datei);
@@ -194,6 +250,15 @@ function doppelteIds(lehrplan, andere, lektionsIds) {
  * zu einem geglaettet, fuehrte den Compiler zu einer Datei, die es nicht gibt.
  * Verglichen wird der Wert, wie ihn das Schema liest (ohne Leerraum am Rand) —
  * so, wie ihn Seite und Compiler sehen.
+ *
+ * Auch bei gleichem Stand koennen Lehrplan und Manifest auseinanderlaufen:
+ * Der Stand hasht nur die Originale. Liest man dieselben PDF mit anderer
+ * Gliederung neu ein, bleibt er gleich, Manifest und Rohdateien werden
+ * ersetzt — der Lehrplan bleibt, wie er ist; das Einlesen ueberschreibt ihn
+ * nie. Deshalb muessen die Seiten jedes Abschnitts die aus dem Manifest sein,
+ * und jeder Abschnitt des Manifests muss im Lehrplan stehen. Sonst arbeitete
+ * der Compiler an Rohdateien, die anders geschnitten sind, als der Lehrplan
+ * sagt.
  *
  * `auftrag` bleibt leer, solange es einen Mangel gibt. Sonst traegt es je
  * beauftragtem Abschnitt, in der Reihenfolge des Lehrplans, Id, Titel und
@@ -249,6 +314,12 @@ export function pruefeVor({ kurzname, lehrplanText, manifestText, lektionsIds, a
         maengel.push(`Abschnitt ${abschnitt.id} steht nicht im Manifest.`);
       } else if (eintrag.datei !== abschnitt.datei) {
         maengel.push(`Abschnitt ${abschnitt.id}: die Datei ${JSON.stringify(abschnitt.datei)} steht nicht im Manifest.`);
+      } else if (eintrag.seiten[0] !== abschnitt.seiten[0] || eintrag.seiten[1] !== abschnitt.seiten[1]) {
+        const [von, bis] = abschnitt.seiten;
+        const [mv, mb] = eintrag.seiten;
+        maengel.push(
+          `Abschnitt ${abschnitt.id}: seiten [${von}, ${bis}] im Lehrplan, [${mv}, ${mb}] im Manifest — neu eingelesen? Dann den Lehrplan nachziehen.`,
+        );
       } else if (abschnitt.status === 'beauftragt') {
         auftrag.push({
           id: abschnitt.id,
@@ -261,11 +332,17 @@ export function pruefeVor({ kurzname, lehrplanText, manifestText, lektionsIds, a
         });
       }
     }
+    const imLehrplan = new Set(lehrplan.abschnitte.map((abschnitt) => abschnitt.id));
+    for (const { id } of manifest.roh) {
+      if (!imLehrplan.has(id)) {
+        maengel.push(`Abschnitt ${id} steht im Manifest, aber nicht im Lehrplan — neu eingelesen? Dann den Lehrplan nachziehen.`);
+      }
+    }
   }
   if (!lehrplan.abschnitte.some((abschnitt) => abschnitt.status === 'beauftragt')) {
     maengel.push('Kein Abschnitt ist beauftragt — erst npm run auftrag.');
   }
-  maengel.push(...doppelteIds(lehrplan, andere, lektionsIds));
+  maengel.push(...doppelteIds(lehrplan, andere));
 
   const ok = maengel.length === 0;
   return { ok, maengel, auftrag: ok ? auftrag : [] };
@@ -275,15 +352,20 @@ export function pruefeVor({ kurzname, lehrplanText, manifestText, lektionsIds, a
  * Nach Durchgang B.
  *
  * `wortlaut` traegt die Ids der Lektionen, deren Wortlaut zu nah an einer
- * Rohdatei ist — oder ist `null`, wenn es keine Rohdatei gibt. Dann steht
- * ein Hinweis da, kein Mangel: nicht geprueft ist nicht in Ordnung, aber auch
- * nicht falsch.
+ * Rohdatei ist — auch bei einem ungueltigen Lehrplan, damit alle Maengel auf
+ * einmal dastehen —, oder ist `null`, wenn es die eigenen Rohdateien nicht
+ * gibt. Dann steht ein Hinweis da, kein Mangel: nicht geprueft ist nicht in
+ * Ordnung, aber auch nicht falsch.
  *
  * Die Freigabe verlangt die Pruefung nicht erneut, sie wurde vor Durchgang B
  * gesetzt. Fehlt sie jetzt, ist das ein Mangel: Durchgang B hat dann ohne sie
  * gearbeitet. Ob jede Lektion da ist, weiss das Schema (`status: lektion`
  * verlangt zu jedem Prinzip die Lektion gleicher Id); das meldet es als
  * Mangel des Lehrplans.
+ *
+ * Lehrplan und Manifest gleicht nur `pruefeVor` ab, vor jedem Durchgang.
+ * Diese Pruefung kommt ohne Manifest aus: In einem Klon von GitHub gibt es
+ * keines.
  *
  * @param {{
  *   kurzname: string,
@@ -313,7 +395,7 @@ export function pruefeNach({ kurzname, lehrplanText, lektionsIds, wortlaut, ande
         );
       }
     }
-    maengel.push(...doppelteIds(plan.lehrplan, andere, lektionsIds));
+    maengel.push(...doppelteIds(plan.lehrplan, andere));
   }
   for (const id of wortlaut?.ids ?? []) {
     maengel.push(
@@ -342,10 +424,69 @@ function fehlercode(fehler) {
 }
 
 /**
+ * Ob `fehler` ein gescheiterter Systemaufruf ist — gesperrt, keine Rechte,
+ * ein Ordner, wo eine Datei stehen sollte. Node gibt solchen Fehlern
+ * `syscall` mit, einem Fehler im Programm nicht. Gleiches Muster wie
+ * `istSystemfehler` in werkzeug/adapter/folien.mjs.
+ *
+ * @param {unknown} fehler
+ * @returns {boolean}
+ */
+function istSystemfehler(fehler) {
+  return fehler instanceof Error && typeof (/** @type {Error & { syscall?: unknown }} */ (fehler).syscall) === 'string';
+}
+
+/**
+ * Was ein gescheiterter Lesezugriff unter `wurzel` wirft. Ein gescheiterter
+ * Systemaufruf wird ein Satz statt eines Stapelabzugs, mit dem Pfad aus dem
+ * Fehler, relativ zur Wurzel und mit Schraegstrichen. Traegt der Fehler
+ * keinen Pfad — ein Ordner, wo eine Datei stehen sollte, scheitert erst beim
+ * Lesen, und dessen Fehler nennt keinen —, steht `rel` da. Ein Fehler im
+ * Programm geht unveraendert durch: Als Lesefehler verkleidet, suchte man an
+ * der Datei statt im Code.
+ *
+ * @param {unknown} fehler
+ * @param {string} wurzel
+ * @param {string} rel was gelesen werden sollte, relativ zur Wurzel, mit Schraegstrichen
+ * @returns {unknown}
+ */
+function lesefehler(fehler, wurzel, rel) {
+  if (!istSystemfehler(fehler)) return fehler;
+  const pfad = /** @type {Error & { path?: unknown }} */ (fehler).path;
+  const ort = typeof pfad === 'string' ? path.relative(wurzel, pfad).split(path.sep).join('/') : rel;
+  return new PruefeQuelleFehler(`${ort} lässt sich nicht lesen (${fehlercode(fehler)}).`);
+}
+
+/**
+ * Liest mit `lesen` unter `wurzel`; scheitert es, wirft es `lesefehler`.
+ *
+ * @template T
+ * @param {string} wurzel
+ * @param {string} rel was gelesen werden soll, relativ zur Wurzel, mit Schraegstrichen
+ * @param {() => T} lesen
+ * @returns {T}
+ */
+function liesUnter(wurzel, rel, lesen) {
+  try {
+    return lesen();
+  } catch (fehler) {
+    throw lesefehler(fehler, wurzel, rel);
+  }
+}
+
+/**
+ * @param {string} pfad
+ * @returns {boolean}
+ */
+function istOrdner(pfad) {
+  return existsSync(pfad) && statSync(pfad).isDirectory();
+}
+
+/**
  * Eine Textdatei unter `wurzel`, `rel` mit Schraegstrichen — oder `null`,
  * wenn es sie nicht gibt. Laesst sie sich aus einem anderen Grund nicht
  * lesen, ist das kein „erst einlesen": Dann bricht die Pruefung mit dem Code
- * ab, wie der Auftrag.
+ * ab, wie der Auftrag (`lesefehler`).
  *
  * @param {string} wurzel
  * @param {string} rel
@@ -355,19 +496,19 @@ function liesText(wurzel, rel) {
   try {
     return readFileSync(path.join(wurzel, ...rel.split('/')), 'utf8');
   } catch (fehler) {
-    const code = fehlercode(fehler);
-    if (code === 'ENOENT') return null;
-    throw new PruefeQuelleFehler(`${rel} lässt sich nicht lesen (${code}).`);
+    if (fehlercode(fehler) === 'ENOENT') return null;
+    throw lesefehler(fehler, wurzel, rel);
   }
 }
 
 /**
  * Die uebrigen `lehrplan/*.yaml` unter `wurzel` — dieselben Dateien, die die
  * Seite liest —, nach Codepunkten sortiert, mit dem Pfad, der im Mangel
- * steht. Laesst sich eine davon nicht lesen, bricht die Pruefung ab wie beim
- * eigenen Lehrplan: Sie uebersaehe sonst still eine Doppelung. Eine Datei,
- * die sich lesen, aber nicht als Lehrplan verstehen laesst, zaehlt dagegen
- * nicht mit (`doppelteIds`).
+ * steht. Laesst sich eine davon nicht lesen oder der Ordner nicht auflisten,
+ * bricht die Pruefung ab wie beim eigenen Lehrplan: Sie uebersaehe sonst
+ * still eine Doppelung. Eine Datei, die sich lesen, aber nicht als Lehrplan
+ * verstehen laesst, zaehlt dagegen nicht mit (`doppelteIds`), und ein Ordner,
+ * der wie ein Lehrplan heisst, ist keiner: Auch die Seite liest nur Dateien.
  *
  * @param {string} wurzel
  * @param {string} kurzname
@@ -375,9 +516,9 @@ function liesText(wurzel, rel) {
  */
 function andereLehrplaene(wurzel, kurzname) {
   const ordner = path.join(wurzel, 'lehrplan');
-  if (!existsSync(ordner) || !statSync(ordner).isDirectory()) return [];
+  if (!liesUnter(wurzel, 'lehrplan', () => istOrdner(ordner))) return [];
   const eigene = `${kurzname}.yaml`;
-  const namen = readdirSync(ordner, { withFileTypes: true })
+  const namen = liesUnter(wurzel, 'lehrplan', () => readdirSync(ordner, { withFileTypes: true }))
     .filter((eintrag) => eintrag.isFile() && eintrag.name.endsWith('.yaml') && eintrag.name !== eigene)
     .map((eintrag) => eintrag.name)
     .sort();
@@ -408,22 +549,55 @@ export function pruefeVorDateien({ wurzel, kurzname }) {
 }
 
 /**
- * Der Wortlaut der Lektionen zu den Prinzipien dieses Lehrplans gegen alle
- * Rohdateien unter `wurzel` (`liesRohIndex`): die Ids der Lektionen mit
- * mindestens einer Abschrift. `null`, wenn es keine Rohdatei gibt. Eine
- * Lektion, die fehlt, prueft das Schema; eine Lektion ohne Prinzip in diesem
- * Lehrplan ist nicht Sache dieser Pruefung.
+ * Ob unter `quellen/<kurzname>/roh/` mindestens eine Rohdatei liegt — nach
+ * derselben Regel, nach der `liesRohIndex` sie liest: eine Datei auf `.md`.
  *
  * @param {string} wurzel
+ * @param {string} kurzname
+ * @returns {boolean}
+ */
+function hatEigeneRohdateien(wurzel, kurzname) {
+  const ordner = path.join(wurzel, 'quellen', kurzname, 'roh');
+  return liesUnter(
+    wurzel,
+    `quellen/${kurzname}/roh`,
+    () =>
+      istOrdner(ordner) &&
+      readdirSync(ordner, { withFileTypes: true }).some((eintrag) => eintrag.isFile() && eintrag.name.endsWith('.md')),
+  );
+}
+
+/**
+ * Der Wortlaut der Lektionen zu den Prinzipien dieses Lehrplans gegen alle
+ * Rohdateien unter `wurzel` (`liesRohIndex`): die Ids der Lektionen mit
+ * mindestens einer Abschrift. Eine Lektion, die fehlt, prueft das Schema;
+ * eine Lektion ohne Prinzip in diesem Lehrplan ist nicht Sache dieser
+ * Pruefung.
+ *
+ * `null` — nicht geprueft —, solange die eigenen Rohdateien fehlen
+ * (`quellen/<kurzname>/roh/*.md`), auch wenn andere Quellen welche haben:
+ * Sonst hiesse es „in Ordnung", ohne dass je gegen die eigene Vorlesung
+ * geprueft worden waere. Sind sie da, zaehlen alle Rohdateien, auch die
+ * anderer Quellen.
+ *
+ * Auch ein ungueltiger Lehrplan hat Lektionen, und alle Maengel sollen auf
+ * einmal dastehen: Dann kommen die Prinzip-Ids aus seinem YAML, so weit es
+ * sich lesen laesst (`rohePrinzipIds`).
+ *
+ * @param {string} wurzel
+ * @param {string} kurzname
  * @param {string | null} lehrplanText
  * @param {ReadonlySet<string>} lektionsIds
  * @returns {{ ids: string[] } | null}
  */
-function wortlautUnter(wurzel, lehrplanText, lektionsIds) {
-  const roh = liesRohIndex(wurzel);
+function wortlautUnter(wurzel, kurzname, lehrplanText, lektionsIds) {
+  if (!hatEigeneRohdateien(wurzel, kurzname)) return null;
+  const roh = liesUnter(wurzel, 'quellen', () => liesRohIndex(wurzel));
   if (roh === null) return null;
   const plan = lesePlan(lehrplanText, lektionsIds);
-  const ids = plan.zustand === 'lesbar' ? prinzipIdsVon(plan.lehrplan).filter((id) => lektionsIds.has(id)) : [];
+  const prinzipIds =
+    plan.zustand === 'lesbar' ? prinzipIdsVon(plan.lehrplan) : plan.zustand === 'ungueltig' ? plan.prinzipIds : [];
+  const ids = prinzipIds.filter((id) => lektionsIds.has(id));
   return {
     ids: ids.filter((id) => {
       const text = liesText(wurzel, `inhalt/lektionen/${id}.mdx`);
@@ -446,7 +620,7 @@ export function pruefeNachDateien({ wurzel, kurzname }) {
     kurzname,
     lehrplanText,
     lektionsIds,
-    wortlaut: wortlautUnter(wurzel, lehrplanText, lektionsIds),
+    wortlaut: wortlautUnter(wurzel, kurzname, lehrplanText, lektionsIds),
     andere: andereLehrplaene(wurzel, kurzname),
   });
 }
