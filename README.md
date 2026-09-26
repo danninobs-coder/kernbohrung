@@ -60,9 +60,13 @@ erklären. Wer beide tauscht, kippt die Didaktik.
 | `npm run check` | Typprüfung über Astro-, TSX- und TS-Dateien |
 | `npm run build` | Produktionsbau nach `dist/` |
 | `npm run ingest -- …` | Eine Quelle einlesen — siehe „Eine Quelle einlesen" |
+| npm run auftrag -- --name <k> <abschnitt> … | Abschnitte für den nächsten Durchgang beauftragen |
+| npm run ansicht -- --name <k> <abschnitt> | Folien des Originals als PNG unter quellen/<k>/ansicht/ |
+| npm run pruefe-quelle -- --name <k> --vor \| --nach | Vor- und Nachprüfung eines Compiler-Durchgangs |
+| `npm run pruefe-lektion -- <datei.mdx> …` | Lektion(en) gegen Schema, Widgets und Wortlaut prüfen |
 | `npm run fixtures` | Die Test-PDFs unter `tests/fixtures/` neu erzeugen (deterministisch) |
 
-Node ≥ 22.18 erforderlich — die Werkzeuge unter werkzeug/ laden TypeScript-Dateien direkt.
+Node ≥ 22.18 erforderlich — die Werkzeuge unter werkzeug/ laden TypeScript-Dateien direkt. In PowerShell löst `inhalt/lektionen/*.mdx` den Stern nicht auf — dort die Dateien einzeln nennen oder Git Bash nutzen.
 
 `npm run dev:handy` und `npm run preview:handy` sind dieselben Server, nur ins
 lokale Netz geöffnet — siehe „Auf Android testen und weiterentwickeln".
@@ -113,6 +117,8 @@ Zahlen, Dateinamen, Abschnitt-Ids und Abschnittstitel.
 
 Scheitert ein Lauf, bleibt `quellen/<kurzname>/` wie vorher: Das Einlesen baut
 den neuen Stand erst daneben auf und tauscht ihn dann in einem Schritt ein.
+
+Nach der Freigabe beauftragst du Abschnitte (npm run auftrag) und sagst Claude Code „Bau die Lektionen für <kurzname>". Der Ablauf steht im Compiler-Skill unter „Durchgang für Lehrmaterial".
 
 ## Auf Android testen und weiterentwickeln
 

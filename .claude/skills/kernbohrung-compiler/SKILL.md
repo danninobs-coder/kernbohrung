@@ -1,6 +1,6 @@
 ---
 name: kernbohrung-compiler
-description: Destilliert aus einer eingelesenen Quelle Kernprinzipien und baut daraus Lektionen für die Lern-App Kernbohrung. Nutze diesen Skill, wenn eine neue Quelle zu Lektionen werden soll, wenn der Lehrplan überarbeitet wird, oder bei Aufrufen wie "destilliere rag_tutorials", "bau die Lektionen", "neuer Lehrplan", "lies die Quelle ein". Zwei Durchgänge mit einem Review-Gate dazwischen — der Lehrplan wird IMMER dem Menschen vorgelegt, bevor Lektionen entstehen.
+description: Destilliert aus einer eingelesenen Quelle Kernprinzipien und baut daraus Lektionen für die Lern-App Kernbohrung. Nutze diesen Skill, wenn eine neue Quelle zu Lektionen werden soll, wenn der Lehrplan überarbeitet wird, oder bei Aufrufen wie "destilliere rag_tutorials", "bau die Lektionen", "neuer Lehrplan", "lies die Quelle ein". Zwei Durchgänge mit einem Review-Gate dazwischen — der Lehrplan wird IMMER dem Menschen vorgelegt, bevor Lektionen entstehen. Für Lehrmaterial (Folien, Bücher): „Bau die Lektionen für ‹kurzname›“ — Durchgang für Lehrmaterial.
 ---
 
 # Kernbohrung — Compiler
@@ -177,8 +177,8 @@ Die Reihenfolge legt das Layout fest. Du lieferst Teile:
 | 1 Der Widerspruch | MDX-Rumpf | Prosa: warum ist das nicht offensichtlich? |
 | 2 Das Bild | MDX-Rumpf | der Widget-Aufruf |
 | 3 Der Satz | Frontmatter `prinzip` | das Prinzip in einem Satz |
-| 4 Die Probe | Frontmatter `aufgaben` | zwei bis sechs Aufgaben, jede mit `typ` — bis der Skill die übrigen Typen lernt: `typ: wahl` |
-| 5 Der Transfer | Frontmatter `transfer` | eine Aufgabe auf einen fremden Fall, ebenfalls mit `typ` — bis der Skill die übrigen Typen lernt: `typ: wahl` |
+| 4 Die Probe | Frontmatter `aufgaben` | zwei bis sechs Aufgaben, jede mit `typ` — `typ`: `wahl`, `fall`, `zuordnen` oder `reihenfolge` — was wozu passt, steht unter „Aufgabentypen wählen“ im Durchgang für Lehrmaterial |
+| 5 Der Transfer | Frontmatter `transfer` | eine Aufgabe auf einen fremden Fall, ebenfalls mit `typ` — `typ`: `wahl`, `fall`, `zuordnen` oder `reihenfolge` — was wozu passt, steht unter „Aufgabentypen wählen“ im Durchgang für Lehrmaterial |
 | 6 Die Herkunft | Frontmatter `quellen` | die Belege |
 
 **Der Widerspruch ist kein Vorwort.** Er muss die Frage erzeugen, auf die das
@@ -275,6 +275,115 @@ Am Ende gehört jede neue Lektion einmal im Browser angesehen, **in einem
 sichtbaren Fenster**. Die Inseln nutzen `client:visible`; ist das Fenster
 verborgen, hydriert nichts, und man sieht eine Seite, die aussieht wie erwartet
 und auf nichts reagiert.
+
+---
+
+## Durchgang für Lehrmaterial (art: folien, später buch)
+
+Auslöser: **„Bau die Lektionen für ‹kurzname›“**, wenn `lehrplan/<kurzname>.yaml` `art: folien` (oder `buch`) trägt. Der Ablauf ist derselbe wie oben — Durchgang A, Review-Gate, Durchgang B —, mit fünf Unterschieden: Es gibt keine Obergrenze je Quelle, sondern höchstens drei Prinzipien je Abschnitt. Gearbeitet wird nur an Abschnitten mit `status: beauftragt`. Eine Folie nennt, der Vortrag erklärt — und der Vortrag fehlt. Was der Text nicht hergibt, siehst du im Original an. Und am Ende steht kein Abschnitt mehr auf `beauftragt`.
+
+### L0 · Der Auftrag
+
+Den Auftrag gibt der Mensch, nicht du:
+
+```bash
+npm run auftrag -- --name <kurzname> <abschnitt-id> [<abschnitt-id> …]
+```
+
+Steht kein Abschnitt auf `beauftragt`, frag, welche es sein sollen, und warte.
+
+### L1 · Vorprüfung
+
+```bash
+npm run pruefe-quelle -- --name <kurzname> --vor
+```
+
+Sie verlangt die Freigabe des Lehrplans, einen Stand, der zum Manifest passt, und mindestens einen beauftragten Abschnitt. Sie nennt je Abschnitt die Rohdatei, den Folienbereich und die Folien, die nur Bild sind oder eine Tabelle oder Grafik tragen. **Nimm diese Listen von hier**, nicht aus den Hinweiszeilen der Rohdatei. Meldet sie Mängel, halte an und leg sie vor.
+
+### L2 · Die Rohdatei lesen — ganz
+
+`quellen/<kurzname>/roh/<abschnitt-id>.md` enthält den Text je Folie hinter Marken wie `— Folie 31 —`. Lies sie vollständig. Der Text ist bereinigt: Briefkopf und Foliennummern sind entfernt, Silbentrennung ist zusammengezogen. Er ist aber zeilenweise aus dem PDF gelesen. Nebeneinanderstehende Textfelder stehen deshalb hintereinander.
+
+### L3 · Die Folien ansehen
+
+```bash
+npm run ansicht -- --name <kurzname> <abschnitt-id> --folien <liste>
+```
+
+Das Werkzeug rendert die Folien nach `quellen/<kurzname>/ansicht/<abschnitt-id>/folie-<n>.png`; lies die Bilder mit Read. Ansehen musst du:
+
+- jede Folie aus den Listen der Vorprüfung — nur Bild, Tabelle oder Grafik;
+- **jede Folie, auf die sich ein Prinzip stützt.** Gemessen: 22 Folien der ersten Vorlesung tragen viel Vektorgrafik und stehen in keiner Liste. Wer nur den Text liest, übersieht dort die Hälfte.
+
+**Eine Lektion über eine Folie, die du nicht angesehen hast, ist verboten.** Bleibt eine Bildfolie auch beim Ansehen ohne lernbare Aussage (Foto, Stimmungsbild), erwähnst du sie im Lehrplan nicht — sie ist eine Seite, kein Abschnitt.
+
+### L4 · Stichworte sind keine Sätze
+
+Eine Folie nennt, der Vortrag erklärt — und der Vortrag fehlt. Du darfst die Lücke mit gesichertem Fachwissen schließen. Kenntlich halten musst du das trotzdem:
+
+- Was auf der Folie steht, belegst du mit dem Folienverweis.
+- Was du ergänzt, braucht eine zweite, benannte Quelle — Norm, Gesetz, Standardwerk —, oder es bleibt weg.
+- Im Zweifel ablehnen.
+
+### L5 · Prinzipien je Abschnitt — höchstens drei
+
+Die drei Prüfungen aus A5 gelten: mehrfach tragend, nicht offensichtlich, entscheidungsleitend. Je beauftragtem Abschnitt schreibst du in den Lehrplan:
+
+```yaml
+  - id: m07-03-risikomanagement
+    …
+    status: beauftragt
+    prinzipien:
+      - id: kleinbuchstaben-mit-bindestrich     # wird die Id der Lektion
+        satz: "Ein Satz, der etwas behauptet. Höchstens 200 Zeichen."
+        warumNichtOffensichtlich: "Die plausible Gegenposition, in einem Satz."
+        belege: ["roh/m07-03-risikomanagement.md, Folien 31–33"]
+        vorbehalt: "Nur, wenn die Quelle etwas ohne Beleg behauptet."   # sonst weglassen
+```
+
+- **Die Id des Prinzips wird die Id der Lektion.** Sie ist über alle Lehrpläne eindeutig; `npm run pruefe-quelle` meldet eine Doppelung.
+- **Gibt es zu einem Prinzip schon eine Lektion ohne Lehrplaneintrag** (auf der Bibliotheksseite unter „Lektionen ohne Lehrplaneintrag“), übernimm ihre Id und ihren Satz, statt eine zweite zu planen. Heute gilt das für `pauschal-heisst-nicht-komplett` in `m07-03-risikomanagement`. Eine Lektion, die schon zu einem anderen Lehrplan gehört, überschreibst du nie.
+- **`vorbehalt`**, wenn die Quelle etwas behauptet, das sich nicht belegen lässt oder dem Stand der Forschung widerspricht. Prüfungsstoff bleibt lernbar, ohne dass die App ihn als gesichert ausgibt. Eine Quelle für den Vorbehalt prüfst du, statt sie aus dem Gedächtnis zu zitieren (bei Studien die DOI gegen Crossref).
+- **Ablehnen mit Grund**, wenn ein Abschnitt nichts Lernbares trägt — etwa reine Titelfolien oder nur Bildbeispiele ohne Aussage: `status: abgelehnt`, `grund: "…"`, keine Prinzipien.
+- **Schreibfehler der Quelle** in Fachbegriffen: Die Lektion nutzt den richtigen Begriff, die Abweichung kommt als Notiz in die Herkunft.
+- Ein Abschnitt über 20 Folien (heute nur `m07-02`) darf drei Prinzipien tragen, die verschiedene Folien abdecken. Was davon keines trägt, nennst du am Review-Gate als nicht verwertet.
+
+Dann: `geprueftVon: ""` und `geprueftAm: ""` — **du leerst die Freigabe**, der Mensch setzt sie wieder. Prüfen mit `liesLehrplan` wie in A6. Der Lehrplan wartet dann auf Freigabe; das ist richtig.
+
+### L6 · Das Review-Gate
+
+Wie oben, dazu je Abschnitt: welche Folien du angesehen hast, was davon keines der Prinzipien trägt und warum, und jeden `vorbehalt` mit seiner Quelle. Halte an, bis der Mensch zugestimmt **und `geprueftVon` gefüllt** hat.
+
+### L7 · Durchgang B — eine Lektion je Prinzip
+
+Zuerst wieder `npm run pruefe-quelle -- --name <kurzname> --vor`. Dann je Prinzip eine Lektion, eine nach der anderen, wie in B1 bis B7:
+
+- `inhalt/lektionen/<prinzip-id>.mdx`, `prinzip` ist der Satz des Prinzips, `vorbehalt` wandert mit.
+- **Kein Widget nötig.** Takt 1, der Widerspruch, ist Prosa im Rumpf; die Aufgaben tragen die Interaktion. Vorbild: `inhalt/lektionen/pauschal-heisst-nicht-komplett.mdx`.
+- `quellen`: die Vorlesung mit Modul und Folienbereich, etwa `"Vorlesung Projektmanagement (Prof. Bauch, WBA Weimar 2026), Modul 7 Risikomanagement, Folien 31–33"`, und jede zweite Quelle, auf die du dich stützt (mit `url`, wo es eine gibt).
+- **Eigene Worte.** `pruefe-lektion` weist eine Lektion zurück, die dreizehn Wörter am Stück aus einer Rohdatei übernimmt. Wer umformuliert, weil die Prüfung anschlägt, hat zu nah an der Folie geschrieben — schreib den Absatz neu, statt Wörter zu tauschen.
+
+#### Aufgabentypen wählen
+
+| Stoff | Typ |
+|---|---|
+| ein Sachverhalt, an dem man die Regel anwendet (Praxisfall, Vertragsstreit) | `fall` — Pflicht-Prüfpunkte sind die, ohne die die Lösung falsch ist, nicht die, die schön wären |
+| Begriffspaare, Zuordnungen (Vertragsart ↔ Vergütung) | `zuordnen` — Ablenker, die jemand wirklich zuordnen würde |
+| Verfahren, Stufen, Phasen | `reihenfolge` |
+| Abgrenzungen, Entscheidungen | `wahl` — B3 gilt unverändert |
+
+Zwei bis sechs Aufgaben, dazu der Transfer (B4) auf einen Fall, der in der Vorlesung nicht vorkommt.
+
+### L8 · Abschluss
+
+Nach jeder Lektion: `pruefe-lektion` (B5), dann `mv` nach `inhalt/lektionen/`. Sind alle Prinzipien eines Abschnitts gebaut, setzt du dort `status: lektion`. Am Ende:
+
+```bash
+npm run pruefe-quelle -- --name <kurzname> --nach
+npm run build
+```
+
+`--nach` verlangt: kein Abschnitt mehr `beauftragt`, jede Lektion da, der Wortlaut sauber. Danach Nachschauen wie in B7.
 
 ---
 
