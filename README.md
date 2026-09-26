@@ -1,11 +1,12 @@
 # Kernbohrung
 
 Eine Lern-App, die aus Quellen Kernprinzipien destilliert und sie abfragt. Eine
-Lektion stellt zuerst einen Widerspruch auf, lässt ihn an einem spielbaren
-Widget durcharbeiten und benennt das Prinzip erst danach. Geprüft wird über
-Aufgaben aus vier Typen — Wahl, Fall, Zuordnen, Reihenfolge — mit Begründung
-zu jeder Antwort und über einen Transfer in ein fremdes Feld. Ab Bauabschnitt 2 erzeugt ein Sprachmodell die Lektionen
-selbst; dieser Abschnitt baut das Ziel, auf das hin erzeugt wird.
+Lektion stellt zuerst einen Widerspruch auf, lässt ihn durcharbeiten — meist an
+einem spielbaren Widget — und benennt das Prinzip erst danach. Geprüft wird über
+Aufgaben aus vier Typen — Wahl mit Begründung zu jeder Antwort, Fall mit
+Prüfpunkten, Zuordnen, Reihenfolge — und über einen Transfer in ein fremdes
+Feld. Ab Bauabschnitt 2 erzeugt ein Sprachmodell die Lektionen selbst; dieser
+Abschnitt baut das Ziel, auf das hin erzeugt wird.
 
 Die tragende Entscheidung: **harte Trennung zwischen Bauzeit und Laufzeit.**
 Alles Teure und Unzuverlässige passiert vorher. Die ausgelieferte App generiert
@@ -15,8 +16,9 @@ nichts und prüft nichts, was sie nicht schon weiß.
 
 Inhalt liegt als MDX in `inhalt/lektionen/`, außerhalb von `src/`, und wird über
 Astros Content-Layer geladen. Die maschinenlesbaren Teile einer Lektion stehen
-im Frontmatter (Prinzip, Fragen, Antworten, Begründungen, Quellen) und werden
-von einem Zod-Schema erzwungen; im Rumpf steht nur Prosa und der Widget-Aufruf.
+im Frontmatter (Prinzip, Aufgaben, Transfer, Quellen) und werden von einem
+Zod-Schema erzwungen; im Rumpf steht nur Prosa und, wo es eines gibt, der
+Widget-Aufruf.
 Die Reihenfolge der sechs Takte legt das Layout fest, nicht der Inhalt. Eine
 generierte Lektion liefert damit Teile, nie Struktur, und kann den Rhythmus
 nicht umstellen.
@@ -47,8 +49,8 @@ docs/superpowers/plans/ Die Implementierungspläne, je Teilprojekt einer.
 2. **Das Bild** — ein spielbares Widget, an dem der Widerspruch sichtbar wird (MDX-Rumpf).
    Lektionen aus Lehrmaterial dürfen ohne auskommen; dann tragen die Aufgaben die Interaktion.
 3. **Der Satz** — das Prinzip in einem Satz (Frontmatter `prinzip`).
-4. **Die Probe** — zwei bis sechs Aufgaben aus vier Typen (Wahl, Fall, Zuordnen,
-   Reihenfolge), mit Begründung zu jeder Antwort (Frontmatter `aufgaben`).
+4. **Die Probe** — zwei bis sechs Aufgaben aus vier Typen: Wahl mit Begründung zu
+   jeder Antwort, Fall mit Prüfpunkten, Zuordnen, Reihenfolge (Frontmatter `aufgaben`).
 5. **Der Transfer** — eine Aufgabe auf einen Fall aus einem fremden Feld (Frontmatter `transfer`).
 6. **Die Herkunft** — die Quellen, aus denen das Prinzip destilliert wurde (Frontmatter `quellen`).
 
@@ -63,7 +65,7 @@ erklären. Wer beide tauscht, kippt die Didaktik.
 | `npm test` | Unit-Tests einmal durchlaufen (`npm run test:watch` für den Dauerbetrieb) |
 | `npm run check` | Typprüfung über Astro-, TSX- und TS-Dateien |
 | `npm run build` | Produktionsbau nach `dist/` |
-| `npm run ingest -- …` | Eine Quelle einlesen — siehe „Eine Quelle einlesen" |
+| `npm run ingest -- …` | Eine Quelle einlesen — siehe „Eine Quelle einlesen“ |
 | `npm run auftrag -- --name <k> <abschnitt> …` | Abschnitte für den nächsten Durchgang beauftragen |
 | `npm run ansicht -- --name <k> <abschnitt> [--folien 16,19-23]` | Folien des Originals als PNG unter `quellen/<k>/ansicht/` |
 | `npm run pruefe-quelle -- --name <k> --vor` bzw. `--nach` | Vor- und Nachprüfung eines Compiler-Durchgangs |

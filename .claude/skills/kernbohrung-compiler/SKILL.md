@@ -32,8 +32,10 @@ ein Folienbereich der eine Beleg sein.
 Der Ingest nimmt nicht alles mit. Was fehlt, steht in `manifest.json` unter
 `ausgelassen`, jeder Eintrag mit Grund. Wer das überspringt, hält den Bestand
 für vollständig und schließt aus einem fehlenden Treffer auf ein fehlendes
-Thema. Bei Lehrmaterial gibt es kein `ausgelassen`; dort sind es die Listen der
-Vorprüfung (L1): Folien, deren Inhalt der Text nicht trägt.
+Thema. Bei Lehrmaterial gibt es kein `ausgelassen`. Die Listen der Vorprüfung
+(L1) nennen Folien, die nur Bild sind oder eine Tabelle oder Grafik tragen —
+vollständig sind sie nicht: Vektorgrafik steht in keiner (L3). Was eine Folie
+trägt, weißt du erst, wenn du sie angesehen hast.
 
 ---
 
@@ -285,7 +287,7 @@ und auf nichts reagiert.
 
 ## Durchgang für Lehrmaterial (art: folien, später buch)
 
-Auslöser: **„Bau die Lektionen für ‹kurzname›“**, wenn `lehrplan/<kurzname>.yaml` `art: folien` (oder `buch`) trägt. Der Rahmen ist derselbe wie oben — Durchgang A, Review-Gate, Durchgang B —, die Schritte davor sind andere. **A1 bis A4 entfallen:** Eingelesen ist schon, eine `uebersicht.md` und ein `ausgelassen` gibt es nicht, und was der Text nicht trägt, nennen die Listen aus L1. A5, das Gate und B1 bis B7 gelten, mit den Abweichungen unten. Dazu vier Unterschiede: Es gibt keine Obergrenze je Quelle, sondern höchstens drei Prinzipien je Abschnitt. Gearbeitet wird nur an Abschnitten mit `status: beauftragt`. Eine Folie nennt, der Vortrag erklärt — und der Vortrag fehlt; was der Text nicht hergibt, siehst du im Original an. Und am Ende steht kein Abschnitt mehr auf `beauftragt`.
+Auslöser: **„Bau die Lektionen für ‹kurzname›“**, wenn `lehrplan/<kurzname>.yaml` `art: folien` (oder `buch`) trägt. Der Rahmen ist derselbe wie oben — Durchgang A, Review-Gate, Durchgang B —, Durchgang A läuft aber anders. **A1 bis A4 entfallen:** Eingelesen ist schon, eine `uebersicht.md` und ein `ausgelassen` gibt es nicht, und was der Text nicht trägt, nennen die Listen aus L1 nur zum Teil (L3). An die Stelle von A6 tritt L5. A5, das Gate und B1 bis B7 gelten, mit den Abweichungen unten. Dazu vier Unterschiede: Es gibt keine Obergrenze je Quelle, sondern höchstens drei Prinzipien je Abschnitt. Gearbeitet wird nur an Abschnitten mit `status: beauftragt`. Eine Folie nennt, der Vortrag erklärt — und der Vortrag fehlt; was der Text nicht hergibt, siehst du im Original an. Und am Ende steht kein Abschnitt mehr auf `beauftragt`.
 
 ### L0 · Der Auftrag
 
@@ -332,7 +334,7 @@ Eine Folie nennt, der Vortrag erklärt — und der Vortrag fehlt. Du darfst die 
 
 ### L5 · Prinzipien je Abschnitt — höchstens drei
 
-Die drei Prüfungen aus A5 gelten: mehrfach tragend, nicht offensichtlich, entscheidungsleitend. Je beauftragtem Abschnitt schreibst du in den Lehrplan:
+Die drei Prüfungen aus A5 gelten: mehrfach tragend, nicht offensichtlich, entscheidungsleitend. „Mehrfach“ heißt hier: Das Prinzip entscheidet mehr als einen Fall — nicht, dass es auf mehreren Folien steht. Je beauftragtem Abschnitt schreibst du in den Lehrplan:
 
 ```yaml
   - id: m07-03-risikomanagement
@@ -346,9 +348,9 @@ Die drei Prüfungen aus A5 gelten: mehrfach tragend, nicht offensichtlich, entsc
         vorbehalt: "Nur, wenn die Quelle etwas ohne Beleg behauptet."   # sonst weglassen
 ```
 
-- **Die Id des Prinzips wird die Id der Lektion.** Sie ist über alle Lehrpläne eindeutig; `npm run pruefe-quelle` meldet eine Doppelung.
+- **Die Id des Prinzips wird die Id der Lektion.** Sie ist über alle Lehrpläne eindeutig; `npm run pruefe-quelle` meldet eine Doppelung. Eine Id, unter der es in `inhalt/lektionen/` schon eine Lektion gibt, wählst du nur, wenn du genau diese Lektion übernimmst (nächster Punkt) — die Prüfung sieht Lektionen ohne Lehrplaneintrag nicht.
 - **`belege`** nennt je Stütze eine Stelle: `roh/<abschnitt-id>.md, Folien a–b` für die Folien, die Fundstelle für eine zweite Quelle aus L4 (etwa `VOB/B § 2 Abs. 7`).
-- **Gibt es zu einem Prinzip schon eine Lektion ohne Lehrplaneintrag** (auf der Bibliotheksseite unter „Lektionen ohne Lehrplaneintrag“), übernimm ihre Id und ihren Satz, statt eine zweite zu planen — die Lektion bleibt, wie sie ist (L7). Heute gilt das für `pauschal-heisst-nicht-komplett` in `m07-03-risikomanagement`. Eine Lektion, die schon zu einem anderen Lehrplan gehört, überschreibst du nie.
+- **Gibt es zu einem Prinzip schon eine Lektion ohne Lehrplaneintrag** (auf der Bibliotheksseite unter „Lektionen ohne Lehrplaneintrag“), übernimm ihre Id und ihren Satz, statt eine zweite zu planen — die Lektion bleibt, wie sie ist (L7). Sie deckt nur ihre eigenen Folien; für die übrigen Folien des Abschnitts planst du wie sonst, bis zu zwei weitere Prinzipien. Heute gilt das für `pauschal-heisst-nicht-komplett` in `m07-03-risikomanagement` (Folien 31–33). Eine Lektion, die schon zu einem anderen Lehrplan gehört, überschreibst du nie.
 - **`vorbehalt`**, wenn die Quelle etwas behauptet, das sich nicht belegen lässt oder dem Stand der Forschung widerspricht. Prüfungsstoff bleibt lernbar, ohne dass die App ihn als gesichert ausgibt. Eine Quelle für den Vorbehalt prüfst du, statt sie aus dem Gedächtnis zu zitieren (bei Studien die DOI gegen Crossref).
 - **Ablehnen mit Grund**, wenn ein Abschnitt nichts Lernbares trägt — etwa reine Titelfolien oder nur Bildbeispiele ohne Aussage: `status: abgelehnt`, `grund: "…"`, keine Prinzipien.
 - **Schreibfehler der Quelle** in Fachbegriffen: Die Lektion nutzt den richtigen Begriff; die Abweichung vermerkst du in L7 im `pfad` der Vorlesung.
@@ -360,18 +362,18 @@ Dann: `geprueftVon: ""` und `geprueftAm: ""` — **du leerst die Freigabe**, der
 npm run pruefe-quelle -- --name <kurzname> --vor
 ```
 
-Außer „Erst freigeben: …“ darf nichts kommen; der Befehl endet dann mit Exit 1, und das ist hier richtig. Die Vorprüfung liest den Lehrplan gegen sein Schema und sieht auch eine Id, die schon in einem anderen Lehrplan steht. Stützt sich ein Prinzip auf Folien, die du in L3 nicht angesehen hast, geh zurück zu L3.
+Außer „Erst freigeben: …“ darf nichts kommen; der Befehl endet dann mit Exit 1, und das ist hier richtig. Hast du jeden beauftragten Abschnitt abgelehnt, kommt dazu „Kein Abschnitt ist beauftragt …“ — auch das ist dann richtig, und nach der Freigabe entfällt L7: weiter mit `--nach` (L8). Die Vorprüfung liest den Lehrplan gegen sein Schema und sieht auch eine Id, die schon in einem anderen Lehrplan steht. Stützt sich ein Prinzip auf Folien, die du in L3 nicht angesehen hast, geh zurück zu L3.
 
 ### L6 · Das Review-Gate
 
-Wie oben, dazu je Abschnitt: welche Folien du angesehen hast, was davon keines der Prinzipien trägt und warum, jede übernommene Lektion und jeden `vorbehalt` mit seiner Quelle. Halte an, bis der Mensch zugestimmt **und `geprueftVon` gefüllt** hat.
+Wie oben, dazu je Abschnitt: welche Folien du angesehen und welche du nur als Text gelesen hast, welche keines der Prinzipien trägt und warum, jede übernommene Lektion und jeden `vorbehalt` mit seiner Quelle. Halte an, bis der Mensch zugestimmt **und `geprueftVon` gefüllt** hat.
 
 ### L7 · Durchgang B — eine Lektion je Prinzip
 
 Zuerst wieder `npm run pruefe-quelle -- --name <kurzname> --vor`, jetzt ohne jeden Mangel. Dann je Prinzip eine Lektion, eine nach der anderen, wie in B1 bis B7:
 
 - `entwurf/<prinzip-id>.mdx`, nach bestandener Prüfung `inhalt/lektionen/<prinzip-id>.mdx`. `prinzip` ist der Satz des Prinzips, `vorbehalt` wandert mit. `reihenfolge` zählt fortlaufend weiter: die höchste vorhandene plus eins.
-- **Eine übernommene Lektion baust du nicht neu.** Kein Entwurf, kein `mv` — nur `npm run pruefe-lektion -- inhalt/lektionen/<id>.mdx`. Sie deckt nur ihre eigenen Folien (bei `pauschal-heisst-nicht-komplett` die Folien 31–33); über die übrigen Folien des Abschnitts entscheidest du wie sonst.
+- **Eine übernommene Lektion baust du nicht neu.** Kein Entwurf, kein `mv` — nur `npm run pruefe-lektion -- inhalt/lektionen/<id>.mdx`. Meldet sie einen Mangel, halte an und leg ihn vor: Ändern darf sie nur der Mensch, selbst oder auf sein ausdrückliches Wort durch dich.
 - **Kein Widget nötig.** Dann entfällt Takt 2: Takt 1, der Widerspruch, ist Prosa im Rumpf, und die Aufgaben tragen die Interaktion. Vorbild: `inhalt/lektionen/pauschal-heisst-nicht-komplett.mdx`. Die letzte Regel aus B3 heißt dann: **Die Probe muss den Widerspruch brauchen.** Ist eine Aufgabe ohne ihn genauso lösbar, gehört sie nicht in diese Lektion. Eine Folie ist nie das Bild für Takt 2 (siehe „Was du nie tust“).
 - `quellen` ist eine Liste von Einträgen mit `pfad`, dazu `url`, wo es eine gibt. Zuerst die Vorlesung mit Modul und Folienbereich, dann jede zweite Quelle aus L4 mit ihrer Fundstelle:
 
@@ -398,9 +400,15 @@ Zwei bis sechs Aufgaben, dazu der Transfer (B4) auf einen Fall, der in der Vorle
 
 ### L8 · Abschluss
 
-Nach jeder Lektion: `pruefe-lektion` (B5), dann `mv` nach `inhalt/lektionen/`. Hat jedes Prinzip eines Abschnitts seine Lektion — übernommene zählen mit —, setzt du dort `status: lektion`. Das gilt auch, wenn ein Abschnitt nur übernommene Lektionen hat. `lektion` ist endgültig: Folien, die keines der Prinzipien trägt, hast du am Gate genannt; sie bleiben unverwertet.
+Nach jeder neu gebauten Lektion: `pruefe-lektion` (B5), dann verschieben — aber nur, wenn es die Zieldatei noch nicht gibt:
 
-Baust du zu einem Prinzip keine Lektion — etwa weil sich keine Probe findet, deren falsche Antworten taugen —, halte an und leg es vor. Streichen darf es nur der Mensch. Bleibt in einem Abschnitt danach keines übrig, setzt du `status: abgelehnt` mit dem `grund`, den er nennt. Den Status setzt du, die Freigabe bleibt stehen: Geleert wird sie nur, wenn du Prinzipien schreibst oder änderst (L5).
+```bash
+test ! -e inhalt/lektionen/<id>.mdx && mv entwurf/<id>.mdx inhalt/lektionen/<id>.mdx
+```
+
+Gibt es sie schon, halte an. Eine übernommene Lektion bleibt, wo sie ist (L7). Hat jedes Prinzip eines Abschnitts seine Lektion — übernommene zählen mit —, setzt du dort `status: lektion`. Das gilt auch, wenn ein Abschnitt nur übernommene Lektionen hat. `lektion` ist endgültig: Folien, die keines der Prinzipien trägt, hast du am Gate genannt; sie bleiben unverwertet.
+
+Baust du zu einem Prinzip keine Lektion — etwa weil sich keine Probe findet, deren falsche Antworten taugen —, halte an und leg es vor. Streichen darf es nur der Mensch — selbst oder auf sein ausdrückliches Wort durch dich. Bleibt in einem Abschnitt danach keines übrig, setzt du `status: abgelehnt` mit dem `grund`, den er nennt. Die Freigabe bleibt bei all dem stehen: Status setzen und Streichen auf Zuruf fügen nichts hinzu, was der Mensch nicht schon entschieden hat. Geleert wird sie nur, wenn du Prinzipien schreibst oder änderst (L5).
 
 Am Ende:
 
@@ -431,4 +439,5 @@ npm run build
 - **Über Vollständigkeit reden, ohne die Auslassungsliste gelesen zu haben.**
 - **Den Umfang stillschweigend anpassen.** Wenn aus acht Prinzipien vier gute
   Lektionen werden, sag das mit Begründung. Wenn du drei Prinzipien nicht
-  belegen kannst, streich sie und nenne sie.
+  belegen kannst, streich sie vor dem Gate und nenne sie; nach der Freigabe
+  streicht nur der Mensch (L8).

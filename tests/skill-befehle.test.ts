@@ -84,10 +84,13 @@ function lies(datei: string): string {
  * gedeckt.
  *
  * "Kennt" heisst: Die Einstiegsdatei des Skripts (`node werkzeug/<x>.mjs` in
- * package.json) enthaelt die Option als ganzes Wort, in ihrer Aufruf-Zeile
- * oder dort, wo sie die Argumente liest. `--folie` zaehlt also nicht als
- * `--folien`. Gelesen wird bis zum Zeilenende oder zum Ende des Code-Spans.
- * Skripte, die nicht mit `node` starten (astro, vitest), bleiben aussen vor.
+ * package.json) nennt die Option als ganzes Wort - in Code, Aufruf-Hilfe oder
+ * Kommentar; `--folie` zaehlt also nicht als `--folien`. Das faengt Tippfehler
+ * in SKILL.md und README, nicht ein Werkzeug, das eine Option verliert: Bei
+ * `ingest` steht sie nur in der Hilfe der Weiche, gelesen wird sie in
+ * ingest-git.mjs bzw. ingest-folien.mjs. Gelesen wird bis zum Zeilenende oder
+ * zum Ende des Code-Spans. Skripte, die nicht mit `node` starten (astro,
+ * vitest), bleiben aussen vor.
  */
 function unbekannteOptionen(
   texte: string[],
