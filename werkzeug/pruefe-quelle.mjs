@@ -23,9 +23,10 @@
  *
  * Beide pruefen dazu zweierlei:
  *
- * - **Den Wortlaut des Lehrplans** (`lehrplanFelder`): jeden Text an
- *   Abschnitten und Prinzipien, auch in Feldern, die das Schema nicht kennt,
- *   und die Kommentare — gegen dieselben Rohdateien wie die Lektionen. Die
+ * - **Den Wortlaut des Lehrplans** (`lehrplanFelder`): jeden Text darin —
+ *   oben, an Abschnitten und Prinzipien, auch in Feldern, die das Schema
+ *   nicht kennt, und in Schluesseln —, ausser was in fester Form dasteht,
+ *   dazu die Kommentare; gegen dieselben Rohdateien wie die Lektionen. Die
  *   Rohdateien bleiben am Rechner, der Lehrplan liegt im Git, und `grund`
  *   steht sogar auf der Bibliotheksseite: Ein Satz, den der Compiler von
  *   einer Folie in den Lehrplan uebernaehme, laege sonst ungeprueft im Repo.
@@ -55,7 +56,8 @@
  * etwas liest — nicht erst die Kommandozeile.
  *
  * **Auf der Konsole steht nie Folientext** — nur Ids, Pfade, Dateinamen und
- * Foliennummern.
+ * Foliennummern. Ein Schluessel steht in keiner Meldung, wenn er nicht wie
+ * ein Feldname aussieht (`FELDNAME` in src/lib/lehrplan.ts).
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -65,7 +67,15 @@ import { isDeepStrictEqual } from 'node:util';
 // ESM-Buendel ohne Default-Export. Siehe werkzeug/pruefe-lektion.mjs.
 import { load as yamlLesen, YAMLException } from 'js-yaml';
 import { kurzstand } from '../src/lib/bestandstext.ts';
-import { FREIGABE, ID as ID_MUSTER, fehltWirklich, lehrplanAusYaml, prinzipIdsVon } from '../src/lib/lehrplan.ts';
+import {
+  FELDNAME,
+  FREIGABE,
+  ID as ID_MUSTER,
+  STATUS,
+  fehltWirklich,
+  lehrplanAusYaml,
+  prinzipIdsVon,
+} from '../src/lib/lehrplan.ts';
 import { liesDokumentManifest } from './dokument-manifest.mjs';
 import { lektionsIdsAus } from './lehrplan.mjs';
 import { FRONTMATTER } from './lektion-lesen.mjs';
@@ -218,55 +228,189 @@ function rohePrinzipIds(roh) {
 }
 
 /**
- * Was an einem Abschnitt nicht gelesen wird: die Id und was das Einlesen
- * schreibt, dazu die Prinzipien — die liest `lehrplanFelder` einzeln.
+ * Felder, die ungelesen bleiben, solange ihr Wert die Form hat, die das
+ * Schema dort verlangt: je Schluessel die Pruefung dieser Form.
  *
- * @type {ReadonlySet<string>}
+ * @typedef {ReadonlyMap<string, (wert: unknown) => boolean>} Ausnahmen
  */
-const NICHT_AM_ABSCHNITT = new Set(['id', 'titel', 'datei', 'status', 'seiten', 'prinzipien']);
 
-/** @type {ReadonlySet<string>} Was an einem Prinzip nicht gelesen wird. */
-const NICHT_AM_PRINZIP = new Set(['id', 'widget']);
+/**
+ * @param {unknown} wert
+ * @returns {boolean}
+ */
+function istText(wert) {
+  return typeof wert === 'string';
+}
 
-/** @type {ReadonlySet<string>} */
-const KEINE_SCHLUESSEL = new Set();
+/**
+ * @param {unknown} wert
+ * @returns {boolean}
+ */
+function istId(wert) {
+  return typeof wert === 'string' && ID_MUSTER.test(wert);
+}
+
+/**
+ * @param {unknown} wert
+ * @returns {boolean}
+ */
+function istSeitenliste(wert) {
+  return Array.isArray(wert) && wert.every((seite) => typeof seite === 'number');
+}
+
+/**
+ * @param {unknown} wert
+ * @returns {boolean}
+ */
+function istStatus(wert) {
+  return STATUS.some((status) => status === wert);
+}
+
+/** Der Name eines Widgets, wie ihn der Rumpf einer Lektion aufruft: `<Pipeline … />`. */
+const WIDGET_NAME = /^[A-Z][A-Za-z0-9]*$/;
+
+/**
+ * @param {unknown} wert
+ * @returns {boolean}
+ */
+function istWidgetName(wert) {
+  return typeof wert === 'string' && WIDGET_NAME.test(wert);
+}
+
+/**
+ * Fuer ein Feld, das `lehrplanFelder` selbst liest, in jeder Form.
+ *
+ * @returns {boolean}
+ */
+function immer() {
+  return true;
+}
+
+/**
+ * Was oben am Lehrplan nicht gelesen wird: was das Einlesen schreibt und die
+ * Freigabe, beides nur als Text — dazu die Abschnitte, die `lehrplanFelder`
+ * einzeln liest.
+ *
+ * @type {Ausnahmen}
+ */
+const NICHT_OBEN = new Map([
+  ['art', istText],
+  ['quelle', istText],
+  ['titel', istText],
+  ['stand', istText],
+  ['geprueftVon', istText],
+  ['geprueftAm', istText],
+  ['abschnitte', immer],
+]);
+
+/**
+ * Was an einem Abschnitt nicht gelesen wird: die Id und was das Einlesen
+ * schreibt, je nur in der Form des Schemas — dazu die Prinzipien, die
+ * `lehrplanFelder` einzeln liest.
+ *
+ * @type {Ausnahmen}
+ */
+const NICHT_AM_ABSCHNITT = new Map([
+  ['id', istId],
+  ['titel', istText],
+  ['datei', istText],
+  ['status', istStatus],
+  ['seiten', istSeitenliste],
+  ['prinzipien', immer],
+]);
+
+/** @type {Ausnahmen} Was an einem Prinzip nicht gelesen wird, je nur in der Form des Schemas. */
+const NICHT_AM_PRINZIP = new Map([
+  ['id', istId],
+  ['widget', istWidgetName],
+]);
+
+/** @type {Ausnahmen} */
+const KEINE_AUSNAHMEN = new Map();
 
 /**
  * Sammelt jeden Text eines rohen Werts, in jeder Tiefe, als Feld mit seinem
  * Pfad hinter `pfad` — wie `sammle` in werkzeug/wortlaut.mjs: `.schluessel`
  * fuer ein Feld, `[i]` fuer einen Listeneintrag; ist der Wert selbst Text,
- * heisst das Feld `pfad`. Die Schluessel in `ausser` uebergeht es nur auf der
- * obersten Ebene: Ein `id` in einem Feld, das das Schema nicht kennt, ist
- * Text wie jeder andere.
+ * heisst das Feld `pfad`, an der Wurzel `(Wurzel)`.
+ *
+ * Ein Schluessel steht nur im Pfad, wenn er wie ein Feldname aussieht
+ * (`FELDNAME`). Sonst steht dort seine Stelle in der Abbildung, ab 0 —
+ * `notiz.{0}` —, und der Schluessel selbst ist ein Feld fuer sich,
+ * `notiz.{0}.schluessel`: Er koennte ein Satz von einer Folie sein, und der
+ * Name eines Felds steht in jeder Meldung zu ihm.
+ *
+ * Die Schluessel in `ausser` uebergeht es nur auf der obersten Ebene und nur,
+ * wenn ihr Wert die Form hat, die dort gilt: Ein `id` in einem Feld, das das
+ * Schema nicht kennt, ist Text wie jeder andere, ein Satz als Id ebenso.
  *
  * @param {unknown} wert
- * @param {string} pfad
+ * @param {string} pfad leer an der Wurzel
  * @param {Feld[]} felder
- * @param {ReadonlySet<string>} [ausser]
+ * @param {Ausnahmen} [ausser]
  */
-function sammleTexte(wert, pfad, felder, ausser = KEINE_SCHLUESSEL) {
+function sammleTexte(wert, pfad, felder, ausser = KEINE_AUSNAHMEN) {
   if (typeof wert === 'string') {
-    felder.push({ feld: pfad, text: wert });
+    felder.push({ feld: pfad === '' ? '(Wurzel)' : pfad, text: wert });
   } else if (Array.isArray(wert)) {
     wert.forEach((element, i) => sammleTexte(element, `${pfad}[${i}]`, felder));
   } else if (istObjekt(wert)) {
-    for (const [schluessel, element] of Object.entries(wert)) {
-      if (!ausser.has(schluessel)) sammleTexte(element, `${pfad}.${schluessel}`, felder);
-    }
+    Object.entries(wert).forEach(([schluessel, element], n) => {
+      if (ausser.get(schluessel)?.(element)) return;
+      const nennbar = FELDNAME.test(schluessel);
+      const name = nennbar ? schluessel : `{${n}}`;
+      const unter = pfad === '' ? name : `${pfad}.${name}`;
+      if (!nennbar) felder.push({ feld: `${unter}.schluessel`, text: schluessel });
+      sammleTexte(element, unter, felder);
+    });
   }
 }
 
 /**
- * Die Kommentare eines YAML-Texts in der Reihenfolge ihrer Zeilen: je
- * Kommentar die Zeile (ab 1) und der Text hinter der Raute — ganze
- * Kommentarzeilen wie Kommentare hinter einem Wert.
+ * Wo in Zeile `i` ein Kommentar beginnt: die Stelle seiner Raute, `-1` fuer
+ * keinen.
  *
  * Ob eine Raute einen Kommentar beginnt, entscheidet der YAML-Leser selbst,
  * kein Nachbau seiner Regeln: Sie steht am Zeilenanfang oder nach Leerraum,
- * und ohne sie und den Rest ihrer Zeile liest sich der Text gleich. Eine
- * Raute in Anfuehrungszeichen oder in einem Blocktext (`|`, `>`) gehoert zum
- * Wert — ohne sie laese er sich anders oder gar nicht. So zaehlt jeder Text
+ * und ohne den Rest ihrer Zeile liest sich der Text gleich. Eine Raute in
+ * Anfuehrungszeichen oder in einem Blocktext (`|`, `>`) gehoert zum Wert —
+ * ohne den Rest laese er sich anders oder gar nicht. So zaehlt jeder Text
  * genau einmal: als Feld oder als Kommentar.
+ *
+ * Die Raute selbst bleibt fuer die Probe stehen. Ohne sie wuerde eine ganze
+ * Kommentarzeile leer, und hinter einem Blocktext mit `|+` oder `>+` gehoert
+ * eine Leerzeile zum Text: Er laese sich anders, obwohl die Zeile ein
+ * Kommentar ist. Eine Raute ohne Text dahinter bleibt uebergangen — die
+ * Probe aenderte nichts, und zu pruefen gibt es nichts.
+ *
+ * @param {readonly string[]} zeilen die Zeilen des Texts
+ * @param {number} i
+ * @param {unknown} ganz der ganze Text, gelesen
+ * @returns {number}
+ */
+function kommentarRaute(zeilen, i, ganz) {
+  const zeile = zeilen[i];
+  for (let raute = zeile.indexOf('#'); raute !== -1; raute = zeile.indexOf('#', raute + 1)) {
+    const davor = zeile.charAt(raute - 1);
+    if (raute > 0 && davor !== ' ' && davor !== '\t') continue;
+    if (raute === zeile.length - 1) continue;
+    const probe = yamlVersuch([...zeilen.slice(0, i), zeile.slice(0, raute + 1), ...zeilen.slice(i + 1)].join('\n'));
+    if (probe.ok && isDeepStrictEqual(probe.wert, ganz)) return raute;
+  }
+  return -1;
+}
+
+/**
+ * Die Kommentare eines YAML-Texts in der Reihenfolge ihrer Zeilen: je
+ * Kommentar die Zeile (ab 1) und der Text hinter der Raute
+ * (`kommentarRaute`).
+ *
+ * Aufeinanderfolgende Zeilen, die nur ein Kommentar sind — eingerueckt oder
+ * nicht —, sind einer: mit der Zeile der ersten, die Texte mit `\n`
+ * verbunden. Sonst reichte ein Satz, auf zwei Kommentarzeilen umbrochen, in
+ * keinem Feld ueber 13 Woerter. Ein Kommentar hinter einem Wert ist einer
+ * fuer sich, und jede andere Zeile beendet einen Block — auch eine leere und
+ * eine mit einer Raute ohne Text.
  *
  * Laesst sich der Text nicht lesen, gibt es keine Kommentare: Was dann Wert
  * und was Kommentar ist, weiss niemand.
@@ -276,21 +420,30 @@ function sammleTexte(wert, pfad, felder, ausser = KEINE_SCHLUESSEL) {
  */
 function yamlKommentare(text) {
   // Zeilen enden in YAML auf \r\n, \r oder \n; verbunden wird hier mit \n,
-  // beim ganzen Text wie bei jedem Versuch ohne Kommentar.
+  // beim ganzen Text wie bei jeder Probe.
   const zeilen = text.replace(/^\uFEFF/, '').split(/\r\n|\r|\n/);
   /** @type {{ zeile: number, text: string }[]} */
   const kommentare = [];
   const ganz = yamlVersuch(zeilen.join('\n'));
   if (!ganz.ok) return kommentare;
+  /** @type {{ zeile: number, text: string } | null} der Block, den die Zeile davor begonnen oder fortgesetzt hat */
+  let block = null;
   zeilen.forEach((zeile, i) => {
-    for (let raute = zeile.indexOf('#'); raute !== -1; raute = zeile.indexOf('#', raute + 1)) {
-      const davor = zeile.charAt(raute - 1);
-      if (raute > 0 && davor !== ' ' && davor !== '\t') continue;
-      const ohne = yamlVersuch([...zeilen.slice(0, i), zeile.slice(0, raute), ...zeilen.slice(i + 1)].join('\n'));
-      if (ohne.ok && isDeepStrictEqual(ohne.wert, ganz.wert)) {
-        kommentare.push({ zeile: i + 1, text: zeile.slice(raute + 1) });
-        break;
-      }
+    const raute = kommentarRaute(zeilen, i, ganz.wert);
+    if (raute === -1) {
+      block = null;
+      return;
+    }
+    const kommentar = zeile.slice(raute + 1);
+    if (!/^[ \t]*$/.test(zeile.slice(0, raute))) {
+      // Hinter einem Wert: ein Kommentar fuer sich.
+      kommentare.push({ zeile: i + 1, text: kommentar });
+      block = null;
+    } else if (block === null) {
+      block = { zeile: i + 1, text: kommentar };
+      kommentare.push(block);
+    } else {
+      block.text += `\n${kommentar}`;
     }
   });
   return kommentare;
@@ -303,26 +456,42 @@ function yamlKommentare(text) {
  * ein Mensch oder der Compiler dort geschrieben hat: Der Lehrplan liegt im
  * Git, die Rohdateien nicht.
  *
- * Abschnitt fuer Abschnitt in der Reihenfolge des Lehrplans: erst jeder Text
- * des Abschnitts in jeder Tiefe — `grund`, aber auch ein Feld, das das Schema
- * nicht kennt —, dann je Prinzip jeder Text in jeder Tiefe: `satz`, auch als
- * Liste, `belege`, auch als einzelner Text, `notiz`. Nicht gelesen werden am
- * Abschnitt `id`, `titel`, `datei`, `status` und `seiten` — Titel schreibt
- * das Einlesen, und alle sind kurz —, am Prinzip `id` und `widget`, und die
- * Felder oben am Lehrplan. Sind die `prinzipien` keine Liste, zaehlen ihre
- * Texte zum Abschnitt. Nur Werte, die Text sind.
+ * Erst jeder Text oben am Lehrplan in jeder Tiefe, dann Abschnitt fuer
+ * Abschnitt in der Reihenfolge des Lehrplans: erst jeder Text des Abschnitts
+ * in jeder Tiefe — `grund`, aber auch ein Feld, das das Schema nicht kennt —,
+ * dann je Prinzip jeder Text in jeder Tiefe: `satz`, auch als Liste,
+ * `belege`, auch als einzelner Text, `notiz`. Sind die `abschnitte` keine
+ * Liste, zaehlen ihre Texte zum Lehrplan, sind die `prinzipien` keine,
+ * zaehlen ihre Texte zum Abschnitt. Ist der Lehrplan selbst eine Liste oder
+ * ein Text, zaehlt auch der. Nur Werte, die Text sind.
  *
- * Ein Feld heisst wie ein Feld der Lektion nach seinem Pfad, davor die Id
- * seines Abschnitts oder Prinzips: `m07-03-risikomanagement.grund`,
+ * Nicht gelesen wird, was in fester Form dasteht, und nur, solange es in
+ * dieser Form dasteht (`NICHT_OBEN`, `NICHT_AM_ABSCHNITT`,
+ * `NICHT_AM_PRINZIP`): oben `art`, `quelle`, `titel`, `stand`, `geprueftVon`
+ * und `geprueftAm` als Text, am Abschnitt `id` nach dem Muster der Ids,
+ * `titel` und `datei` als Text, `seiten` als Liste aus Zahlen und `status`
+ * als einer seiner vier Werte, am Prinzip `id` nach dem Muster und `widget`
+ * als Name eines Widgets. Titel schreibt das Einlesen, und alle sind kurz.
+ * Steht dort etwas anderes — ein Satz als Id, Texte als Seiten —, wird es
+ * gelesen wie jedes andere Feld.
+ *
+ * Ein Feld heisst wie ein Feld der Lektion nach seinem Pfad: oben ab der
+ * Wurzel (`notiz`, `titel[0]`), sonst mit der Id seines Abschnitts oder
+ * Prinzips davor: `m07-03-risikomanagement.grund`,
  * `pauschal-heisst-nicht-komplett.belege[0]`. Die Id steht nur da, wenn sie
  * dem Muster der Ids folgt und zum ersten Mal vorn steht; sonst die Stelle:
  * `abschnitte[2].grund`, `abschnitte[2].prinzipien[0].satz`. So nennt eine
  * Meldung nie eine Id, die in Wahrheit ein Satz ist, und zwei gleiche Ids
- * ergeben keine gleichen Feldnamen.
+ * ergeben keine gleichen Feldnamen. Aus demselben Grund steht ein Schluessel
+ * nur im Pfad, wenn er wie ein Feldname aussieht; sonst seine Stelle, und er
+ * selbst ist ein Feld: `notiz.{0}` und `notiz.{0}.schluessel`
+ * (`sammleTexte`).
  *
  * Zuletzt, nach Zeile, die Kommentare (`yamlKommentare`), je als Feld
- * `kommentar[<zeile>]`, auch die Kopfzeilen, die das Einlesen schreibt: Ein
- * Satz von einer Folie laege sonst als Kommentar ungeprueft im Git.
+ * `kommentar[<zeile>]` — aufeinanderfolgende Zeilen, die nur ein Kommentar
+ * sind, als eines unter der ersten —, auch die Kopfzeilen, die das Einlesen
+ * schreibt: Ein Satz von einer Folie laege sonst als Kommentar ungeprueft im
+ * Git.
  *
  * Kein YAML: keine Felder, auch keine Kommentare.
  *
@@ -340,7 +509,11 @@ export function lehrplanFelder(text) {
     vergeben.add(id);
     return id;
   };
-  rohListe(rohFeld(rohLesen(text), 'abschnitte')).forEach((abschnitt, i) => {
+  const roh = rohLesen(text);
+  sammleTexte(roh, '', felder, NICHT_OBEN);
+  const abschnitte = rohFeld(roh, 'abschnitte');
+  if (!Array.isArray(abschnitte)) sammleTexte(abschnitte, 'abschnitte', felder);
+  rohListe(abschnitte).forEach((abschnitt, i) => {
     const name = vorn(rohFeld(abschnitt, 'id'), `abschnitte[${i}]`);
     sammleTexte(abschnitt, name, felder, NICHT_AM_ABSCHNITT);
     const prinzipien = rohFeld(abschnitt, 'prinzipien');

@@ -160,7 +160,10 @@ describe('beauftrage', () => {
       `    status: 'offen'`,
       '    status: offen  # noch nicht dran',
     ] as const) {
-      const text = lehrplanText([{ id: 'a1', status: 'offen' }]).replace('    status: offen', roh);
+      const vorlage = lehrplanText([{ id: 'a1', status: 'offen' }]);
+      // Ersetzte replace nichts, pruefte der Test still nur die blosse Form.
+      expect(vorlage).toContain('    status: offen');
+      const text = vorlage.replace('    status: offen', roh);
       const ergebnis = beauftrage(text, ['a1']);
       if (!ergebnis.ok) throw new Error(ergebnis.maengel.join('\n'));
       expect(ergebnis.geaendert).toEqual(['a1']);

@@ -48,6 +48,16 @@ export type Status = (typeof STATUS)[number];
 export const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const IdSchema = z.string().regex(ID, 'nur Kleinbuchstaben, Ziffern und Bindestrich.');
 
+/**
+ * Wie ein Feldname aussieht: ein Buchstabe, dann bis zu 40 Buchstaben,
+ * Ziffern, Unterstriche oder Bindestriche. Nur ein Schluessel dieser Form
+ * steht in einer Meldung — ein anderer koennte ein Satz von einer Folie sein,
+ * und die Meldungen stehen auf der Konsole und auf der Bibliotheksseite.
+ * Exportiert fuer werkzeug/pruefe-quelle.mjs: Dort steht ein Schluessel nach
+ * derselben Regel im Namen eines Felds.
+ */
+export const FELDNAME = /^[A-Za-z][A-Za-z0-9_-]{0,40}$/;
+
 /** `quelle` ist der Ordnername unter `quellen/` — dasselbe Muster wie eine Id, eigene Meldung. */
 const QuelleSchema = z
   .string()
@@ -384,8 +394,15 @@ const deutscheMeldung: z.core.$ZodErrorMap = (iss) => {
     }
     case 'invalid_value':
       return `ist nicht erlaubt — erlaubt: ${iss.values.join(', ')}.`;
-    case 'unrecognized_keys':
-      return iss.keys.length === 1 ? `unbekanntes Feld: ${iss.keys[0]}.` : `unbekannte Felder: ${iss.keys.join(', ')}.`;
+    case 'unrecognized_keys': {
+      // Ein Schluessel, der nicht wie ein Feldname aussieht, wird gezaehlt,
+      // nie genannt: Er koennte ein Satz von einer Folie sein (FELDNAME).
+      const nennbar = iss.keys.filter((schluessel) => FELDNAME.test(schluessel));
+      const ohne = iss.keys.length - nennbar.length;
+      if (iss.keys.length === 1) return ohne === 0 ? `unbekanntes Feld: ${iss.keys[0]}.` : 'unbekanntes Feld (kein Feldname).';
+      const teile = ohne === 0 ? nennbar : [...nennbar, `${ohne} ohne Feldnamen`];
+      return `unbekannte Felder: ${teile.join(', ')}.`;
+    }
   }
   // Kein globales z.config: Das stellte jede andere Pruefung im Prozess mit um.
   return localeErrorDe?.(iss) ?? undefined;

@@ -163,6 +163,31 @@ describe('pruefeLehrplan - Repo', () => {
     ]);
   });
 
+  /**
+   * Ein Schluessel kann ein Satz von einer Folie sein, und die Meldung steht
+   * auf der Konsole und auf der Bibliotheksseite: Beim Namen genannt wird nur,
+   * was wie ein Feldname aussieht — ein Buchstabe, dann bis zu 40 Buchstaben,
+   * Ziffern, Unterstriche oder Bindestriche. Der Rest wird gezaehlt.
+   */
+  it('nennt einen Schluessel nicht, der nicht wie ein Feldname aussieht — nur, wie viele es sind', () => {
+    const satz = 'Ein Satz als Schluessel';
+    expect(maengelVon(pruefeLehrplan({ ...gut, [satz]: 'X' }, KEINE))).toEqual(['(Wurzel): unbekanntes Feld (kein Feldname).']);
+    expect(maengelVon(pruefeLehrplan({ ...gut, notiz: 'X', [satz]: 'Y' }, KEINE))).toEqual([
+      '(Wurzel): unbekannte Felder: notiz, 1 ohne Feldnamen.',
+    ]);
+    expect(maengelVon(pruefeLehrplan({ ...gut, [satz]: 'X', 'Noch ein Satz': 'Y' }, KEINE))).toEqual([
+      '(Wurzel): unbekannte Felder: 2 ohne Feldnamen.',
+    ]);
+    // Nennbare allein wie bisher — bis zur Grenze von 41 Zeichen.
+    const lang = `a${'b'.repeat(40)}`;
+    expect(maengelVon(pruefeLehrplan({ ...gut, autor: 'X', [lang]: 'Y' }, KEINE))).toEqual([
+      `(Wurzel): unbekannte Felder: autor, ${lang}.`,
+    ]);
+    expect(maengelVon(pruefeLehrplan({ ...gut, autor: 'X', [`${lang}c`]: 'Y', _vorn: 'Z' }, KEINE))).toEqual([
+      '(Wurzel): unbekannte Felder: autor, 2 ohne Feldnamen.',
+    ]);
+  });
+
   it('weist Titel und Abschnitte bei einem Repo zurueck — die gehoeren zu Buch und Folien', () => {
     expect(pruefeLehrplan({ ...gut, titel: 'Ein Titel' }, KEINE).ok).toBe(false);
     expect(pruefeLehrplan({ ...gut, abschnitte: [] }, KEINE).ok).toBe(false);
@@ -421,6 +446,11 @@ describe('lehrplaeneAusTexten', () => {
       },
     ]);
     expect(ungueltig[0]?.maengel[0]).not.toContain('\n');
+  });
+
+  it('nennt auf der Seite einen Schluessel nicht, der nicht wie ein Feldname aussieht', () => {
+    const { ungueltig } = lehrplaeneAusTexten({ '/lehrplan/satz.yaml': yaml({ 'Ein Satz als Schluessel': 'X' }) }, KEINE);
+    expect(ungueltig).toEqual([{ datei: 'satz.yaml', maengel: ['(Wurzel): unbekanntes Feld (kein Feldname).'] }]);
   });
 
   it('legt einen Lehrplan, dem nur die Freigabe fehlt, zu den wartenden', () => {

@@ -682,13 +682,17 @@ describe('lehrplanFelder', () => {
       '',
     ].join('\n');
     // x steht im YAML hinter den Prinzipien, gehoert aber zum Abschnitt: Es kommt vor ihnen.
-    // Nur unter id, titel, datei, seiten, status und widget des Abschnitts oder Prinzips selbst liest es nicht.
+    // Unter id, titel, datei, seiten, status und widget des Abschnitts oder Prinzips selbst liest es nur, was nicht in
+    // Schemaform steht: hier seiten als Texte und widget als Eintrag.
     expect(lehrplanFelder(text)).toEqual([
       { feld: 'm01-01-einstieg.notiz', text: 'Eine Notiz am Abschnitt.' },
+      { feld: 'm01-01-einstieg.seiten[0]', text: 'eins' },
+      { feld: 'm01-01-einstieg.seiten[1]', text: 'zehn' },
       { feld: 'm01-01-einstieg.x[0]', text: 'Ein Text in einer Liste.' },
       { feld: 'erstes-prinzip.satz[0]', text: 'Ein Satz als Liste.' },
       { feld: 'erstes-prinzip.satz[1]', text: 'Sein zweiter Teil.' },
       { feld: 'erstes-prinzip.belege', text: 'Ein Beleg als einzelner Text.' },
+      { feld: 'erstes-prinzip.widget.name', text: 'Ein Widget als Eintrag.' },
       { feld: 'erstes-prinzip.notiz.warum', text: 'Eine Notiz am Prinzip, eine Ebene tiefer.' },
       { feld: 'erstes-prinzip.notiz.id', text: 'Eine Id in der Notiz.' },
       { feld: 'erstes-prinzip.notiz.liste[0][0]', text: 'Ganz tief.' },
@@ -717,8 +721,11 @@ describe('lehrplanFelder', () => {
       '',
     ].join('\n');
     const felder = lehrplanFelder(text);
+    // Eine Id, die nicht dem Muster folgt, steht nicht in Schemaform: Sie wird selbst gelesen, unter der Stelle.
     expect(felder).toEqual([
+      { feld: 'abschnitte[0].id', text: 'Ein Satz als Id eines Abschnitts.' },
       { feld: 'abschnitte[0].grund', text: 'Ein Grund.' },
+      { feld: 'abschnitte[0].prinzipien[0].id', text: 'Erstes-Prinzip' },
       { feld: 'abschnitte[0].prinzipien[0].satz', text: 'Ein Satz unter einer Id mit Grossbuchstaben.' },
       { feld: 'doppelt.satz', text: 'Der erste Satz.' },
       { feld: 'abschnitte[1].grund', text: 'Ein Abschnitt mit der Id eines Prinzips davor.' },
@@ -797,14 +804,81 @@ describe('lehrplanFelder', () => {
     expect(lehrplanFelder(String.fromCharCode(0xfeff) + zeilen.join('\n'))).toEqual(erwartet);
   });
 
-  it('liest die Kopfzeilen, die das Einlesen schreibt, als Kommentare wie alle anderen', () => {
+  it('fasst aufeinanderfolgende Zeilen, die nur ein Kommentar sind, zu einem Feld nach ihrer ersten Zeile zusammen — ein Kommentar hinter einem Wert bleibt eines fuer sich', () => {
+    const zeilen = [
+      '# Erste Zeile oben,',
+      '# zweite Zeile oben.',
+      'art: folien # Hinter einem Wert.',
+      '# Direkt darunter: ein neuer Block.',
+      'abschnitte:',
+      '  - id: m01-01-einstieg',
+      '    # Eingerueckt,',
+      '# nicht eingerueckt',
+      '        #und tiefer: ein Block.',
+      '    status: offen',
+      '',
+      '    # Nach einer Leerzeile.',
+      '',
+      '    # Nach noch einer: ein eigener Block.',
+      '    #',
+      '    # Nach einer Raute ohne Text: ein eigener Block.',
+      '    grund: "Ein Grund." # Hinter dem Grund.',
+      '    # Unter dem Grund.',
+      '',
+    ];
+    // Eine Leerzeile beendet einen Block, eine Raute ohne Text ebenso: Sie ist kein Feld.
+    const erwartet = [
+      { feld: 'm01-01-einstieg.grund', text: 'Ein Grund.' },
+      { feld: 'kommentar[1]', text: ' Erste Zeile oben,\n zweite Zeile oben.' },
+      { feld: 'kommentar[3]', text: ' Hinter einem Wert.' },
+      { feld: 'kommentar[4]', text: ' Direkt darunter: ein neuer Block.' },
+      { feld: 'kommentar[7]', text: ' Eingerueckt,\n nicht eingerueckt\nund tiefer: ein Block.' },
+      { feld: 'kommentar[12]', text: ' Nach einer Leerzeile.' },
+      { feld: 'kommentar[14]', text: ' Nach noch einer: ein eigener Block.' },
+      { feld: 'kommentar[16]', text: ' Nach einer Raute ohne Text: ein eigener Block.' },
+      { feld: 'kommentar[17]', text: ' Hinter dem Grund.' },
+      { feld: 'kommentar[18]', text: ' Unter dem Grund.' },
+    ];
+    expect(lehrplanFelder(zeilen.join('\n'))).toEqual(erwartet);
+    expect(lehrplanFelder(zeilen.join('\r\n'))).toEqual(erwartet);
+  });
+
+  it('erkennt einen Kommentar auch hinter einem Blocktext mit |+ oder >+ — ohne ihn hinge dort eine Leerzeile am Text', () => {
+    for (const kopf of ['|+', '>+']) {
+      for (const umbruch of ['\n', '\r\n']) {
+        expect(lehrplanFelder(['grund: ' + kopf, '  Zeile', '# Schluss', ''].join(umbruch))).toEqual([
+          { feld: 'grund', text: 'Zeile\n' },
+          { feld: 'kommentar[3]', text: ' Schluss' },
+        ]);
+        // Am Abschnitt, hinter einer Leerzeile, die zum Text gehoert, und als Block aus zwei Zeilen.
+        const amAbschnitt = [
+          'abschnitte:',
+          '  - id: m01-01-einstieg',
+          `    grund: ${kopf}`,
+          '      Zeile',
+          '',
+          '    # Schluss,',
+          '    # auf zwei Zeilen.',
+          '',
+        ];
+        expect(lehrplanFelder(amAbschnitt.join(umbruch))).toEqual([
+          { feld: 'm01-01-einstieg.grund', text: 'Zeile\n\n' },
+          { feld: 'kommentar[6]', text: ' Schluss,\n auf zwei Zeilen.' },
+        ]);
+      }
+    }
+  });
+
+  it('liest die Kopfzeilen, die das Einlesen schreibt, als Kommentar wie alle anderen — drei Zeilen, ein Feld', () => {
     const geruest = lehrplanGeruest({
       kurzname: K,
       titel: 'Fixture Quelle',
       stand: STAND,
       abschnitte: [{ ...EINSTIEG, titel: 'Titel m01-01-einstieg', datei: 'M1.pdf' }],
     });
-    expect(lehrplanFelder(geruest).map(({ feld }) => feld)).toEqual(['kommentar[1]', 'kommentar[2]', 'kommentar[3]']);
+    const felder = lehrplanFelder(geruest);
+    expect(felder.map(({ feld }) => feld)).toEqual(['kommentar[1]']);
+    expect(felder[0]?.text.split('\n')).toHaveLength(3);
   });
 
   it('nennt ein Feld ohne Id als Text nach seiner Stelle und liest nur Werte, die Text sind', () => {
@@ -828,24 +902,171 @@ describe('lehrplanFelder', () => {
       '        warumNichtOffensichtlich: "Nur das Warum."',
       '',
     ].join('\n');
+    // Eine Id als Liste steht nicht in Schemaform: Ihre Texte werden gelesen.
     expect(lehrplanFelder(text)).toEqual([
       { feld: 'abschnitte[0].grund', text: 'Ein Grund ohne Id.' },
       { feld: 'abschnitte[1].grund', text: 'Ein Grund mit einer Zahl als Id.' },
       { feld: 'abschnitte[1].prinzipien[0].satz', text: 'Ein Satz ohne Id.' },
       { feld: 'abschnitte[1].prinzipien[0].belege[0]', text: 'Ein Beleg.' },
       { feld: 'abschnitte[1].prinzipien[0].belege[2]', text: 'Noch ein Beleg.' },
+      { feld: 'abschnitte[1].prinzipien[1].id[0]', text: 'kein' },
+      { feld: 'abschnitte[1].prinzipien[1].id[1]', text: 'text' },
       { feld: 'abschnitte[1].prinzipien[1].vorbehalt', text: 'Ein Vorbehalt mit einer Liste als Id.' },
       { feld: 'drittes-prinzip.warumNichtOffensichtlich', text: 'Nur das Warum.' },
     ]);
   });
 
-  it('gibt ohne YAML keine Felder, auch keine Kommentare, und ohne Abschnitte keine', () => {
+  it('gibt ohne YAML keine Felder, auch keine Kommentare — liest aber, was statt des Lehrplans oder der Abschnitte dasteht', () => {
     expect(lehrplanFelder('art: folien\nabschnitte: [')).toEqual([]);
     // Ob eine Raute einen Kommentar beginnt, weiss erst der YAML-Leser.
     expect(lehrplanFelder('# Ein Kommentar.\nart: folien\nabschnitte: [')).toEqual([]);
     expect(lehrplanFelder('')).toEqual([]);
-    expect(lehrplanFelder('- eine Liste\n- statt eines Lehrplans\n')).toEqual([]);
-    expect(lehrplanFelder('art: folien\nabschnitte: "kein Abschnitt"\n')).toEqual([]);
+    // Auch das liegt im Git: nach seinem Pfad ab der Wurzel.
+    expect(lehrplanFelder('- eine Liste\n- statt eines Lehrplans\n')).toEqual([
+      { feld: '[0]', text: 'eine Liste' },
+      { feld: '[1]', text: 'statt eines Lehrplans' },
+    ]);
+    expect(lehrplanFelder('art: folien\nabschnitte: "kein Abschnitt"\n')).toEqual([{ feld: 'abschnitte', text: 'kein Abschnitt' }]);
+    expect(lehrplanFelder('"Ein Satz statt eines Lehrplans."\n')).toEqual([
+      { feld: '(Wurzel)', text: 'Ein Satz statt eines Lehrplans.' },
+    ]);
+  });
+
+  it('liest jeden Text oben am Lehrplan vor den Abschnitten, nach seinem Pfad ab der Wurzel — art, quelle, titel, stand, geprueftVon und geprueftAm nur, wenn sie kein Text sind', () => {
+    const text = [
+      'notiz: "Eine Notiz oben."',
+      'art: folien',
+      `quelle: "${K}"`,
+      'titel: ["Ein Titel als Liste."]',
+      `stand: "${STAND}"`,
+      'geprueftVon: { name: "Eine Freigabe als Eintrag." }',
+      'geprueftAm: 20260925',
+      'abschnitte:',
+      '  - id: m01-01-einstieg',
+      '    grund: "Ein Grund."',
+      'isbn: "Eine ISBN als Text."',
+      'anhang:',
+      '  - "Ein Anhang in einer Liste."',
+      '',
+    ].join('\n');
+    // isbn und anhang stehen im YAML hinter den Abschnitten, gehoeren aber zum Lehrplan selbst: Sie kommen vor ihnen.
+    expect(lehrplanFelder(text)).toEqual([
+      { feld: 'notiz', text: 'Eine Notiz oben.' },
+      { feld: 'titel[0]', text: 'Ein Titel als Liste.' },
+      { feld: 'geprueftVon.name', text: 'Eine Freigabe als Eintrag.' },
+      { feld: 'isbn', text: 'Eine ISBN als Text.' },
+      { feld: 'anhang[0]', text: 'Ein Anhang in einer Liste.' },
+      { feld: 'm01-01-einstieg.grund', text: 'Ein Grund.' },
+    ]);
+    // abschnitte, die keine Liste sind, liest es wie jeden anderen Wert, den das Schema nicht kennt.
+    expect(lehrplanFelder('art: folien\nabschnitte:\n  erster: "Ein Abschnitt als Eintrag."\n')).toEqual([
+      { feld: 'abschnitte.erster', text: 'Ein Abschnitt als Eintrag.' },
+    ]);
+  });
+
+  it('liest id, titel, datei, seiten, status und widget, wenn ihr Wert nicht in Schemaform steht', () => {
+    const text = [
+      'art: folien',
+      'abschnitte:',
+      '  - id: "Ein Satz als Id."',
+      '    titel: ["Ein Titel als Liste."]',
+      '    datei: { name: "Eine Datei als Eintrag." }',
+      '    seiten: [1, "zehn"]',
+      '    status: "Ein Satz als Status."',
+      '    prinzipien:',
+      '      - id: erstes-prinzip',
+      '        widget: "Ein Satz als Widget."',
+      '      - id: zweites-prinzip',
+      '        widget: pipeline',
+      '      - id: drittes-prinzip',
+      '        widget: Pipeline',
+      '  - id: m01-02-kosten',
+      '    titel: "Ein Titel."',
+      '    datei: "M1.pdf"',
+      '    seiten: [11, 20]',
+      '    status: fertig',
+      '  - id: m01-03-risiken',
+      '    status: abgelehnt',
+      '',
+    ].join('\n');
+    // In Schemaform bleiben ungelesen: widget von drittes-prinzip, titel, datei und seiten von m01-02-kosten, status von m01-03-risiken.
+    expect(lehrplanFelder(text)).toEqual([
+      { feld: 'abschnitte[0].id', text: 'Ein Satz als Id.' },
+      { feld: 'abschnitte[0].titel[0]', text: 'Ein Titel als Liste.' },
+      { feld: 'abschnitte[0].datei.name', text: 'Eine Datei als Eintrag.' },
+      { feld: 'abschnitte[0].seiten[1]', text: 'zehn' },
+      { feld: 'abschnitte[0].status', text: 'Ein Satz als Status.' },
+      { feld: 'erstes-prinzip.widget', text: 'Ein Satz als Widget.' },
+      { feld: 'zweites-prinzip.widget', text: 'pipeline' },
+      { feld: 'm01-02-kosten.status', text: 'fertig' },
+    ]);
+  });
+
+  it('nennt einen Schluessel, der nicht wie ein Feldname aussieht, nach seiner Stelle und liest ihn als eigenes Feld — auf jeder Ebene, in jeder Tiefe', () => {
+    const text = [
+      'art: folien',
+      'Ein Satz als Schluessel oben: "Ein Wert oben."',
+      'abschnitte:',
+      '  - id: m01-01-einstieg',
+      '    "Ein Satz als Schluessel am Abschnitt": "Ein Wert am Abschnitt."',
+      '    notiz:',
+      '      "Ein Satz als Schluessel in der Notiz": "Ein Wert in der Notiz."',
+      '      liste: [{ "Ein Satz in einer Liste": 7 }]',
+      '    status: beauftragt',
+      '    prinzipien:',
+      '      - id: erstes-prinzip',
+      '        "Ein Satz als Schluessel am Prinzip": ["Ein Wert in einer Liste."]',
+      '  - id: m01-02-kosten',
+      '    prinzipien:',
+      '      "Ein Satz als Schluessel statt einer Liste": "Ein Wert."',
+      '',
+    ].join('\n');
+    // Die Stelle zaehlt in der Abbildung des Schluessels ab 0; der Schluessel selbst steht in keinem Feldnamen.
+    expect(lehrplanFelder(text)).toEqual([
+      { feld: '{1}.schluessel', text: 'Ein Satz als Schluessel oben' },
+      { feld: '{1}', text: 'Ein Wert oben.' },
+      { feld: 'm01-01-einstieg.{1}.schluessel', text: 'Ein Satz als Schluessel am Abschnitt' },
+      { feld: 'm01-01-einstieg.{1}', text: 'Ein Wert am Abschnitt.' },
+      { feld: 'm01-01-einstieg.notiz.{0}.schluessel', text: 'Ein Satz als Schluessel in der Notiz' },
+      { feld: 'm01-01-einstieg.notiz.{0}', text: 'Ein Wert in der Notiz.' },
+      { feld: 'm01-01-einstieg.notiz.liste[0].{0}.schluessel', text: 'Ein Satz in einer Liste' },
+      { feld: 'erstes-prinzip.{1}.schluessel', text: 'Ein Satz als Schluessel am Prinzip' },
+      { feld: 'erstes-prinzip.{1}[0]', text: 'Ein Wert in einer Liste.' },
+      { feld: 'm01-02-kosten.prinzipien.{0}.schluessel', text: 'Ein Satz als Schluessel statt einer Liste' },
+      { feld: 'm01-02-kosten.prinzipien.{0}', text: 'Ein Wert.' },
+    ]);
+    expect(lehrplanFelder('art: folien\nabschnitte:\n  "Ein Satz statt der Abschnitte": 3\n')).toEqual([
+      { feld: 'abschnitte.{0}.schluessel', text: 'Ein Satz statt der Abschnitte' },
+    ]);
+  });
+
+  it('laesst einen Schluessel im Pfad, der wie ein Feldname aussieht: ein Buchstabe, dann bis zu 40 Buchstaben, Ziffern, Unterstriche oder Bindestriche', () => {
+    const lang = `a${'b'.repeat(40)}`;
+    const text = [
+      'art: folien',
+      'notiz:',
+      '  Z: "eins"',
+      `  ${lang}: "zwei"`,
+      `  ${lang}c: "drei"`,
+      '  mit_unter-strich9: "vier"',
+      '  _vorn: "fuenf"',
+      '  9vorn: "sechs"',
+      '  Prüfung: "sieben"',
+      '',
+    ].join('\n');
+    expect(lehrplanFelder(text)).toEqual([
+      { feld: 'notiz.Z', text: 'eins' },
+      { feld: `notiz.${lang}`, text: 'zwei' },
+      { feld: 'notiz.{2}.schluessel', text: `${lang}c` },
+      { feld: 'notiz.{2}', text: 'drei' },
+      { feld: 'notiz.mit_unter-strich9', text: 'vier' },
+      { feld: 'notiz.{4}.schluessel', text: '_vorn' },
+      { feld: 'notiz.{4}', text: 'fuenf' },
+      { feld: 'notiz.{5}.schluessel', text: '9vorn' },
+      { feld: 'notiz.{5}', text: 'sechs' },
+      { feld: 'notiz.{6}.schluessel', text: 'Prüfung' },
+      { feld: 'notiz.{6}', text: 'sieben' },
+    ]);
   });
 });
 
@@ -952,6 +1173,40 @@ describe('Wortlaut im Lehrplan', () => {
     expect(vor({ lehrplanText: beides, index: INDEX }).maengel).toEqual([
       lehrplanAbschrift('erstes-prinzip.satz'),
       lehrplanAbschrift('kommentar[1]'),
+    ]);
+  });
+
+  it('meldet einen Satz, der auf zwei Kommentarzeilen umbrochen ist, einmal — unter der ersten Zeile', () => {
+    // Ein erfundener Satz aus 17 Woertern auf Folie 3: Keine der beiden Zeilen traegt allein 13 davon.
+    const satz = 'Die Bauleitung prüft jeden Freitag die Aufmaße der Firmen und gibt sie danach an die Kostenkontrolle weiter.';
+    const roh = ['# Titel m01-01-einstieg', '', 'M1.pdf, Folien 1–10', '', '', '— Folie 3 —', satz, ''].join('\n');
+    const index = baueIndex([{ quelle: K, abschnitt: EINSTIEG.id, folien: rohFolien(roh) }]);
+    const umbrochen = [
+      '# Die Bauleitung prüft jeden Freitag die Aufmaße der Firmen',
+      '  # und gibt sie danach an die Kostenkontrolle weiter.',
+      vorB({ id: 'erstes-prinzip' }),
+    ].join('\n');
+    expect(vor({ lehrplanText: umbrochen, index })).toEqual({
+      ok: false,
+      maengel: [
+        'lehrplan/fixture-quelle.yaml: Wortlaut: 13 Wörter am Stück wie in fixture-quelle/m01-01-einstieg, Folie 3 — Feld kommentar[1], Wörter 1–17.',
+      ],
+      auftrag: [],
+    });
+  });
+
+  it('meldet eine Abschrift in einem Schluessel nach seiner Stelle, ohne ihn zu nennen — auch im Mangel des Schemas nicht', () => {
+    // Die erste Zeile status: offen gehoert zu KOSTEN, dem zweiten Abschnitt; dessen sechstes Feld ist der Schluessel.
+    const amAbschnitt = vorB({ id: 'erstes-prinzip' }).replace('    status: offen\n', `    status: offen\n    "${SATZ}": "Ein Wert."\n`);
+    expect(vor({ lehrplanText: amAbschnitt, index: INDEX }).maengel).toEqual([
+      'lehrplan/fixture-quelle.yaml: abschnitte.1: unbekanntes Feld (kein Feldname).',
+      lehrplanAbschrift('m01-02-kosten.{5}.schluessel'),
+    ]);
+    // Eine Ebene tiefer, in einem Feld, das das Schema nicht kennt: Das Schema nennt nur dieses.
+    const inNotiz = vorB({ id: 'erstes-prinzip' }).replace('    status: offen\n', `    status: offen\n    notiz: { "${SATZ}": "Ein Wert." }\n`);
+    expect(vor({ lehrplanText: inNotiz, index: INDEX }).maengel).toEqual([
+      'lehrplan/fixture-quelle.yaml: abschnitte.1: unbekanntes Feld: notiz.',
+      lehrplanAbschrift('m01-02-kosten.notiz.{0}.schluessel'),
     ]);
   });
 

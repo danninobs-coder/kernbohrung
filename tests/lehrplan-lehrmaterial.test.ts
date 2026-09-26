@@ -171,6 +171,21 @@ describe('Buch und Folien - die Form', () => {
   it('weist ein Fremdfeld im Abschnitt zurueck', () => {
     expect(gilt(mitAbschnitten(abschnitt({ notiz: 'nebenbei' })))).toBe(false);
   });
+
+  // Der Schluessel koennte ein Satz von einer Folie sein; die Saetze zu lektion, isbn und auflage bleiben, wie sie sind.
+  it('nennt ein Fremdfeld ohne Feldnamen nicht beim Namen — auch nicht neben lektion, isbn oder auflage', () => {
+    const satz = 'Ein Satz als Schluessel';
+    expect(maengelVon(mitAbschnitten(abschnitt({ [satz]: 'nebenbei' })))).toBe('abschnitte.0: unbekanntes Feld (kein Feldname).');
+    expect(maengelVon(mitAbschnitten(abschnitt({ lektion: 'x', [satz]: 'nebenbei' })))).toBe(
+      'abschnitte.0: lektion gibt es nicht mehr: Die Lektionen eines Abschnitts sind die seiner Prinzipien (Lektion-Id = Prinzip-Id).',
+    );
+    expect(maengelVon(folien({ isbn: '978-3-658-00000-0', [satz]: 'nebenbei' }))).toBe(
+      '(Wurzel): isbn und auflage stehen nur bei art: buch.',
+    );
+    expect(maengelVon(folien({ [satz]: 'nebenbei', auflage: '3. Auflage' }))).toBe(
+      '(Wurzel): isbn und auflage stehen nur bei art: buch.',
+    );
+  });
 });
 
 describe('Abschnitte - Pflichtfelder und Form', () => {
@@ -299,6 +314,28 @@ describe('Buch und Folien - wartet auf Freigabe', () => {
     expect(eindeutig.maengel).toEqual([
       'geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.',
       'abschnitte.0.grund: Ein abgelehnter Abschnitt braucht einen Grund.',
+    ]);
+  });
+
+  /**
+   * Die Nebenwirkung davon: Der zweite Durchgang laeuft auch, wenn neben der
+   * fehlenden Freigabe ein Formfehler steht — hier geprueftAm als Zahl, keine
+   * fehlende Freigabe. Die fehlende Lektion, die erst er sieht, steht dann mit
+   * da, hinter den Maengeln der Freigabe.
+   */
+  it('meldet bei geprueftVon null und geprueftAm als Zahl auch eine fehlende Lektion — hinter den Maengeln der Freigabe', () => {
+    const daten = folien({
+      geprueftVon: null,
+      geprueftAm: 20260924,
+      abschnitte: [abschnitt({ status: 'lektion', prinzipien: [prinzipMit('gibt-es-nicht')] })],
+    });
+    const e = pruefeLehrplan(daten, LEKTIONEN);
+    if (e.ok) throw new Error('Erwartet war ein Fehlschlag.');
+    expect(e.wartet).toBeFalsy();
+    expect(e.maengel).toEqual([
+      'geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.',
+      'geprueftAm: hat die falsche Form — erwartet Text.',
+      'abschnitte.0.prinzipien.0.id: Die Lektion gibt-es-nicht gibt es nicht (inhalt/lektionen/gibt-es-nicht.mdx).',
     ]);
   });
 });
