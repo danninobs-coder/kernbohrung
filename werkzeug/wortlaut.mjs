@@ -97,6 +97,16 @@ const BINDER = /([\p{L}\p{N}])[-\u2010\u2011'\u2019\u00B4]+(?=([\p{L}\p{N}]))/gu
  */
 const ZEILENENDE_BINDESTRICH = /([\p{L}\p{N}])[-\u2010\u2011]+[ \t]*\r?\n[ \t]*(\p{L}+\.?)/gu;
 
+/**
+ * Direkt nach dem gefangenen Folgewort noch ein Bindestrich am Zeilenende:
+ * Dann ist das Folgewort selbst der Anfang eines weiteren Aufzaehlungsglieds
+ * mit Ergaenzungsstrich, kein Kompositum mit dem Wort davor. Ohne diese
+ * Pruefung verschluckt das globale `replace` in `woerter` das Folgewort
+ * schon beim ersten Treffer einer Kette, und zwei Glieder verschmelzen zu
+ * einem falschen Kompositum (siehe `woerter`).
+ */
+const WEITERE_AUFZAEHLUNG = /^[-\u2010\u2011]+[ \t]*\r?\n/u;
+
 /** Tausender- und Dezimaltrenner zwischen Ziffern: 1.200.000 ist eine Zahl. */
 const ZIFFERNTRENNER = /(\p{N})[.,](?=\p{N})/gu;
 
@@ -122,18 +132,23 @@ const APOSTROPH_VARIANTEN = /[´‘ʼ]/g;
  * trennt — auch Aufzaehlungszeichen aus Symbolschriften.
  *
  * Ein Bindestrich direkt vor einem Zeilenumbruch verbindet ebenso mit dem
- * Wort danach — ausser das Wort steht in BINDEWORT (adapter/dokument.mjs):
- * `Kosten-` am Zeilenende, `und Termine` danach bleibt drei Woerter, genau
- * wie `Kosten- und Termine` auf einer Zeile.
+ * Wort danach — mit zwei Ausnahmen. Das Wort steht in BINDEWORT
+ * (adapter/dokument.mjs): `Kosten-` am Zeilenende, `und Termine` danach
+ * bleibt drei Woerter, genau wie `Kosten- und Termine` auf einer Zeile. Oder
+ * das Wort traegt selbst einen Bindestrich am Zeilenende und ist damit der
+ * Anfang eines weiteren Aufzaehlungsglieds: `Kosten-` `Termin-` `und
+ * Qualitaetsziele` ueber drei Zeilen bleibt vier Woerter, genau wie
+ * `Kosten-, Termin- und Qualitaetsziele` auf einer Zeile.
  *
  * @param {string} text
  * @returns {Wort[]}
  */
 export function woerter(text) {
   let t = text.replace(APOSTROPH_VARIANTEN, "'").normalize('NFKC').replace(UNSICHTBAR, '').toLowerCase();
-  t = t.replace(ZEILENENDE_BINDESTRICH, (_, a, folgewort) =>
-    BINDEWORT.has(folgewort) ? `${a}- ${folgewort}` : `${a}-${folgewort}`,
-  );
+  t = t.replace(ZEILENENDE_BINDESTRICH, (treffer, a, folgewort, position, ganzerText) => {
+    const weitereAufzaehlung = WEITERE_AUFZAEHLUNG.test(ganzerText.slice(position + treffer.length));
+    return BINDEWORT.has(folgewort) || weitereAufzaehlung ? `${a}- ${folgewort}` : `${a}-${folgewort}`;
+  });
   t = t.replace(BINDER, (_, a, b) => (ZIFFER.test(a) && ZIFFER.test(b) ? `${a} ` : a));
   t = t.replace(ZIFFERNTRENNER, '$1');
   return (t.match(WORT) ?? []).map((w) => {

@@ -104,6 +104,11 @@ describe('woerter', () => {
     expect(nur('Kosten-\r\nund Termine')).toEqual(['kosten', 'und', 'termine']);
   });
 
+  it('verbindet nicht, wenn das Folgewort selbst mit einem Bindestrich am Zeilenende endet (Aufzaehlung mit Ergaenzungsstrichen)', () => {
+    expect(nur('Kosten-\nTermin-\nund Qualitätsziele')).toEqual(['kosten', 'termin', 'und', 'qualitätsziele']);
+    expect(nur('Kosten-\r\nTermin-\r\nund Qualitätsziele')).toEqual(['kosten', 'termin', 'und', 'qualitätsziele']);
+  });
+
   it('bildet Akut, linkes Anfuehrungszeichen und Modifikator-Apostroph auf denselben Apostroph ab', () => {
     expect(nur('geht´s')).toEqual(['gehts']);
     expect(nur('geht‘s')).toEqual(['gehts']);

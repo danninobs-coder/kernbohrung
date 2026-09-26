@@ -333,6 +333,19 @@ describe('werkzeug/pruefe-lektion.mjs', () => {
     }
   });
 
+  // Mangel hat Vorrang vor fehlender Datei im Exit-Code
+  it('gibt bei Mangel und fehlender Datei zusammen Exit 1, nicht 2, und zeigt beide Zeilen', () => {
+    const w = wurzel(true);
+    try {
+      const { code, aus, fehler } = pruefe(w, 'abschrift.mdx', 'nicht-vorhanden.mdx');
+      expect(fehler).toBe(`abschrift.mdx: 1 Mangel/Mängel\n\n  - ${MELDUNG}\nnicht-vorhanden.mdx: gibt es nicht.\n`);
+      expect(aus).toBe('');
+      expect(code).toBe(1);
+    } finally {
+      rmSync(w, { recursive: true, force: true });
+    }
+  });
+
   it('meldet einen anderen Lesefehler mit seinem Code, statt abzustuerzen', () => {
     const w = wurzel(true);
     try {

@@ -148,10 +148,10 @@ if (direktAufgerufen) {
     const roh = liesRohIndex(process.cwd());
     let abschriften = 0;
     // Eine fehlende oder unlesbare Datei bricht die uebrigen nicht ab: jede
-    // Datei einzeln abgefangen, am Ende Exit 2 statt des sonstigen 0/1 —
-    // sonst entfielen mit einer nicht aufgeloesten *.mdx (etwa unter
-    // PowerShell) alle folgenden Dateien und die Wortlaut-Zeile mit einem
-    // Stapelabzug.
+    // Datei einzeln abgefangen, der Exit-Code danach in einem Schritt fuer
+    // alle Dateien entschieden (Rangfolge siehe unten) — sonst entfielen mit
+    // einer nicht aufgeloesten *.mdx (etwa unter PowerShell) alle folgenden
+    // Dateien und die Wortlaut-Zeile mit einem Stapelabzug.
     let fehlendeDatei = false;
     for (const datei of dateien) {
       /** @type {string} */
@@ -182,6 +182,10 @@ if (direktAufgerufen) {
       const wort = roh.dateien === 1 ? 'Rohdatei' : 'Rohdateien';
       console.log(`Wortlaut: in Ordnung (${roh.dateien} ${wort}).`);
     }
-    if (fehlendeDatei) process.exitCode = 2;
+    // Rangfolge im Exit-Code: Ein Mangel (1) hat Vorrang vor einer fehlenden
+    // oder unlesbaren Datei (2), die wiederum vor Erfolg (0) steht. Ohne
+    // diesen Vorrang ueberschriebe eine fehlende Datei die 1 aus einem schon
+    // gefundenen Mangel, und ein aufrufendes Skript saehe den Mangel nicht.
+    if (fehlendeDatei && process.exitCode !== 1) process.exitCode = 2;
   }
 }
