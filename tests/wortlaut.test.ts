@@ -8,6 +8,7 @@ import {
   FENSTER,
   FUNKTIONSWOERTER,
   MINDEST_FUNKTIONSWOERTER,
+  abschriftSatz,
   baueIndex,
   findeAbschriften,
   lektionFelder,
@@ -355,6 +356,20 @@ describe('findeAbschriften', () => {
       { quelle: 'probe', abschnitt: 'x02-nur-funktionswoerter', folien: rohFolien(nurZweiVerschiedene) },
     ]);
     expect(findeAbschriften(lektionFelder(lektion(nurZweiVerschiedene)), index)).toEqual([]);
+  });
+});
+
+describe('abschriftSatz', () => {
+  it('nennt Quelle, Abschnitt, Folie, Feld und Wortbereich, nie die Woerter', () => {
+    expect(
+      abschriftSatz({ feld: 'aufgaben[0].aufgabe', von: 5, bis: 17, quelle: 'probe', abschnitt: 'x01-01-probe', folie: 5 }),
+    ).toBe('Wortlaut: 13 Wörter am Stück wie in probe/x01-01-probe, Folie 5 — Feld aufgaben[0].aufgabe, Wörter 5–17.');
+  });
+
+  it('nennt bei Folie 0, einer Rohdatei ohne Seitenmarken, keine Folie', () => {
+    expect(abschriftSatz({ feld: 'rumpf', von: 14, bis: 26, quelle: 'zweite', abschnitt: 'variante', folie: 0 })).toBe(
+      'Wortlaut: 13 Wörter am Stück wie in zweite/variante — Feld rumpf, Wörter 14–26.',
+    );
   });
 });
 

@@ -410,8 +410,13 @@ function pruefeLektionen(lehrplan: Lehrplan, lektionsIds: ReadonlySet<string>): 
   );
 }
 
-/** Die beiden Felder, deren Fehlen allein noch keinen ungueltigen Lehrplan ergibt. */
-const FREIGABE = ['geprueftVon', 'geprueftAm'] as const;
+/**
+ * Die beiden Felder, deren Fehlen allein noch keinen ungueltigen Lehrplan ergibt.
+ * Exportiert wie `fehltWirklich` fuer werkzeug/pruefe-quelle.mjs: Dort wartet
+ * auch ein ungueltiger Lehrplan auf die Freigabe, wenn beide Felder nach
+ * derselben Regel fehlen.
+ */
+export const FREIGABE = ['geprueftVon', 'geprueftAm'] as const;
 
 /** Ein Wert, der die Schranke von `geprueftVon` passiert — nur fuer den zweiten Lesedurchgang. */
 const FREIGABE_ERSATZ = 'wartet auf Freigabe';
@@ -426,7 +431,7 @@ function alsMaengel(fehler: readonly z.core.$ZodIssue[]): string[] {
  * (YAML liest daraus null), leer oder nur Leerzeichen. Alles andere — etwa
  * `geprueftAm: 20260924` als Zahl — steht schon da, nur in falscher Form.
  */
-function fehltWirklich(wert: unknown): boolean {
+export function fehltWirklich(wert: unknown): boolean {
   return wert === undefined || wert === null || (typeof wert === 'string' && wert.trim() === '');
 }
 

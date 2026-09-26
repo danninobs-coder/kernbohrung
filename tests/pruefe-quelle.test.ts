@@ -15,15 +15,25 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { baueDokumentManifest } from '../werkzeug/manifest.mjs';
-import { fuehreAus, pruefeNach, pruefeVor } from '../werkzeug/pruefe-quelle.mjs';
+import {
+  PruefeQuelleFehler,
+  fuehreAus,
+  lehrplanFelder,
+  pruefeNach,
+  pruefeNachDateien,
+  pruefeVor,
+  pruefeVorDateien,
+} from '../werkzeug/pruefe-quelle.mjs';
+import { baueIndex, rohFolien } from '../werkzeug/wortlaut.mjs';
 
 /**
  * Vor- und Nachpruefung eines Compiler-Durchgangs an Lehrmaterial.
  *
- * Kein Test liest lehrplan/ oder quellen/ im Repo: Lehrplaene sind hier von
- * Hand als Zeilen gebaut, Manifeste mit `baueDokumentManifest` aus dem
- * Einlesen selbst, und die Kommandozeile laeuft gegen ein Temp-Verzeichnis.
- * Der Satz in der Rohdatei ist erfunden.
+ * Kein Test liest lehrplan/, inhalt/ oder quellen/ im Repo: Lehrplaene und
+ * Lektionen sind hier von Hand als Zeilen gebaut, Manifeste mit
+ * `baueDokumentManifest` aus dem Einlesen selbst, und die Kommandozeile laeuft
+ * gegen ein Temp-Verzeichnis. Die Saetze in Rohdatei, Lehrplaenen und
+ * Lektionen sind erfunden.
  */
 
 const K = 'fixture-quelle';
@@ -32,30 +42,43 @@ const STEMPEL = '2026-09-25T08:00:00.000Z';
 const AUFRUF = 'Aufruf: npm run pruefe-quelle -- --name <kurzname> --vor | --nach';
 
 type Status = 'offen' | 'beauftragt' | 'lektion' | 'abgelehnt';
+/** Ein Prinzip; was nicht gegeben ist, bekommt einen festen Text, ein Vorbehalt fehlt dann. */
+type PrinzipSpec = { id: string; satz?: string; vorbehalt?: string; belege?: string[] };
 type AbschnittSpec = {
   id: string;
   seiten: [number, number];
   status: Status;
+  titel?: string;
   datei?: string;
   grund?: string;
-  prinzipien?: string[];
+  prinzipien?: (string | PrinzipSpec)[];
 };
+
+/** Der Satz, den ein Prinzip traegt, wenn nichts anderes gesagt ist. */
+const PRINZIPSATZ = 'Ein Satz, der etwas behauptet.';
 
 /** Drei Abschnitte eines Foliensatzes; der dritte hat nur eine Folie. */
 const EINSTIEG = { id: 'm01-01-einstieg', seiten: [1, 10] as [number, number] };
 const KOSTEN = { id: 'm01-02-kosten', seiten: [11, 20] as [number, number] };
 const RISIKEN = { id: 'm01-03-risiken', seiten: [21, 21] as [number, number] };
 
-/** Ein Lehrplan aus Lehrmaterial, Zeile fuer Zeile wie das Geruest des Einlesens — freigegeben, wenn nichts anderes gesagt ist. */
+/**
+ * Ein Lehrplan aus Lehrmaterial, Zeile fuer Zeile wie das Geruest des Einlesens — freigegeben, wenn nichts anderes gesagt ist.
+ * `freigabe` ersetzt die beiden Zeilen der Freigabe, etwa durch eine mit falscher Form oder durch keine.
+ */
 function lehrplanText({
   abschnitte,
   stand = STAND,
   freigegeben = true,
+  freigabe = freigegeben
+    ? ['geprueftVon: "Daniel Nobs"', 'geprueftAm: "2026-09-25"']
+    : ['geprueftVon: ""', 'geprueftAm: ""'],
   quelle = K,
 }: {
   abschnitte: AbschnittSpec[];
   stand?: string;
   freigegeben?: boolean;
+  freigabe?: string[];
   quelle?: string;
 }): string {
   const zeilen = [
@@ -63,14 +86,13 @@ function lehrplanText({
     `quelle: "${quelle}"`,
     'titel: "Fixture Quelle"',
     `stand: "${stand}"`,
-    freigegeben ? 'geprueftVon: "Daniel Nobs"' : 'geprueftVon: ""',
-    freigegeben ? 'geprueftAm: "2026-09-25"' : 'geprueftAm: ""',
+    ...freigabe,
     'abschnitte:',
   ];
   for (const a of abschnitte) {
     zeilen.push(
       `  - id: ${a.id}`,
-      `    titel: "Titel ${a.id}"`,
+      `    titel: "${a.titel ?? `Titel ${a.id}`}"`,
       `    datei: "${a.datei ?? 'M1.pdf'}"`,
       `    seiten: [${a.seiten[0]}, ${a.seiten[1]}]`,
       `    status: ${a.status}`,
@@ -78,13 +100,15 @@ function lehrplanText({
     if (a.grund !== undefined) zeilen.push(`    grund: "${a.grund}"`);
     if (a.prinzipien !== undefined) {
       zeilen.push('    prinzipien:');
-      for (const id of a.prinzipien) {
+      for (const eintrag of a.prinzipien) {
+        const p = typeof eintrag === 'string' ? { id: eintrag } : eintrag;
         zeilen.push(
-          `      - id: ${id}`,
-          '        satz: "Ein Satz, der etwas behauptet."',
+          `      - id: ${p.id}`,
+          `        satz: "${p.satz ?? PRINZIPSATZ}"`,
           '        warumNichtOffensichtlich: "Weil das Gegenteil plausibel klingt."',
-          `        belege: ["roh/${a.id}.md, Folie ${a.seiten[0]}"]`,
+          `        belege: ${JSON.stringify(p.belege ?? [`roh/${a.id}.md, Folie ${a.seiten[0]}`])}`,
         );
+        if (p.vorbehalt !== undefined) zeilen.push(`        vorbehalt: "${p.vorbehalt}"`);
       }
     }
   }
@@ -148,20 +172,62 @@ const MANIFEST = manifestText([
   RISIKEN,
 ]);
 
+/** Ein erfundener Satz: 16 Woerter, sechs verschiedene Funktionswoerter. */
+const SATZ = 'Der Polier trägt jeden Abend die Stunden der Kolonne ein und meldet sie an das Büro.';
+
+/** Die Rohdatei zu EINSTIEG, in der Form des Einlesens: Kopf, dann je Folie eine Marke. */
+const ROH = ['# Titel m01-01-einstieg', '', 'M1.pdf, Folien 1–10', '', '', '— Folie 2 —', SATZ, ''].join('\n');
+
+/** Der Index, den die Dateien-Schicht aus ROH unter quellen/fixture-quelle/roh/ baut. */
+const INDEX = baueIndex([{ quelle: K, abschnitt: EINSTIEG.id, folien: rohFolien(ROH) }]);
+
+/** Der Mangel zu SATZ im Feld `feld` des Lehrplans: alle 16 Woerter, wie in Folie 2 von ROH. */
+function lehrplanAbschrift(feld: string): string {
+  return `lehrplan/fixture-quelle.yaml: Wortlaut: 13 Wörter am Stück wie in fixture-quelle/m01-01-einstieg, Folie 2 — Feld ${feld}, Wörter 1–16.`;
+}
+
+/** Eine Lektion mit dem gegebenen Rumpf; ohne `kopf` traegt ihr Frontmatter nur den Titel. */
+function lektion(rumpf: string, kopf: string[] = ['titel: "Eine Lektion"']): string {
+  return ['---', ...kopf, '---', '', rumpf, ''].join('\n');
+}
+
+/** Eine Lektion zu einem Prinzip: `prinzip` ist der gegebene Satz, `vorbehalt` steht nur da, wenn er gegeben ist. */
+function lektionZu(prinzip: string, vorbehalt?: string): string {
+  const kopf = ['titel: "Eine Lektion"', `prinzip: "${prinzip}"`];
+  if (vorbehalt !== undefined) kopf.push(`vorbehalt: "${vorbehalt}"`);
+  return lektion('Ein eigener Absatz, der die Regel in anderen Worten erklärt.', kopf);
+}
+
 type VorEingabe = Parameters<typeof pruefeVor>[0];
 type NachEingabe = Parameters<typeof pruefeNach>[0];
 
 /**
- * pruefeVor mit passendem Manifest und ohne andere Lehrplaene, soweit der Test nichts anderes sagt.
+ * pruefeVor mit passendem Manifest, ohne Lektionen und ohne andere Lehrplaene, soweit der Test nichts anderes sagt.
  * MANIFEST traegt alle drei Abschnitte; ein Lehrplan, der gegen es gehalten wird, fuehrt sie deshalb alle — wie nach dem Einlesen.
+ * Der leere Index heisst: Rohdateien da, nichts gefunden.
  */
 function vor(eingabe: Partial<VorEingabe> & Pick<VorEingabe, 'lehrplanText'>) {
-  return pruefeVor({ kurzname: K, manifestText: MANIFEST, lektionsIds: new Set<string>(), andere: [], ...eingabe });
+  return pruefeVor({
+    kurzname: K,
+    manifestText: MANIFEST,
+    lektionsIds: new Set<string>(),
+    lektionen: new Map(),
+    index: new Map(),
+    andere: [],
+    ...eingabe,
+  });
 }
 
-/** pruefeNach mit geprueftem, sauberem Wortlaut und ohne andere Lehrplaene, soweit der Test nichts anderes sagt. */
+/** pruefeNach mit geprueftem, sauberem Wortlaut (leerer Index), ohne Lektionstexte und ohne andere Lehrplaene, soweit der Test nichts anderes sagt. */
 function nach(eingabe: Partial<NachEingabe> & Pick<NachEingabe, 'lehrplanText'>) {
-  return pruefeNach({ kurzname: K, lektionsIds: new Set<string>(), wortlaut: { ids: [] }, andere: [], ...eingabe });
+  return pruefeNach({
+    kurzname: K,
+    lektionsIds: new Set<string>(),
+    lektionen: new Map(),
+    index: new Map(),
+    andere: [],
+    ...eingabe,
+  });
 }
 
 describe('pruefeVor', () => {
@@ -482,7 +548,15 @@ describe('pruefeNach', () => {
   });
 
   it('meldet einen Wortlaut-Treffer je Lektion', () => {
-    const ergebnis = nach({ lehrplanText: FERTIG, lektionsIds: LEKTIONEN, wortlaut: { ids: ['zweites-prinzip'] } });
+    const ergebnis = nach({
+      lehrplanText: FERTIG,
+      lektionsIds: LEKTIONEN,
+      lektionen: new Map([
+        ['erstes-prinzip', lektion('Ein eigener Absatz, der die Regel in anderen Worten erklärt.')],
+        ['zweites-prinzip', lektion(`Ein eigener Satz vorweg. ${SATZ}`)],
+      ]),
+      index: INDEX,
+    });
     expect(ergebnis).toEqual({
       ok: false,
       maengel: [
@@ -493,7 +567,7 @@ describe('pruefeNach', () => {
   });
 
   it('sagt ohne Rohdateien „nicht geprueft" — ein Hinweis, kein Mangel', () => {
-    expect(nach({ lehrplanText: FERTIG, lektionsIds: LEKTIONEN, wortlaut: null })).toEqual({
+    expect(nach({ lehrplanText: FERTIG, lektionsIds: LEKTIONEN, index: null })).toEqual({
       ok: true,
       maengel: [],
       hinweise: ['Wortlaut nicht geprüft: keine Rohdateien am Rechner.'],
@@ -533,16 +607,407 @@ describe('pruefeNach', () => {
   });
 });
 
-/** Ein erfundener Satz: 16 Woerter, sechs verschiedene Funktionswoerter. */
-const SATZ = 'Der Polier trägt jeden Abend die Stunden der Kolonne ein und meldet sie an das Büro.';
+describe('lehrplanFelder', () => {
+  it('liest grund und die Texte der Prinzipien, benannt nach der Id, ohne Titel, Ids und die Felder oben', () => {
+    const text = [
+      'art: folien',
+      `quelle: "${K}"`,
+      'titel: "Titel des Lehrplans"',
+      `stand: "${STAND}"`,
+      'geprueftVon: "Daniel Nobs"',
+      'geprueftAm: "2026-09-25"',
+      'abschnitte:',
+      '  - id: m01-01-einstieg',
+      '    titel: "Titel des ersten Abschnitts"',
+      '    datei: "M1.pdf"',
+      '    seiten: [1, 10]',
+      '    status: abgelehnt',
+      '    grund: "Nur eine Titelfolie."',
+      '  - id: m01-02-kosten',
+      '    titel: "Titel des zweiten Abschnitts"',
+      '    datei: "M1.pdf"',
+      '    seiten: [11, 20]',
+      '    status: beauftragt',
+      '    prinzipien:',
+      '      - id: erstes-prinzip',
+      '        satz: "Der Satz des Prinzips."',
+      '        warumNichtOffensichtlich: "Das Warum des Prinzips."',
+      '        belege: ["roh/m01-02-kosten.md, Folien 11–12", "VOB/B § 2 Abs. 7"]',
+      '        widget: Pipeline',
+      '        vorbehalt: "Der Vorbehalt des Prinzips."',
+      '',
+    ].join('\n');
+    // Die Reihenfolge ist fest, nicht die des YAML: Dort steht vorbehalt hinter belege.
+    expect(lehrplanFelder(text)).toEqual([
+      { feld: 'm01-01-einstieg.grund', text: 'Nur eine Titelfolie.' },
+      { feld: 'erstes-prinzip.satz', text: 'Der Satz des Prinzips.' },
+      { feld: 'erstes-prinzip.warumNichtOffensichtlich', text: 'Das Warum des Prinzips.' },
+      { feld: 'erstes-prinzip.vorbehalt', text: 'Der Vorbehalt des Prinzips.' },
+      { feld: 'erstes-prinzip.belege[0]', text: 'roh/m01-02-kosten.md, Folien 11–12' },
+      { feld: 'erstes-prinzip.belege[1]', text: 'VOB/B § 2 Abs. 7' },
+    ]);
+  });
 
-/** Die Rohdatei zu EINSTIEG, in der Form des Einlesens: Kopf, dann je Folie eine Marke. */
-const ROH = ['# Titel m01-01-einstieg', '', 'M1.pdf, Folien 1–10', '', '', '— Folie 2 —', SATZ, ''].join('\n');
+  it('nennt ein Feld ohne Id als Text nach seiner Stelle und liest nur Werte, die Text sind', () => {
+    const text = [
+      'art: folien',
+      'abschnitte:',
+      '  - titel: "Ein Abschnitt ohne Id"',
+      '    grund: "Ein Grund ohne Id."',
+      '  - id: 7',
+      '    grund: "Ein Grund mit einer Zahl als Id."',
+      '    prinzipien:',
+      '      - satz: "Ein Satz ohne Id."',
+      '        belege: ["Ein Beleg.", 42, "Noch ein Beleg."]',
+      '      - id: [kein, text]',
+      '        satz: 13',
+      '        vorbehalt: "Ein Vorbehalt mit einer Liste als Id."',
+      '  - id: m01-03-risiken',
+      '    grund: 12',
+      '    prinzipien:',
+      '      - id: drittes-prinzip',
+      '        warumNichtOffensichtlich: "Nur das Warum."',
+      '',
+    ].join('\n');
+    expect(lehrplanFelder(text)).toEqual([
+      { feld: 'abschnitte[0].grund', text: 'Ein Grund ohne Id.' },
+      { feld: 'abschnitte[1].grund', text: 'Ein Grund mit einer Zahl als Id.' },
+      { feld: 'abschnitte[1].prinzipien[0].satz', text: 'Ein Satz ohne Id.' },
+      { feld: 'abschnitte[1].prinzipien[0].belege[0]', text: 'Ein Beleg.' },
+      { feld: 'abschnitte[1].prinzipien[0].belege[2]', text: 'Noch ein Beleg.' },
+      { feld: 'abschnitte[1].prinzipien[1].vorbehalt', text: 'Ein Vorbehalt mit einer Liste als Id.' },
+      { feld: 'drittes-prinzip.warumNichtOffensichtlich', text: 'Nur das Warum.' },
+    ]);
+  });
 
-/** Eine Lektion mit wenig Frontmatter und dem gegebenen Rumpf. */
-function lektion(rumpf: string): string {
-  return ['---', 'titel: "Eine Lektion"', '---', '', rumpf, ''].join('\n');
-}
+  it('gibt ohne YAML und ohne Abschnitte keine Felder', () => {
+    expect(lehrplanFelder('art: folien\nabschnitte: [')).toEqual([]);
+    expect(lehrplanFelder('')).toEqual([]);
+    expect(lehrplanFelder('- eine Liste\n- statt eines Lehrplans\n')).toEqual([]);
+    expect(lehrplanFelder('art: folien\nabschnitte: "kein Abschnitt"\n')).toEqual([]);
+  });
+});
+
+describe('Wortlaut im Lehrplan', () => {
+  /** Vor Durchgang B: EINSTIEG beauftragt mit dem Prinzip, KOSTEN wie gegeben, RISIKEN offen. */
+  function vorB(prinzip: PrinzipSpec, kosten: AbschnittSpec = { ...KOSTEN, status: 'offen' }): string {
+    return lehrplanText({
+      abschnitte: [{ ...EINSTIEG, status: 'beauftragt', prinzipien: [prinzip] }, kosten, { ...RISIKEN, status: 'offen' }],
+    });
+  }
+
+  /** Nach Durchgang B: EINSTIEG mit der Lektion zum Prinzip, KOSTEN wie gegeben, RISIKEN offen. */
+  function nachB(
+    prinzip: PrinzipSpec,
+    kosten: AbschnittSpec = { ...KOSTEN, status: 'abgelehnt', grund: 'Nur Bildbeispiele ohne Aussage.' },
+  ): string {
+    return lehrplanText({
+      abschnitte: [{ ...EINSTIEG, status: 'lektion', prinzipien: [prinzip] }, kosten, { ...RISIKEN, status: 'offen' }],
+    });
+  }
+
+  const MIT_LEKTION = new Set(['erstes-prinzip']);
+
+  it('meldet vor dem Durchgang eine Abschrift in satz, in grund und in belege, mit Feld und Wortbereich', () => {
+    expect(vor({ lehrplanText: vorB({ id: 'erstes-prinzip', satz: SATZ }), index: INDEX })).toEqual({
+      ok: false,
+      maengel: [lehrplanAbschrift('erstes-prinzip.satz')],
+      auftrag: [],
+    });
+    const imGrund = vorB({ id: 'erstes-prinzip' }, { ...KOSTEN, status: 'abgelehnt', grund: SATZ });
+    expect(vor({ lehrplanText: imGrund, index: INDEX }).maengel).toEqual([lehrplanAbschrift('m01-02-kosten.grund')]);
+    const imBeleg = vorB({ id: 'erstes-prinzip', belege: [SATZ, 'VOB/B § 2 Abs. 7'] });
+    expect(vor({ lehrplanText: imBeleg, index: INDEX }).maengel).toEqual([lehrplanAbschrift('erstes-prinzip.belege[0]')]);
+  });
+
+  it('meldet nach dem Durchgang eine Abschrift in satz, in grund und in belege', () => {
+    expect(nach({ lehrplanText: nachB({ id: 'erstes-prinzip', satz: SATZ }), lektionsIds: MIT_LEKTION, index: INDEX })).toEqual({
+      ok: false,
+      maengel: [lehrplanAbschrift('erstes-prinzip.satz')],
+      hinweise: [],
+    });
+    const imGrund = nachB({ id: 'erstes-prinzip' }, { ...KOSTEN, status: 'abgelehnt', grund: SATZ });
+    expect(nach({ lehrplanText: imGrund, lektionsIds: MIT_LEKTION, index: INDEX }).maengel).toEqual([
+      lehrplanAbschrift('m01-02-kosten.grund'),
+    ]);
+    const imBeleg = nachB({ id: 'erstes-prinzip', belege: [SATZ] });
+    expect(nach({ lehrplanText: imBeleg, lektionsIds: MIT_LEKTION, index: INDEX }).maengel).toEqual([
+      lehrplanAbschrift('erstes-prinzip.belege[0]'),
+    ]);
+  });
+
+  it('meldet nichts, wenn derselbe Text nur im titel steht', () => {
+    const imTitel = { ...EINSTIEG, titel: SATZ };
+    const vorher = lehrplanText({
+      abschnitte: [{ ...imTitel, status: 'beauftragt' }, { ...KOSTEN, status: 'offen' }, { ...RISIKEN, status: 'offen' }],
+    });
+    expect(vor({ lehrplanText: vorher, index: INDEX }).ok).toBe(true);
+    const nachher = lehrplanText({ abschnitte: [{ ...imTitel, status: 'lektion', prinzipien: ['erstes-prinzip'] }] });
+    expect(nach({ lehrplanText: nachher, lektionsIds: MIT_LEKTION, index: INDEX })).toEqual({
+      ok: true,
+      maengel: [],
+      hinweise: [],
+    });
+  });
+
+  it('meldet eine Abschrift auch in einem ungueltigen Lehrplan, hinter dessen Maengeln', () => {
+    const ohneGrund: AbschnittSpec = { ...KOSTEN, status: 'abgelehnt' };
+    const grundFehlt = 'lehrplan/fixture-quelle.yaml: abschnitte.1.grund: Ein abgelehnter Abschnitt braucht einen Grund.';
+    expect(vor({ lehrplanText: vorB({ id: 'erstes-prinzip', satz: SATZ }, ohneGrund), index: INDEX }).maengel).toEqual([
+      grundFehlt,
+      lehrplanAbschrift('erstes-prinzip.satz'),
+    ]);
+    const nachher = nachB({ id: 'erstes-prinzip', satz: SATZ }, ohneGrund);
+    expect(nach({ lehrplanText: nachher, lektionsIds: MIT_LEKTION, index: INDEX }).maengel).toEqual([
+      grundFehlt,
+      lehrplanAbschrift('erstes-prinzip.satz'),
+    ]);
+  });
+
+  it('verlangt ohne Rohdatei vor dem Durchgang das Einlesen, solange es ein Manifest gibt, und sagt danach nur „nicht geprueft"', () => {
+    const vorher = vorB({ id: 'erstes-prinzip', satz: SATZ });
+    expect(vor({ lehrplanText: vorher, index: null })).toEqual({
+      ok: false,
+      maengel: ['quellen/fixture-quelle/roh/ enthält keine Rohdatei — erst einlesen.'],
+      auftrag: [],
+    });
+    // Ohne Manifest bleibt es bei dessen Mangel.
+    expect(vor({ lehrplanText: vorher, index: null, manifestText: null }).maengel).toEqual([
+      'quellen/fixture-quelle/manifest.json gibt es nicht — erst einlesen.',
+    ]);
+    expect(nach({ lehrplanText: nachB({ id: 'erstes-prinzip', satz: SATZ }), lektionsIds: MIT_LEKTION, index: null })).toEqual({
+      ok: true,
+      maengel: [],
+      hinweise: ['Wortlaut nicht geprüft: keine Rohdateien am Rechner.'],
+    });
+  });
+
+  it('stellt die Abschriften im Lehrplan hinter dessen uebrige Maengel und vor die der Lektionen', () => {
+    expect(
+      vor({
+        lehrplanText: vorB({ id: 'erstes-prinzip', satz: SATZ }),
+        index: INDEX,
+        lektionsIds: MIT_LEKTION,
+        lektionen: new Map([['erstes-prinzip', lektionZu('Ein anderer Satz.')]]),
+        andere: [{ datei: 'lehrplan/anderer.yaml', text: repoText(['erstes-prinzip', 'nur-im-repo']) }],
+      }).maengel,
+    ).toEqual([
+      'Prinzip erstes-prinzip: die Id steht schon in lehrplan/anderer.yaml; Lektion und Prinzip teilen sich die Id.',
+      lehrplanAbschrift('erstes-prinzip.satz'),
+      'Prinzip erstes-prinzip: inhalt/lektionen/erstes-prinzip.mdx hat einen anderen Satz — übernehmen heißt: ihr Satz; sonst eine andere Id.',
+    ]);
+
+    const nochBeauftragt = lehrplanText({
+      abschnitte: [
+        { ...EINSTIEG, status: 'lektion', prinzipien: [{ id: 'erstes-prinzip', satz: SATZ }, 'zweites-prinzip'] },
+        { ...KOSTEN, status: 'beauftragt' },
+      ],
+    });
+    expect(
+      nach({
+        lehrplanText: nochBeauftragt,
+        lektionsIds: new Set(['erstes-prinzip', 'zweites-prinzip']),
+        lektionen: new Map([
+          ['erstes-prinzip', lektionZu('Ein anderer Satz.')],
+          ['zweites-prinzip', lektion(`Ein eigener Satz vorweg. ${SATZ}`)],
+        ]),
+        index: INDEX,
+      }).maengel,
+    ).toEqual([
+      'Abschnitt m01-02-kosten steht noch auf beauftragt — jeder Abschnitt endet als lektion oder abgelehnt.',
+      lehrplanAbschrift('erstes-prinzip.satz'),
+      'Lektion erstes-prinzip: prinzip ist nicht der Satz des Prinzips in lehrplan/fixture-quelle.yaml.',
+      'Lektion zweites-prinzip: Wortlaut zu nah an der Quelle — npm run pruefe-lektion -- inhalt/lektionen/zweites-prinzip.mdx zeigt die Stelle.',
+    ]);
+  });
+});
+
+describe('Lektion und Prinzip', () => {
+  /** Vor Durchgang B, die Lektion zum Prinzip schon da: eine uebernommene oder eine aus einem frueheren Durchgang. */
+  function vorMit(prinzip: PrinzipSpec, text: string) {
+    return vor({
+      lehrplanText: lehrplanText({
+        abschnitte: [
+          { ...EINSTIEG, status: 'beauftragt', prinzipien: [prinzip] },
+          { ...KOSTEN, status: 'offen' },
+          { ...RISIKEN, status: 'offen' },
+        ],
+      }),
+      lektionsIds: new Set([prinzip.id]),
+      lektionen: new Map([[prinzip.id, text]]),
+    });
+  }
+
+  /** Nach Durchgang B: EINSTIEG mit der Lektion zum Prinzip. */
+  function nachMit(prinzip: PrinzipSpec, text: string) {
+    return nach({
+      lehrplanText: lehrplanText({ abschnitte: [{ ...EINSTIEG, status: 'lektion', prinzipien: [prinzip] }] }),
+      lektionsIds: new Set([prinzip.id]),
+      lektionen: new Map([[prinzip.id, text]]),
+    });
+  }
+
+  const ANDERER_SATZ_VOR =
+    'Prinzip uebernommen: inhalt/lektionen/uebernommen.mdx hat einen anderen Satz — übernehmen heißt: ihr Satz; sonst eine andere Id.';
+  const ANDERER_VORBEHALT_VOR =
+    'Prinzip uebernommen: der vorbehalt passt nicht zu inhalt/lektionen/uebernommen.mdx — die Lektion ändert nur der Mensch.';
+  const ANDERER_SATZ_NACH = 'Lektion uebernommen: prinzip ist nicht der Satz des Prinzips in lehrplan/fixture-quelle.yaml.';
+  const ANDERER_VORBEHALT_NACH = 'Lektion uebernommen: vorbehalt ist nicht der des Prinzips in lehrplan/fixture-quelle.yaml.';
+
+  it('laesst eine Lektion mit dem Satz und dem Vorbehalt ihres Prinzips durch', () => {
+    const ohne = { id: 'uebernommen' };
+    expect(vorMit(ohne, lektionZu(PRINZIPSATZ)).ok).toBe(true);
+    expect(nachMit(ohne, lektionZu(PRINZIPSATZ))).toEqual({ ok: true, maengel: [], hinweise: [] });
+    const mit = { id: 'uebernommen', vorbehalt: 'Ein Vorbehalt.' };
+    expect(vorMit(mit, lektionZu(PRINZIPSATZ, 'Ein Vorbehalt.')).maengel).toEqual([]);
+    expect(nachMit(mit, lektionZu(PRINZIPSATZ, 'Ein Vorbehalt.')).maengel).toEqual([]);
+  });
+
+  it('meldet einen anderen Satz vor und nach dem Durchgang', () => {
+    const prinzip = { id: 'uebernommen' };
+    expect(vorMit(prinzip, lektionZu('Ein anderer Satz.'))).toEqual({ ok: false, maengel: [ANDERER_SATZ_VOR], auftrag: [] });
+    expect(nachMit(prinzip, lektionZu('Ein anderer Satz.'))).toEqual({ ok: false, maengel: [ANDERER_SATZ_NACH], hinweise: [] });
+  });
+
+  it('meldet einen Vorbehalt, den nur das Prinzip traegt', () => {
+    const prinzip = { id: 'uebernommen', vorbehalt: 'Ein Vorbehalt.' };
+    expect(vorMit(prinzip, lektionZu(PRINZIPSATZ)).maengel).toEqual([ANDERER_VORBEHALT_VOR]);
+    expect(nachMit(prinzip, lektionZu(PRINZIPSATZ)).maengel).toEqual([ANDERER_VORBEHALT_NACH]);
+  });
+
+  it('meldet einen Vorbehalt, den nur die Lektion traegt', () => {
+    const prinzip = { id: 'uebernommen' };
+    expect(vorMit(prinzip, lektionZu(PRINZIPSATZ, 'Ein Vorbehalt.')).maengel).toEqual([ANDERER_VORBEHALT_VOR]);
+    expect(nachMit(prinzip, lektionZu(PRINZIPSATZ, 'Ein Vorbehalt.')).maengel).toEqual([ANDERER_VORBEHALT_NACH]);
+  });
+
+  it('meldet einen anderen Satz und einen anderen Vorbehalt zusammen', () => {
+    const prinzip = { id: 'uebernommen', vorbehalt: 'Ein Vorbehalt.' };
+    const text = lektionZu('Ein anderer Satz.', 'Ein anderer Vorbehalt.');
+    expect(vorMit(prinzip, text).maengel).toEqual([ANDERER_SATZ_VOR, ANDERER_VORBEHALT_VOR]);
+    expect(nachMit(prinzip, text).maengel).toEqual([ANDERER_SATZ_NACH, ANDERER_VORBEHALT_NACH]);
+  });
+
+  it('zaehlt Leerraum am Rand nicht, und fehlend, null und leer heissen kein Vorbehalt', () => {
+    const mitRand = { id: 'uebernommen', satz: `  ${PRINZIPSATZ} `, vorbehalt: ' Ein Vorbehalt.  ' };
+    const text = lektionZu(` ${PRINZIPSATZ}   `, '   Ein Vorbehalt. ');
+    expect(vorMit(mitRand, text).maengel).toEqual([]);
+    expect(nachMit(mitRand, text).maengel).toEqual([]);
+
+    const ohne = { id: 'uebernommen' };
+    for (const zeile of ['vorbehalt:', 'vorbehalt: null', 'vorbehalt: ""', 'vorbehalt: "   "']) {
+      const leer = lektion('Ein eigener Absatz.', ['titel: "Eine Lektion"', `prinzip: "${PRINZIPSATZ}"`, zeile]);
+      expect(vorMit(ohne, leer).maengel).toEqual([]);
+      expect(nachMit(ohne, leer).maengel).toEqual([]);
+    }
+  });
+
+  it('vergleicht prinzip nur, wenn es Text ist — alles andere meldet pruefe-lektion', () => {
+    const text = lektion('Ein eigener Absatz.', ['titel: "Eine Lektion"', 'prinzip: 42']);
+    expect(vorMit({ id: 'uebernommen' }, text).maengel).toEqual([]);
+    expect(nachMit({ id: 'uebernommen' }, text).maengel).toEqual([]);
+  });
+
+  it('uebergeht eine Lektion, deren Frontmatter sich nicht lesen laesst oder kein Objekt ist — das meldet pruefe-lektion', () => {
+    // Das Prinzip traegt einen Vorbehalt: Wuerde eine dieser Lektionen verglichen, fehlte er ihr.
+    const prinzip = { id: 'uebernommen', vorbehalt: 'Ein Vorbehalt.' };
+    for (const text of [
+      '---\nprinzip: "unbeendet\n---\nRumpf.\n',
+      '---\nNur ein Satz im Kopf\n---\nRumpf.\n',
+      '---\n- eine\n- Liste\n---\nRumpf.\n',
+      'Nur Prosa, kein Frontmatter.\n',
+    ]) {
+      expect(vorMit(prinzip, text).maengel).toEqual([]);
+      expect(nachMit(prinzip, text).maengel).toEqual([]);
+    }
+  });
+
+  it('gleicht nur einen lesbaren Lehrplan ab: einen wartenden ja, einen ungueltigen nicht', () => {
+    const mitLektion = { lektionsIds: new Set(['uebernommen']), lektionen: new Map([['uebernommen', lektionZu('Ein anderer Satz.')]]) };
+    const wartend = lehrplanText({
+      freigegeben: false,
+      abschnitte: [
+        { ...EINSTIEG, status: 'beauftragt', prinzipien: ['uebernommen'] },
+        { ...KOSTEN, status: 'offen' },
+        { ...RISIKEN, status: 'offen' },
+      ],
+    });
+    expect(vor({ lehrplanText: wartend, ...mitLektion }).maengel).toEqual([
+      'Erst freigeben: lehrplan/fixture-quelle.yaml wartet auf Freigabe (geprueftVon und geprueftAm).',
+      ANDERER_SATZ_VOR,
+    ]);
+    const ungueltig = lehrplanText({
+      abschnitte: [
+        { ...EINSTIEG, status: 'beauftragt', prinzipien: ['uebernommen'] },
+        { ...KOSTEN, status: 'abgelehnt' },
+        { ...RISIKEN, status: 'offen' },
+      ],
+    });
+    expect(vor({ lehrplanText: ungueltig, ...mitLektion }).maengel).toEqual([
+      'lehrplan/fixture-quelle.yaml: abschnitte.1.grund: Ein abgelehnter Abschnitt braucht einen Grund.',
+    ]);
+  });
+});
+
+describe('Freigabe neben anderen Maengeln', () => {
+  /** Die Freigabe leer — fehlend, null oder nur Leerraum — in beiden Feldern. */
+  const LEERE_FREIGABEN = [
+    ['geprueftVon: ""', 'geprueftAm: ""'],
+    ['geprueftVon: "  "', 'geprueftAm: " "'],
+    ['geprueftVon:', 'geprueftAm:'],
+    [],
+  ];
+
+  /** Ein Satz des Schemas zur Freigabe: Darin laese der Compiler, er solle sie fuellen. */
+  const schemaSatzZurFreigabe = (mangel: string) => /^lehrplan\/fixture-quelle\.yaml: geprueft(Von|Am): /.test(mangel);
+
+  /** Neben der Freigabe ein zweiter Mangel: ein abgelehnter Abschnitt ohne Grund. */
+  const OHNE_GRUND: AbschnittSpec[] = [{ ...EINSTIEG, status: 'abgelehnt' }];
+  const GRUND_FEHLT = 'lehrplan/fixture-quelle.yaml: abschnitte.0.grund: Ein abgelehnter Abschnitt braucht einen Grund.';
+
+  it('sagt vor dem Durchgang zuerst „Erst freigeben", dann den weiteren Mangel — ohne die Saetze des Schemas zur Freigabe', () => {
+    for (const freigabe of LEERE_FREIGABEN) {
+      const { maengel } = vor({ lehrplanText: lehrplanText({ freigabe, abschnitte: OHNE_GRUND }) });
+      expect(maengel).toEqual([
+        'Erst freigeben: lehrplan/fixture-quelle.yaml wartet auf Freigabe (geprueftVon und geprueftAm).',
+        GRUND_FEHLT,
+      ]);
+      expect(maengel.filter(schemaSatzZurFreigabe)).toEqual([]);
+    }
+  });
+
+  it('laesst vor dem Durchgang die Saetze des Schemas stehen, wenn nur ein Feld leer ist oder eines falsche Form hat', () => {
+    const nurAmLeer = lehrplanText({ freigabe: ['geprueftVon: "Daniel Nobs"', 'geprueftAm: ""'], abschnitte: OHNE_GRUND });
+    expect(vor({ lehrplanText: nurAmLeer }).maengel).toEqual(['lehrplan/fixture-quelle.yaml: geprueftAm: ist leer.', GRUND_FEHLT]);
+    const amAlsZahl = lehrplanText({ freigabe: ['geprueftVon: ""', 'geprueftAm: 20260925'], abschnitte: OHNE_GRUND });
+    expect(vor({ lehrplanText: amAlsZahl }).maengel).toEqual([
+      'lehrplan/fixture-quelle.yaml: geprueftVon: geprueftVon fehlt — der Lehrplan ist das Review-Gate.',
+      'lehrplan/fixture-quelle.yaml: geprueftAm: hat die falsche Form — erwartet Text.',
+      GRUND_FEHLT,
+    ]);
+  });
+
+  it('sagt nach dem Durchgang zuerst „wartet auf Freigabe", dann den weiteren Mangel; nur ein leeres Feld behaelt den Satz des Schemas', () => {
+    // Neben der Freigabe fehlt die Lektion zweites-prinzip.
+    const abschnitte: AbschnittSpec[] = [{ ...EINSTIEG, status: 'lektion', prinzipien: ['erstes-prinzip', 'zweites-prinzip'] }];
+    const lektionsIds = new Set(['erstes-prinzip']);
+    const lektionFehlt =
+      'lehrplan/fixture-quelle.yaml: abschnitte.0.prinzipien.1.id: Die Lektion zweites-prinzip gibt es nicht (inhalt/lektionen/zweites-prinzip.mdx).';
+    for (const freigabe of LEERE_FREIGABEN) {
+      const { maengel } = nach({ lehrplanText: lehrplanText({ freigabe, abschnitte }), lektionsIds });
+      expect(maengel).toEqual([
+        'lehrplan/fixture-quelle.yaml wartet auf Freigabe — Durchgang B beginnt erst nach der Freigabe.',
+        lektionFehlt,
+      ]);
+      expect(maengel.filter(schemaSatzZurFreigabe)).toEqual([]);
+    }
+    const nurAmLeer = lehrplanText({ freigabe: ['geprueftVon: "Daniel Nobs"', 'geprueftAm: ""'], abschnitte });
+    expect(nach({ lehrplanText: nurAmLeer, lektionsIds }).maengel).toEqual([
+      'lehrplan/fixture-quelle.yaml: geprueftAm: ist leer.',
+      lektionFehlt,
+    ]);
+  });
+});
 
 /** Ein Temp-Verzeichnis mit den gegebenen Dateien (Pfad relativ zur Wurzel -> Text). */
 function wurzelMit(dateien: Record<string, string>): string {
@@ -589,8 +1054,8 @@ function sperre(pfad: string): { code: string; frei: () => void } {
 const SPERRE_GREIFT = process.getuid?.() !== 0;
 
 describe('fuehreAus --vor', () => {
-  /** Vor Durchgang B: zwei Abschnitte beauftragt, einer schon mit Prinzip; daneben ein Repo-Lehrplan ohne gemeinsame Id. */
-  const VOR_B = {
+  /** Vor Durchgang B: zwei Abschnitte beauftragt, einer schon mit Prinzip; daneben ein Repo-Lehrplan ohne gemeinsame Id. Noch ohne Rohdatei. */
+  const OHNE_ROHDATEI = {
     [`lehrplan/${K}.yaml`]: lehrplanText({
       abschnitte: [
         { ...EINSTIEG, status: 'beauftragt', prinzipien: ['erstes-prinzip'] },
@@ -601,6 +1066,9 @@ describe('fuehreAus --vor', () => {
     [`quellen/${K}/manifest.json`]: MANIFEST,
     'lehrplan/anderer.yaml': repoText(['nur-im-repo', 'auch-nur-im-repo']),
   };
+
+  /** Dasselbe mit der Rohdatei zu EINSTIEG, wie sie das Einlesen neben das Manifest legt. */
+  const VOR_B = { ...OHNE_ROHDATEI, [`quellen/${K}/roh/m01-01-einstieg.md`]: ROH };
 
   // 8
   it('nennt je beauftragtem Abschnitt Rohdatei, Folien und Listen, Exit 0', async () => {
@@ -629,6 +1097,7 @@ describe('fuehreAus --vor', () => {
         ],
       }),
       [`quellen/${K}/manifest.json`]: MANIFEST,
+      [`quellen/${K}/roh/m01-01-einstieg.md`]: ROH,
     });
     try {
       const { code, zeilen } = await lauf(['--vor', '--name', K], wurzel);
@@ -646,6 +1115,9 @@ describe('fuehreAus --vor', () => {
   it('meldet Maengel je als eine Zeile, Exit 1', async () => {
     const leer = wurzelMit({});
     const ohneManifest = wurzelMit({ [`lehrplan/${K}.yaml`]: VOR_B[`lehrplan/${K}.yaml`] });
+    const ohneRohdatei = wurzelMit(OHNE_ROHDATEI);
+    // Rohdateien anderer Quellen ersetzen die eigenen nicht.
+    const nurFremde = wurzelMit({ ...OHNE_ROHDATEI, 'quellen/andere-quelle/roh/x01-01-fremd.md': ROH });
     const geteilt = wurzelMit({ ...VOR_B, 'lehrplan/anderer.yaml': repoText(['erstes-prinzip', 'nur-im-repo']) });
     const ordnerStattDatei = wurzelMit({});
     mkdirSync(path.join(ordnerStattDatei, 'lehrplan', `${K}.yaml`), { recursive: true });
@@ -653,6 +1125,8 @@ describe('fuehreAus --vor', () => {
       for (const [wurzel, erwartet] of [
         [leer, ['lehrplan/fixture-quelle.yaml gibt es nicht — erst einlesen.']],
         [ohneManifest, ['quellen/fixture-quelle/manifest.json gibt es nicht — erst einlesen.']],
+        [ohneRohdatei, ['quellen/fixture-quelle/roh/ enthält keine Rohdatei — erst einlesen.']],
+        [nurFremde, ['quellen/fixture-quelle/roh/ enthält keine Rohdatei — erst einlesen.']],
         [
           geteilt,
           ['Prinzip erstes-prinzip: die Id steht schon in lehrplan/anderer.yaml; Lektion und Prinzip teilen sich die Id.'],
@@ -665,7 +1139,44 @@ describe('fuehreAus --vor', () => {
         expect(code).toBe(1);
       }
     } finally {
-      for (const w of [leer, ohneManifest, geteilt, ordnerStattDatei]) rmSync(w, { recursive: true, force: true });
+      for (const w of [leer, ohneManifest, ohneRohdatei, nurFremde, geteilt, ordnerStattDatei]) {
+        rmSync(w, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('meldet einen Satz aus der Rohdatei, den der Lehrplan als satz traegt, mit Feld und Wortbereich, Exit 1', async () => {
+    const wurzel = wurzelMit({
+      ...VOR_B,
+      [`lehrplan/${K}.yaml`]: lehrplanText({
+        abschnitte: [
+          { ...EINSTIEG, status: 'beauftragt', prinzipien: [{ id: 'erstes-prinzip', satz: SATZ }] },
+          { ...KOSTEN, status: 'offen' },
+          { ...RISIKEN, status: 'beauftragt' },
+        ],
+      }),
+    });
+    try {
+      const { code, zeilen } = await lauf(['--name', K, '--vor'], wurzel);
+      expect(zeilen).toEqual([
+        'lehrplan/fixture-quelle.yaml: Wortlaut: 13 Wörter am Stück wie in fixture-quelle/m01-01-einstieg, Folie 2 — Feld erstes-prinzip.satz, Wörter 1–16.',
+      ]);
+      expect(code).toBe(1);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('meldet eine vorhandene Lektion zum Prinzip, die einen anderen Satz traegt, Exit 1', async () => {
+    const wurzel = wurzelMit({ ...VOR_B, 'inhalt/lektionen/erstes-prinzip.mdx': lektionZu('Ein anderer Satz.') });
+    try {
+      const { code, zeilen } = await lauf(['--name', K, '--vor'], wurzel);
+      expect(zeilen).toEqual([
+        'Prinzip erstes-prinzip: inhalt/lektionen/erstes-prinzip.mdx hat einen anderen Satz — übernehmen heißt: ihr Satz; sonst eine andere Id.',
+      ]);
+      expect(code).toBe(1);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
     }
   });
 
@@ -886,10 +1397,27 @@ describe('fuehreAus --nach', () => {
       rmSync(wurzel, { recursive: true, force: true });
     }
   });
+
+  it('meldet eine Lektion, deren prinzip nicht der Satz ihres Prinzips ist, Exit 1', async () => {
+    const wurzel = wurzelMit({
+      ...NACH_B,
+      'inhalt/lektionen/stunden-taeglich-melden.mdx': lektionZu('Ein anderer Satz.'),
+      [`quellen/${K}/roh/m01-01-einstieg.md`]: ROH,
+    });
+    try {
+      const { code, zeilen } = await lauf(['--name', K, '--nach'], wurzel);
+      expect(zeilen).toEqual([
+        'Lektion stunden-taeglich-melden: prinzip ist nicht der Satz des Prinzips in lehrplan/fixture-quelle.yaml.',
+      ]);
+      expect(code).toBe(1);
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('fuehreAus - Aufruf', () => {
-  it('zeigt die Aufruf-Hilfe und bricht mit 2 ab, wenn etwas fehlt, doppelt oder fremd ist', async () => {
+  it('zeigt nur die Aufruf-Hilfe und bricht mit 2 ab, wenn etwas fehlt, doppelt oder ohne -- dasteht', async () => {
     const wurzel = wurzelMit({});
     try {
       for (const argv of [
@@ -902,14 +1430,65 @@ describe('fuehreAus - Aufruf', () => {
         ['--name', K, '--vor', '--nach'],
         ['--name', K, '--nach', '--nach'],
         ['--name', K, '--vor', 'm01-01-einstieg'],
-        ['--name', K, '--vor', '--folien', '3'],
-        // Kein Kurzname: Er ist der Ordner unter quellen/, gelesen wird nur darunter.
-        ['--name', '../fremd', '--vor'],
-        ['--name', 'Fixture-Quelle', '--nach'],
       ]) {
         const { code, zeilen } = await lauf(argv, wurzel);
         expect(zeilen).toEqual([AUFRUF]);
         expect(code).toBe(2);
+      }
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  // Kein Kurzname: Er ist der Ordner unter quellen/, gelesen wird nur darunter.
+  it('nennt einen Kurznamen, der nicht dem Muster der Ids folgt, und zeigt die Aufruf-Hilfe, Exit 2', async () => {
+    const wurzel = wurzelMit({});
+    try {
+      for (const [argv, erwartet] of [
+        [['--name', '../aussen', '--vor'], '--name ../aussen: nur Kleinbuchstaben, Ziffern und Bindestrich.'],
+        [['--nach', '--name', 'Fixture-Quelle'], '--name Fixture-Quelle: nur Kleinbuchstaben, Ziffern und Bindestrich.'],
+      ] as const) {
+        const { code, zeilen } = await lauf([...argv], wurzel);
+        expect(zeilen).toEqual([erwartet, AUFRUF]);
+        expect(code).toBe(2);
+      }
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it('nennt eine fremde Option und zeigt die Aufruf-Hilfe, Exit 2', async () => {
+    const wurzel = wurzelMit({});
+    try {
+      for (const [argv, erwartet] of [
+        [['--name', K, '--vor', '--los'], 'Unbekannte Option --los.'],
+        [['--name', K, '--vor', '--folien', '3'], 'Unbekannte Option --folien.'],
+        [['--los', '--name', K, '--nach'], 'Unbekannte Option --los.'],
+      ] as const) {
+        const { code, zeilen } = await lauf([...argv], wurzel);
+        expect(zeilen).toEqual([erwartet, AUFRUF]);
+        expect(code).toBe(2);
+      }
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  // 2b-3 legt die Dateien-Schicht womoeglich hinter einen Dev-Endpunkt, ohne diese Kommandozeile davor.
+  it('laesst pruefeVorDateien und pruefeNachDateien einen falschen Kurznamen melden, bevor sie etwas lesen', () => {
+    const wurzel = wurzelMit({});
+    // lehrplan/../aussen.yaml ist dieser Ordner: Laesen sie zuerst, hiesse es „laesst sich nicht lesen (EISDIR)".
+    mkdirSync(path.join(wurzel, 'aussen.yaml'));
+    try {
+      for (const pruefe of [pruefeVorDateien, pruefeNachDateien]) {
+        let fehler: unknown;
+        try {
+          pruefe({ wurzel, kurzname: '../aussen' });
+        } catch (f) {
+          fehler = f;
+        }
+        expect(fehler).toBeInstanceOf(PruefeQuelleFehler);
+        expect((fehler as Error).message).toBe('--name ../aussen: nur Kleinbuchstaben, Ziffern und Bindestrich.');
       }
     } finally {
       rmSync(wurzel, { recursive: true, force: true });
@@ -930,6 +1509,7 @@ describe('werkzeug/pruefe-quelle.mjs aus einem reinen Node-Prozess', () => {
         abschnitte: [{ ...EINSTIEG, status: 'beauftragt' }],
       }),
       [`quellen/${K}/manifest.json`]: MANIFEST,
+      [`quellen/${K}/roh/m01-01-einstieg.md`]: ROH,
     });
     try {
       const ergebnis = spawnSync(process.execPath, [SKRIPT, '--name', K, '--vor'], { cwd: wurzel, encoding: 'utf8' });

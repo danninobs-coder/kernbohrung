@@ -12,13 +12,13 @@
  * laengster gleicher Lauf drei Woerter.
  *
  * Schichten wie bei den anderen Werkzeugen: `woerter`, `rohFolien`,
- * `lektionFelder`, `baueIndex` und `findeAbschriften` sind reine Funktionen
- * ueber Texte, `liesRohIndex` liest unter einer Wurzel. Eine eigene
- * Kommandozeile prueft damit eine Lektion vor dem Schreiben.
+ * `lektionFelder`, `baueIndex`, `findeAbschriften` und `abschriftSatz` sind
+ * reine Funktionen ueber Texte, `liesRohIndex` liest unter einer Wurzel. Eine
+ * eigene Kommandozeile prueft damit eine Lektion vor dem Schreiben.
  *
  * **Nie Text nach aussen.** Ein Treffer nennt Quelle, Abschnitt, Folie, Feld
- * und Wortbereich — nie die Woerter selbst. Das Material gehoert seinen
- * Verfassern.
+ * und Wortbereich — nie die Woerter selbst (`abschriftSatz`). Das Material
+ * gehoert seinen Verfassern.
  *
  * @typedef {{ w: string, zahl: boolean }} Wort
  * @typedef {{ nummer: number, text: string }} Folie
@@ -382,6 +382,23 @@ export function findeAbschriften(felder, index) {
     }
   }
   return abschriften;
+}
+
+/**
+ * Der Satz zu einer Abschrift: Quelle, Abschnitt, Folie, Feld und
+ * Wortbereich, nie die Woerter. Eine Rohdatei ohne Seitenmarken (Folie 0)
+ * wird ohne Folie genannt.
+ *
+ * Steht hier bei der Abschrift, nicht in pruefe-lektion: pruefe-quelle nennt
+ * eine Abschrift im Lehrplan mit demselben Satz wie die Pruefung der Lektion
+ * eine in der Lektion.
+ *
+ * @param {Abschrift} abschrift
+ * @returns {string}
+ */
+export function abschriftSatz({ feld, von, bis, quelle, abschnitt, folie }) {
+  const fundort = folie === 0 ? `${quelle}/${abschnitt}` : `${quelle}/${abschnitt}, Folie ${folie}`;
+  return `Wortlaut: ${FENSTER} Wörter am Stück wie in ${fundort} — Feld ${feld}, Wörter ${von}–${bis}.`;
 }
 
 // ---------------------------------------------------------------------------

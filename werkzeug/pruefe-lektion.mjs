@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { load as yamlLesen } from 'js-yaml';
 import { LektionSchema } from '../src/content/schema.ts';
 import { pruefeWidget } from '../src/widgets/pruefung.ts';
-import { FENSTER, findeAbschriften, lektionFelder, liesRohIndex } from './wortlaut.mjs';
+import { abschriftSatz, findeAbschriften, lektionFelder, liesRohIndex } from './wortlaut.mjs';
 // FRONTMATTER und widgetAufrufe stehen in werkzeug/lektion-lesen.mjs: Der
 // Wortlaut-Abgleich liest eine Lektion genauso wie diese Pruefung, ohne dass
 // eines der beiden Module das andere importiert. Weiterexportiert, damit ein
@@ -95,17 +95,16 @@ export function pruefeLektionsText(text) {
  * Der Wortlaut einer Lektion gegen den Index der Rohdateien (werkzeug/wortlaut.mjs):
  * je Abschrift ein Mangel. Die Meldung nennt Quelle, Abschnitt, Folie, Feld
  * und Wortbereich — nie den Text, denn der gehoert den Verfassern der Quelle.
- * Eine Rohdatei ohne Seitenmarken (Folie 0) wird ohne Folie genannt.
+ * Eine Rohdatei ohne Seitenmarken (Folie 0) wird ohne Folie genannt. Den Satz
+ * baut `abschriftSatz`; pruefe-quelle nennt eine Abschrift im Lehrplan mit
+ * demselben.
  *
  * @param {string} text Inhalt einer .mdx-Datei
  * @param {import('./wortlaut.mjs').Index} index
  * @returns {string[]}
  */
 export function pruefeWortlaut(text, index) {
-  return findeAbschriften(lektionFelder(text), index).map(({ feld, von, bis, quelle, abschnitt, folie }) => {
-    const fundort = folie === 0 ? `${quelle}/${abschnitt}` : `${quelle}/${abschnitt}, Folie ${folie}`;
-    return `Wortlaut: ${FENSTER} Wörter am Stück wie in ${fundort} — Feld ${feld}, Wörter ${von}–${bis}.`;
-  });
+  return findeAbschriften(lektionFelder(text), index).map(abschriftSatz);
 }
 
 /**
